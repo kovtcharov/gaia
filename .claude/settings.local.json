@@ -60,7 +60,10 @@
       "WebFetch",
       "WebFetch(domain:code.claude.com)",
       "WebFetch(domain:lemonade-server.ai)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(python -m py_compile:*)",
+      "Bash(del \"C:\\Users\\14255\\Work\\gaia_public\\curl_test_commands.txt\")",
+      "Bash(git checkout:*)"
     ],
     "deny": []
   },
