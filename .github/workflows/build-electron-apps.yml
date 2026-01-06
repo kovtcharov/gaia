@@ -97,7 +97,21 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Cache Electron binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/.cache/electron
+          key: electron-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-
+
       - name: Build Electron app
+        env:
+          # Increase timeout and use GitHub's electron mirror for reliability
+          ELECTRON_MIRROR: https://github.com/electron/electron/releases/download/
+          ELECTRON_CUSTOM_DIR: "{{ version }}"
         run: |
           cd ${{ matrix.app.path }}
           npm ci --prefix .
