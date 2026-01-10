@@ -60,119 +60,31 @@ jobs:
           # Fetch base branch
           git fetch origin $BASE_BRANCH
 
-          # Generate diff
-          git diff origin/$BASE_BRANCH...HEAD > /tmp/pr-diff.txt
-          git diff --name-status origin/$BASE_BRANCH...HEAD > /tmp/pr-files.txt
+          # Generate diff in repo root (where Claude has access)
+          git diff origin/$BASE_BRANCH...HEAD > pr-diff.txt
+          git diff --name-status origin/$BASE_BRANCH...HEAD > pr-files.txt
 
-          echo "Diff generated: $(wc -l < /tmp/pr-diff.txt) lines"
-          echo "Files changed: $(wc -l < /tmp/pr-files.txt) files"
+          echo "Diff generated: $(wc -l < pr-diff.txt) lines"
+          echo "Files changed: $(wc -l < pr-files.txt) files"
 
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          additional_permissions: |
-            read:/tmp/pr-diff.txt
-            read:/tmp/pr-files.txt
-          prompt: |
-            You are reviewing a GAIA pull request. Provide a thorough, professional code review following GAIA standards.
+          max_turns: 10
+          model: claude-opus-4-5-20251101
+          custom_instructions: |
+            Review this GAIA PR. Read pr-diff.txt and pr-files.txt. Follow CLAUDE.md standards.
 
-            **Context Available:**
-            - Read /tmp/pr-diff.txt for the full diff of changes in this PR
-            - Read /tmp/pr-files.txt for the list of changed files
-            - Repository is checked out at the PR head
-            - Focus your review on the changed files and their impact
+            **Required Checks:**
+            - Copyright: `Copyright(C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.` + `SPDX-License-Identifier: MIT`
+            - Security: SQL/command injection, XSS, secrets exposure, path traversal, unsafe deserialization
+            - Code: Patterns match src/gaia/, error handling, readability
+            - Tests: Exist for new features, cover edge cases
+            - Docs: Updated if API changed
+            - Breaking changes & backward compatibility
 
-            ## Suggested Changes Policy
-
-            Use GitHub's suggestion feature for fixable issues. Provide suggestions for:
-            - ✅ Missing copyright headers: `Copyright(C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.`
-            - ✅ Missing SPDX license: `SPDX-License-Identifier: MIT`
-            - ✅ Import sorting issues (isort violations)
-            - ✅ Code formatting issues (black violations)
-            - ✅ Trailing whitespace, missing newlines at EOF
-            - ✅ Simple typos in comments or docstrings
-            - ✅ Simple bug fixes with clear solutions
-
-            **Format suggestions using GitHub's syntax:**
-            ```suggestion
-            corrected code here
-            ```
-
-            **Comment only (no suggestion):**
-            - Security vulnerabilities (comment with 🔒 and tag @kovtcharov-amd)
-            - Complex architectural decisions requiring discussion
-            - Changes with multiple valid approaches
-            - Breaking changes requiring maintainer decision
-
-            Provide suggestions on the specific lines that need changes. Each suggestion should be a complete, ready-to-apply fix.
-
-            ## Review Checklist
-
-            ### 1. Copyright & Licensing
-            - ✅ All NEW files must have: `Copyright(C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.`
-            - ✅ All NEW files must have: `SPDX-License-Identifier: MIT`
-            - Flag any missing headers
-
-            ### 2. Code Quality & Patterns
-            - Verify code follows existing patterns in `src/gaia/`
-            - Check consistency with similar components
-            - Review error handling and edge cases
-            - Assess code readability and maintainability
-            - Reference CLAUDE.md and docs/reference/dev.md for standards
-
-            ### 3. Security Review (CRITICAL)
-            - 🔒 SQL injection vulnerabilities
-            - 🔒 Command injection (especially in shell tools, Bash usage)
-            - 🔒 XSS vulnerabilities (web UIs, HTML generation)
-            - 🔒 Secrets exposure (API keys, tokens in code/logs)
-            - 🔒 Path traversal vulnerabilities
-            - 🔒 Unsafe deserialization
-
-            **If security issues found:** Comment "🔒 SECURITY CONCERN" and describe the issue. Tag @kovtcharov-amd immediately.
-
-            ### 4. Testing
-            - Check if tests exist in `tests/` for new functionality
-            - Review test quality (not just coverage):
-              - Do tests cover edge cases?
-              - Are tests readable and maintainable?
-              - Do they test the right things?
-            - Verify existing tests still pass (check CI status)
-
-            ### 5. Documentation
-            - If API changes: Check for docs updates in `docs/`
-            - If new features: Verify user-facing documentation exists
-            - Check if README or guides need updates
-            - Validate code comments for complex logic
-
-            ### 6. Breaking Changes & Compatibility
-            - Identify any breaking changes to public APIs
-            - Check backward compatibility considerations
-            - Review migration impact for existing users
-
-            ### 7. Performance & Architecture
-            - Flag potential performance issues (N+1 queries, inefficient algorithms)
-            - Review architectural decisions
-            - Check for code duplication that should be refactored
-
-            ### 8. Commit Quality
-            - Review commit messages for clarity
-            - Check if commits are logically organized
-
-            ## Output Format
-
-            Provide a clear, organized review with:
-            - **Summary:** 2-3 sentences on overall quality
-            - **Strengths:** What's done well
-            - **Issues:** Numbered list with severity (🔴 Critical, 🟡 Important, 🟢 Minor)
-            - **Suggested Changes:** Use GitHub's ```suggestion blocks on specific lines for fixable issues
-            - **Recommendations:** Specific, actionable suggestions for items requiring discussion
-            - **File References:** Use format `file.py:123` when referencing code
-
-            Be professional, constructive, and specific. Assume the author is skilled but may not know GAIA conventions.
-
-            Make it easy for maintainers to accept good suggestions with one click.
-          claude_args: "--max-turns 5"
+            **Output:** Summary, Issues (🔴/🟡/🟢 severity), use ```suggestion for fixes. Tag @kovtcharov-amd for security/architecture.
 
   # Respond to @claude in PR review comments (non-fork PRs only - secrets unavailable on forks)
   pr-comment:
@@ -197,53 +109,25 @@ jobs:
           # Fetch base branch
           git fetch origin $BASE_BRANCH
 
-          # Generate diff
-          git diff origin/$BASE_BRANCH...HEAD > /tmp/pr-diff.txt
-          git diff --name-status origin/$BASE_BRANCH...HEAD > /tmp/pr-files.txt
+          # Generate diff in repo root (where Claude has access)
+          git diff origin/$BASE_BRANCH...HEAD > pr-diff.txt
+          git diff --name-status origin/$BASE_BRANCH...HEAD > pr-files.txt
 
-          echo "Diff generated: $(wc -l < /tmp/pr-diff.txt) lines"
-          echo "Files changed: $(wc -l < /tmp/pr-files.txt) files"
+          echo "Diff generated: $(wc -l < pr-diff.txt) lines"
+          echo "Files changed: $(wc -l < pr-files.txt) files"
 
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          additional_permissions: |
-            read:/tmp/pr-diff.txt
-            read:/tmp/pr-files.txt
-          prompt: |
-            You are GAIA's AI assistant helping with pull request discussions.
+          max_turns: 10
+          model: claude-opus-4-5-20251101
+          custom_instructions: |
+            Review this GAIA PR. Read pr-diff.txt and pr-files.txt for context.
 
-            **Context Available:**
-            - Read /tmp/pr-diff.txt for the full diff of changes in this PR
-            - Read /tmp/pr-files.txt for the list of changed files
-            - Repository is checked out at the PR head
-
-            **When to provide suggested changes:**
-            - User explicitly asks you to fix something (e.g., "@claude fix the formatting")
-            - Simple, clear fixes like copyright headers, formatting, import sorting
-            - Bug fixes with obvious solutions
-
-            Use GitHub's suggestion syntax:
-            ```suggestion
-            corrected code here
-            ```
-
-            **When to comment only:**
-            - Answering questions or providing guidance
-            - Discussing architectural approaches
-            - Security concerns (tag @kovtcharov-amd)
-            - Changes that need discussion or have multiple approaches
-
-            Follow the Issue Response Guidelines in CLAUDE.md:
-            - Reference specific files and line numbers
-            - Check docs/ for relevant documentation
-            - Provide GAIA-specific context and examples
-            - Be concise but thorough
-            - If you don't know, say so and suggest who to ask (@kovtcharov-amd)
-
-            Maintain a helpful, professional tone. You're assisting both maintainers and contributors.
-          claude_args: "--max-turns 5"
+            Provide suggestions using ```suggestion blocks for fixable issues (formatting, headers, typos).
+            For complex issues, comment only and tag @kovtcharov-amd if needed.
+            Follow CLAUDE.md guidelines. Be concise and professional.
 
   # Respond to new issues or @claude mentions in PR conversations (including forks)
   issue-handler:
@@ -266,101 +150,50 @@ jobs:
         run: |
           PR_NUMBER=${{ github.event.issue.number }}
 
-          # Get PR details
-          PR_DATA=$(gh pr view $PR_NUMBER --json headRefOid,baseRefName,headRefName)
+          # Get PR details including fork info
+          PR_DATA=$(gh pr view $PR_NUMBER --json headRefOid,baseRefName,headRefName,headRepository,headRepositoryOwner)
           PR_HEAD_SHA=$(echo "$PR_DATA" | jq -r '.headRefOid')
           BASE_BRANCH=$(echo "$PR_DATA" | jq -r '.baseRefName')
+          HEAD_REPO_OWNER=$(echo "$PR_DATA" | jq -r '.headRepositoryOwner.login')
+          HEAD_REPO_NAME=$(echo "$PR_DATA" | jq -r '.headRepository.name')
 
           echo "PR #$PR_NUMBER: $BASE_BRANCH...$PR_HEAD_SHA"
+          echo "Head repo: $HEAD_REPO_OWNER/$HEAD_REPO_NAME"
 
-          # Fetch and checkout PR head
-          git fetch origin $PR_HEAD_SHA
+          # Fetch base branch from origin
           git fetch origin $BASE_BRANCH
+
+          # For fork PRs, add fork as remote and fetch from it
+          if [ "$HEAD_REPO_OWNER" != "${{ github.repository_owner }}" ]; then
+            echo "Fork PR detected, fetching from fork repository"
+            git remote add fork https://github.com/$HEAD_REPO_OWNER/$HEAD_REPO_NAME.git
+            git fetch fork $PR_HEAD_SHA
+          else
+            echo "Non-fork PR, fetching from origin"
+            git fetch origin $PR_HEAD_SHA
+          fi
+
           git checkout $PR_HEAD_SHA
 
-          # Generate diff for Claude
+          # Generate diff in repo root (where Claude has access)
           echo "Generating diff between $BASE_BRANCH and PR head..."
-          git diff origin/$BASE_BRANCH...$PR_HEAD_SHA > /tmp/pr-diff.txt
+          git diff origin/$BASE_BRANCH...$PR_HEAD_SHA > pr-diff.txt
 
           # Also get list of changed files
-          git diff --name-status origin/$BASE_BRANCH...$PR_HEAD_SHA > /tmp/pr-files.txt
+          git diff --name-status origin/$BASE_BRANCH...$PR_HEAD_SHA > pr-files.txt
 
-          echo "Diff generated: $(wc -l < /tmp/pr-diff.txt) lines"
-          echo "Files changed: $(wc -l < /tmp/pr-files.txt) files"
+          echo "Diff generated: $(wc -l < pr-diff.txt) lines"
+          echo "Files changed: $(wc -l < pr-files.txt) files"
 
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          additional_permissions: |
-            read:/tmp/pr-diff.txt
-            read:/tmp/pr-files.txt
-          prompt: |
-            You are GAIA's helpful AI assistant. Follow the Issue Response Guidelines in CLAUDE.md.
+          max_turns: 10
+          model: claude-opus-4-5-20251101
+          custom_instructions: |
+            GAIA AI assistant. Follow CLAUDE.md guidelines.
 
-            **Context Detection:** This handler responds to both issues AND PR conversation comments (not review comments on specific lines).
-            - If responding to a PR conversation comment: Focus on the PR content, answer questions about changes, provide feedback
-            - If responding to an issue: Follow the Issue Response Protocol below
-
-            ## For PR Conversation Comments
-
-            When responding to questions in PR conversation (not line-specific review comments):
-            - **IMPORTANT:** Read /tmp/pr-diff.txt to see the full diff of changes in this PR
-            - Read /tmp/pr-files.txt to see the list of changed files
-            - Use the diff to understand context and answer questions accurately
-            - Answer questions about placement, structure, naming, conventions
-            - Reference GAIA patterns and documentation standards
-            - Provide suggested changes if requested (use ```suggestion syntax)
-            - Be helpful and constructive
-
-            The repository is checked out at the PR head, and the diff shows changes from the base branch.
-
-            ## Response Protocol (for Issues)
-
-            ### 1. Check for Duplicates First
-            Search existing issues/PRs before providing a detailed response.
-            If duplicate found, link to it: "This appears related to #123"
-
-            ### 2. For Questions
-            Check docs/ folder (see docs/docs.json for structure):
-            - **Getting Started:** docs/setup.md, docs/quickstart.md
-            - **User Guides:** docs/guides/chat.md, docs/guides/talk.md, docs/guides/code.md, docs/guides/blender.md, docs/guides/jira.md
-            - **SDK Reference:** docs/sdk/core/agent-system.md, docs/sdk/sdks/chat.md, docs/sdk/sdks/rag.md, docs/sdk/infrastructure/mcp.md
-            - **CLI Reference:** docs/reference/cli.md, docs/reference/features.md
-            - **FAQ:** docs/reference/faq.md, docs/glossary.md
-            - **Development:** docs/reference/dev.md, docs/sdk/testing.md, docs/sdk/best-practices.md
-
-            ### 3. For Bugs
-            - Search src/gaia/ for related code
-            - Check tests/ for related test cases
-            - Reference docs/sdk/troubleshooting.md
-            - Check security implications using docs/sdk/security.md
-            - Ask for reproduction steps if not provided
-            - **If security bug:** Tag @kovtcharov-amd and suggest opening a private security advisory instead
-
-            ### 4. For Feature Requests
-            - Check if similar exists in src/gaia/agents/ or src/gaia/apps/
-            - Reference docs/sdk/examples.md and docs/sdk/advanced-patterns.md
-            - Suggest approaches following docs/sdk/best-practices.md
-            - Consider AMD hardware optimization opportunities
-
-            ### 5. Response Guidelines
-            - **Be concise:** 1-3 paragraphs for simple questions, more for complex issues
-            - **Reference files:** Use format `src/gaia/agents/base.py:123` when possible
-            - **Link to docs:** Always include relevant documentation links
-            - **Code examples:** Provide when helpful, following GAIA conventions
-            - **Next steps:** End with clear action items
-            - **Escalate when needed:** Tag @kovtcharov-amd for:
-              - Security issues
-              - Architecture decisions
-              - Issues you can't resolve
-              - Requests for roadmap/timeline info
-
-            ### 6. Tone
-            - Friendly and professional
-            - Assume good intent
-            - Welcome contributors
-            - Acknowledge AMD's open-source commitment
-
-            Always reference specific files with line numbers when possible.
-          claude_args: "--max-turns 4"
+            For PR comments: Read pr-diff.txt and pr-files.txt, answer questions about the changes.
+            For issues: Check docs/, src/gaia/, and tests/. Provide concise help with file references.
+            Tag @kovtcharov-amd for security/architecture issues. Be professional and helpful.
