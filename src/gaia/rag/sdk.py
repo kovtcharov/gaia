@@ -2192,3 +2192,11 @@ def quick_rag(pdf_path: str, question: str, **kwargs) -> str:
 
     response = rag.query(question)
     return response.text
+
+
+__all__ = [
+    "RAGSDK",
+    "RAGConfig",
+    "RAGResponse",
+    "quick_rag",
+]
