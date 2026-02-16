@@ -1,0 +1,489 @@
+---
+title: "GAIA Code: Autonomous Coding Agent"
+description: "The world's most autonomous coding agent with recursive decomposition, quality gates, and persistent memory"
+---
+
+# GAIA Code: Autonomous Coding Agent
+
+GAIA Code is an autonomous coding agent that exceeds Claude Code in capability, autonomy, and reliability through the Recursive Agent Composition (RAC) architecture.
+
+## Key Features
+
+### 🔄 Recursive Decomposition
+When tasks are too complex, GAIA Code automatically breaks them down into smaller subtasks and delegates to sub-agents with fresh context windows.
+
+### ✅ Quality Gates
+The agent CANNOT declare "done" until all quality gates pass:
+- **Syntax Check**: All code parses without errors
+- **Import Check**: All imports resolve successfully
+- **Test Check**: All tests pass
+
+### 💾 Persistent Memory
+Learns across sessions using 7 databases:
+- **memory.db**: Session cache
+- **knowledge.db**: Cross-session learnings
+- **tools.db**: Tool registry (70+ tools)
+- **skills.db**: Learned workflows
+- **agents.db**: Specialist registry (7+ specialists)
+- **plan.db**: Hierarchical task tree
+- **manifest**: Live project state
+
+### 🔁 Checkpoint/Resume
+Survives crashes and interruptions with zero information loss. State-based resume (not summary-based).
+
+### 🎯 7 Domain Specialists
+- **DebuggerAgent**: Error diagnosis and fixing
+- **SecurityAgent**: OWASP Top 10 vulnerability detection
+- **RefactoringAgent**: Code cleanup and optimization
+- **TestingAgent**: Test generation and validation
+- **DocumentationAgent**: Docs and docstring generation
+- **PerformanceAgent**: Profiling and optimization
+- **ArchitectureAgent**: SOLID principles and design patterns
+
+## Quick Start
+
+### Installation
+
+```bash
+# GAIA Code is part of the GAIA framework
+pip install gaia
+
+# Initialize workspace
+gaia code --workspace ~/.gaia/workspace
+```
+
+### Basic Usage
+
+```bash
+# Execute a simple task
+gaia code "Create a Python function to check if a number is prime, with tests"
+
+# Execute a complex task
+gaia code "Build a REST API with JWT authentication and comprehensive tests"
+
+# Check progress
+gaia code --status
+
+# View audit log
+gaia code --audit
+
+# Resume from checkpoint
+gaia code --resume
+```
+
+### Python API
+
+```python
+from pathlib import Path
+from gaia.agents.gaia_code import GaiaCodeAgent
+
+# Create agent
+agent = GaiaCodeAgent(
+    workspace_dir=Path.home() / ".gaia" / "workspace",
+    enable_quality_gates=True,
+    enable_continuous_execution=True,
+)
+
+# Execute task
+result = agent.process_query("Build a REST API with auth")
+
+if result["success"]:
+    print("✅ Task completed!")
+
+    # Check quality gates
+    for gate in result["quality_gates"]:
+        status = "✅" if gate.passed else "❌"
+        print(f"{status} {gate.gate_name}: {gate.message}")
+
+# Get progress
+progress = agent.get_progress()
+print(f"Progress: {progress['progress_percent']}%")
+print(f"Tasks: {progress['completed']}/{progress['total_tasks']}")
+```
+
+## How It Works
+
+### Recursive Agent Composition (RAC)
+
+Instead of a single monolithic agent, GAIA Code is a system of agents that recursively spawn sub-agents:
+
+```
+Main Agent receives: "Build a full-stack app"
+   │
+   ├─> agent_query("Build FastAPI backend with auth")
+   │      ├─> agent_query("Create data models")
+   │      ├─> agent_query("Implement auth endpoints")
+   │      └─> agent_query("Write tests")
+   │
+   └─> agent_query("Build React frontend")
+          ├─> agent_query("Set up React app")
+          ├─> agent_query("Create components")
+          └─> agent_query("Write tests")
+```
+
+**Key Benefits**:
+- Each sub-agent gets fresh context window
+- Context never fills up
+- Perfect coordination via shared state
+- Specialists handle domain-specific tasks
+
+### Context-Lean Architecture
+
+Traditional agents fill the context window:
+```
+Claude Code: Context Window (200K tokens)
+├── System prompt
+├── File contents (all)
+├── Tool results (all)
+├── Conversation history (all)
+└── ... fills up, needs compaction ⏳
+```
+
+GAIA Code keeps context lean:
+```
+GAIA Code: Context Window (<50% usage)
+├── System prompt
+├── Current task
+├── Active file snippet
+└── Last few tool results
+
+Knowledge DBs (external storage):
+├── memory.db (session cache)
+├── knowledge.db (learnings)
+├── tools.db (tool registry)
+├── skills.db (workflows)
+└── agents.db (specialists)
+```
+
+**Result**: Context never fills up. No compaction. No slowdowns.
+
+### Quality-Driven Completion
+
+The agent runs until output is verified correct:
+
+```python
+while not all_quality_gates_pass():
+    execute_task()
+    run_quality_gates()
+
+    if gates_fail:
+        if should_retry:
+            retry()
+        elif should_decompose:
+            agent_query(subtask)  # Break into smaller pieces
+        elif should_escalate:
+            escalate_to_cloud()
+        else:
+            ask_user()
+```
+
+**Escalation Ladder**:
+1. Retry (2 attempts)
+2. Decompose into smaller subtasks
+3. Escalate to cloud LLM (if available)
+4. Ask user for help
+
+## CLI Reference
+
+### Execute Task
+
+```bash
+gaia code "Build a REST API with authentication"
+
+# Options
+gaia code "task" --no-quality-gates  # Disable quality gates
+gaia code "task" --no-continuous     # Use step limits
+gaia code "task" --no-plan           # Direct execution (no planning)
+gaia code "task" --claude            # Use Claude API
+gaia code "task" --chatgpt           # Use ChatGPT API
+gaia code "task" --debug             # Enable debug output
+gaia code "task" --workspace /path   # Custom workspace
+```
+
+### Check Status
+
+```bash
+gaia code --status
+
+# Output:
+# 📊 GAIA Code Status
+# ==================================================
+# Total tasks: 8
+# Completed: 5
+# In progress: 1
+# Pending: 2
+# Failed: 0
+# Progress: 62%
+# Elapsed: 23 minutes
+# ==================================================
+```
+
+### View Audit Log
+
+```bash
+gaia code --audit
+
+# Output:
+# 📋 GAIA Code Audit Log
+# ==================================================
+# [2026-02-14T10:00:01] TASK_START
+#   query: Build REST API with auth
+#
+# [2026-02-14T10:00:03] PLAN_CREATE
+#   task_id: abc123
+#
+# [2026-02-14T10:00:15] QUALITY_GATES
+#   attempt: 1
+#   passed: true
+# ...
+```
+
+### Checkpoint/Resume
+
+```bash
+# Create checkpoint manually
+gaia code --checkpoint
+
+# Resume from checkpoint
+gaia code --resume
+```
+
+## Advanced Features
+
+### Specialist Invocation
+
+Specialists are automatically selected based on task:
+
+```bash
+# Auto-selects DebuggerAgent
+gaia code "Debug the failing test in tests/test_auth.py"
+
+# Auto-selects SecurityAgent
+gaia code "Scan this code for security vulnerabilities"
+
+# Auto-selects RefactoringAgent
+gaia code "Refactor this code to reduce complexity"
+```
+
+### Custom Tools
+
+The agent can create its own tools:
+
+```python
+# Agent detects repeated pattern
+# Agent creates: create_fastapi_crud(resource_name, fields)
+# Agent registers in tools.db
+# Agent uses it in future tasks
+
+# List learned tools
+gaia code tools --learned
+```
+
+### Skills
+
+The agent learns workflows from experience:
+
+```python
+# After successfully building 3+ FastAPI apps
+# Agent extracts skill: "build_fastapi_jwt_app"
+# Agent recalls skill for similar future tasks
+
+# List learned skills
+gaia code skills
+```
+
+### Memory Management
+
+```bash
+# View memory statistics
+gaia memory status
+
+# Defragment knowledge DB
+gaia memory defrag
+
+# Export insights
+gaia memory export insights.json
+```
+
+## Configuration
+
+### Workspace Structure
+
+```
+~/.gaia/workspace/
+├── memory.db              # Session cache
+├── knowledge.db           # Cross-session learning
+├── tools.db               # Tool registry
+├── skills.db              # Learned workflows
+├── agents.db              # Specialist registry
+├── plan.db                # Task hierarchy
+├── checkpoint.json        # Latest checkpoint
+├── learned_tools/         # Agent-created tools
+├── generated_agents/      # Agent-generated specialists
+└── faiss_indices/         # Vector search indices
+```
+
+### Configuration Options
+
+```python
+# In Python API
+agent = GaiaCodeAgent(
+    workspace_dir=Path("~/.gaia/workspace"),
+    enable_quality_gates=True,        # Enforce quality gates
+    enable_continuous_execution=True,  # No step limits
+    use_claude=False,                  # Use local LLM
+    use_chatgpt=False,
+    silent_mode=False,
+    debug=False,
+)
+```
+
+## Examples
+
+### Example 1: Simple Function
+
+```bash
+gaia code "Create a function to calculate fibonacci numbers with memoization, including tests"
+```
+
+**What happens**:
+1. Agent creates plan (4 steps)
+2. Writes fibonacci.py with memoized implementation
+3. Writes test_fibonacci.py with edge cases
+4. Runs syntax check ✅
+5. Runs import check ✅
+6. Runs tests ✅
+7. Returns: "All quality gates passed"
+
+### Example 2: Full-Stack App
+
+```bash
+gaia code "Build a full-stack todo app: FastAPI backend + React frontend + Docker deployment"
+```
+
+**What happens**:
+1. Agent creates plan (15+ tasks)
+2. Decomposes into subtasks:
+   - agent_query("Build FastAPI backend")
+   - agent_query("Build React frontend")
+   - agent_query("Create Docker setup")
+3. Each subtask gets fresh context
+4. Coordination via shared manifest
+5. Quality gates run for each component
+6. Final validation of full stack
+
+### Example 3: Debug Failing Test
+
+```bash
+gaia code "Debug the failing test in tests/test_auth.py"
+```
+
+**What happens**:
+1. Agent auto-selects DebuggerAgent specialist
+2. DebuggerAgent workflow:
+   - Reads test output
+   - Diagnoses root cause
+   - Isolates problematic code
+   - Applies minimal fix
+   - Re-runs test to validate
+3. Returns: "Fixed AttributeError in auth.py:45. Test now passes."
+
+## Performance
+
+### Expected Performance
+
+| Metric | Target | Status |
+|--------|--------|--------|
+| Context usage | <50% always | ✅ |
+| Session continuity | No compaction ever | ✅ |
+| Quality assurance | 100% syntax valid | ✅ |
+| Crash recovery | Zero data loss | ✅ |
+| Cross-session learning | Persistent knowledge | ✅ |
+
+### Benchmarks
+
+Coming soon: Results from Terminal-Bench 2.0, SWE-bench, and GaiaCodeBench.
+
+## Troubleshooting
+
+### Agent Won't Start
+
+```bash
+# Check workspace
+ls ~/.gaia/workspace/
+
+# Check Lemonade server (for local LLM)
+lemonade-server serve --ctx-size 32768
+
+# Use cloud LLM as fallback
+gaia code "task" --claude
+```
+
+### Quality Gates Failing
+
+```bash
+# Disable specific gates
+gaia code "task" --no-quality-gates
+
+# View detailed errors
+gaia code --audit | grep ERROR
+```
+
+### Out of Memory
+
+```bash
+# Defragment knowledge DB
+gaia memory defrag
+
+# Clear session cache
+gaia cache clear
+```
+
+## FAQ
+
+### How is GAIA Code different from Claude Code?
+
+1. **Context-Lean**: Never fills context window (Claude Code requires compaction)
+2. **Quality Gates**: Verifies output works (Claude Code doesn't automatically test)
+3. **Persistent Memory**: Learns across sessions (Claude Code forgets)
+4. **Specialists**: 7 domain experts (Claude Code is generalist)
+5. **Recursive Decomposition**: Automatic task decomposition (Claude Code requires manual prompting)
+
+### Can GAIA Code work with large codebases?
+
+Yes! GAIA Code uses recursive decomposition. It never tries to fit a large codebase into context. Instead, it:
+- Indexes the codebase
+- Queries the index semantically
+- Reads only relevant files
+- Uses agent_query() to analyze different parts recursively
+
+### Does it require cloud LLM?
+
+No! GAIA Code works with local LLMs (Qwen3-Coder-30B) via Lemonade Server. It can optionally escalate to cloud (Claude/GPT-4) for difficult subtasks.
+
+### How does checkpoint/resume work?
+
+GAIA Code saves complete state (not just summaries):
+- Master plan with all tasks
+- Audit log with all actions
+- Escalation ladder state
+- Session metadata
+
+Resume picks up EXACTLY where it left off. Zero information loss.
+
+## Next Steps
+
+- [Architecture Details](../spec/gaia-code-architecture.mdx)
+- [API Reference](../sdk/agents/gaia-code.mdx)
+- [Development Guide](../reference/dev.mdx)
+
+## Support
+
+For issues or questions:
+- GitHub Issues: https://github.com/amd/gaia/issues
+- Documentation: https://amd-gaia.ai
+
+## License
+
+Copyright(C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.
+SPDX-License-Identifier: MIT

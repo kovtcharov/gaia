@@ -1085,6 +1085,13 @@ def main():
         help="Enable debug logging",
     )
 
+    # GAIA Code - Autonomous coding agent with RAC
+    try:
+        from gaia.agents.gaia_code.cli import add_gaia_code_parser
+        add_gaia_code_parser(subparsers)
+    except Exception as e:
+        log.debug(f"GAIA Code not available: {e}")
+
     # Add Docker app command
     docker_parser = subparsers.add_parser(
         "docker",
@@ -4485,6 +4492,18 @@ Let me know your answer!
             console.print("[yellow]Specify what to uninstall:[/yellow]")
             console.print("  [cyan]--lemonade[/cyan]  Uninstall Lemonade Server")
             console.print("  [cyan]--models[/cyan]    Clear all downloaded models")
+            sys.exit(1)
+
+    # GAIA Code action handler
+    if args.action == "code":
+        try:
+            from gaia.agents.gaia_code.cli import cmd_gaia_code
+            return cmd_gaia_code(args)
+        except Exception as e:
+            log.error(f"GAIA Code error: {e}")
+            print(f"❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
             sys.exit(1)
 
     # Log error for unknown action

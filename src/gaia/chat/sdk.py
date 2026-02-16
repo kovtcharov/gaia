@@ -225,6 +225,11 @@ class ChatSDK:
             # Use generate with formatted prompt
             if "temperature" not in kwargs and self.config.temperature is not None:
                 kwargs["temperature"] = self.config.temperature
+
+            # CRITICAL: Add max_tokens for Claude (Anthropic requires it)
+            if "max_tokens" not in kwargs and self.config.max_tokens:
+                kwargs["max_tokens"] = self.config.max_tokens
+
             response = self.llm_client.generate(
                 prompt=formatted_prompt,
                 model=self.config.model,

@@ -65,6 +65,8 @@ setup(
         "gaia.agents.code.prompts",
         "gaia.agents.code.tools",
         "gaia.agents.code.validators",
+        "gaia.agents.gaia_code",
+        "gaia.agents.gaia_code.specialists",
         "gaia.agents.routing",
         "gaia.agents.sd",
         "gaia.agents.summarize",
@@ -131,6 +133,7 @@ setup(
             "bandit",
             "responses",
             "requests",
+            "playwright",  # For GAIA Code web app testing
         ],
         "eval": [
             "anthropic",
@@ -154,8 +157,14 @@ setup(
         "rag": [
             "pypdf",
             "pymupdf>=1.24.0",
-            "sentence-transformers",
-            "faiss-cpu>=1.7.0",
+            "sentence-transformers",  # Used by GAIA Code for embeddings
+            "faiss-cpu>=1.7.0",  # Used by GAIA Code for vector search
+        ],
+        "gaia_code": [
+            "playwright",  # Web app testing and screenshots
+            "sentence-transformers",  # Semantic embeddings
+            "faiss-cpu>=1.7.0",  # Vector search
+            "anthropic",  # Claude API integration
         ],
         "lint": [
             "black",
@@ -185,6 +194,7 @@ setup(
             "gaia-mcp = gaia.mcp.mcp_bridge:main",
             "gaia-emr = gaia.agents.emr.cli:main",
             "gaia-code = gaia.agents.code.cli:main",
+            "gaia-code-rac = gaia.agents.gaia_code.cli:main",  # New RAC-based code agent
         ]
     },
     python_requires=">=3.10",

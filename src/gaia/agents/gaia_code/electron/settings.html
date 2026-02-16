@@ -1,0 +1,401 @@
+<!-- Copyright(C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved. -->
+<!-- SPDX-License-Identifier: MIT -->
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GAIA Code - Settings</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0f;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .settings-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #ed1c24;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #888;
+            margin-bottom: 30px;
+        }
+
+        .setting-section {
+            background: #1a1a1f;
+            border: 1px solid #2a2a2f;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .setting-section h2 {
+            color: #ed1c24;
+            font-size: 18px;
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+
+        .setting-row {
+            margin-bottom: 20px;
+        }
+
+        .setting-row:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            color: #b0b0b0;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        input[type="text"],
+        input[type="password"],
+        select {
+            width: 100%;
+            padding: 10px;
+            background: #0a0a0f;
+            border: 1px solid #3a3a3f;
+            border-radius: 4px;
+            color: #e0e0e0;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #ed1c24;
+        }
+
+        .input-hint {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .credential-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+
+        .credential-status.found {
+            background: #1a4d1a;
+            color: #4caf50;
+        }
+
+        .credential-status.missing {
+            background: #4d1a1a;
+            color: #f44336;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            background: #ed1c24;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .btn:hover {
+            background: #c41922;
+        }
+
+        .btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #3a3a3f;
+        }
+
+        .btn-secondary:hover {
+            background: #4a4a4f;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        .file-path {
+            background: #0a0a0f;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #4caf50;
+            border: 1px solid #2a2a2f;
+            margin-top: 5px;
+        }
+
+        .status-message {
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            display: none;
+        }
+
+        .status-message.success {
+            background: #1a4d1a;
+            color: #4caf50;
+            display: block;
+        }
+
+        .status-message.error {
+            background: #4d1a1a;
+            color: #f44336;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="settings-container">
+        <h1>⚙️ Settings</h1>
+        <p class="subtitle">Configure GAIA Code agent</p>
+
+        <!-- API Keys Section -->
+        <div class="setting-section">
+            <h2>🔑 API Keys</h2>
+
+            <div class="setting-row">
+                <label for="anthropic-key">
+                    Anthropic API Key
+                    <span class="credential-status" id="anthropic-status">Checking...</span>
+                </label>
+                <input
+                    type="password"
+                    id="anthropic-key"
+                    placeholder="sk-ant-..."
+                />
+                <div class="input-hint">
+                    Required for Claude Opus 4.6 (default model)
+                    <br>Get your key at: <a href="https://console.anthropic.com/" target="_blank" style="color: #ed1c24;">https://console.anthropic.com/</a>
+                </div>
+                <div class="file-path" id="cred-path">Loading...</div>
+            </div>
+
+            <div class="setting-row">
+                <label for="perplexity-key">
+                    Perplexity API Key (Optional)
+                    <span class="credential-status" id="perplexity-status">Not configured</span>
+                </label>
+                <input
+                    type="password"
+                    id="perplexity-key"
+                    placeholder="pplx-..."
+                />
+                <div class="input-hint">
+                    Optional: Enables web_search tool for looking up documentation and errors
+                </div>
+            </div>
+        </div>
+
+        <!-- Model Settings Section -->
+        <div class="setting-section">
+            <h2>🤖 Model Configuration</h2>
+
+            <div class="setting-row">
+                <label for="model-provider">Model Provider</label>
+                <select id="model-provider">
+                    <option value="claude">Claude (Anthropic)</option>
+                    <option value="local">Local LLM (Lemonade Server)</option>
+                    <option value="openai">OpenAI (ChatGPT)</option>
+                </select>
+            </div>
+
+            <div class="setting-row" id="claude-model-row">
+                <label for="claude-model">Claude Model</label>
+                <select id="claude-model">
+                    <option value="claude-opus-4-6">Claude Opus 4.6 (Recommended)</option>
+                    <option value="claude-sonnet-4-5">Claude Sonnet 4.5 (Faster)</option>
+                    <option value="claude-haiku-4">Claude Haiku 4 (Fastest)</option>
+                </select>
+            </div>
+
+            <div class="setting-row" id="local-model-row" style="display: none;">
+                <label for="local-model">Local Model</label>
+                <input type="text" id="local-model" value="Qwen3-Coder-30B-A3B-Instruct-GGUF" />
+                <div class="input-hint">Model name for Lemonade Server</div>
+            </div>
+        </div>
+
+        <!-- Agent Settings Section -->
+        <div class="setting-section">
+            <h2>🎭 Agent Configuration</h2>
+
+            <div class="setting-row">
+                <label for="persona">Personality</label>
+                <select id="persona">
+                    <option value="torvalds">Torvalds (Brutally honest, no BS)</option>
+                    <option value="knuth">Knuth (Thorough teacher, precise)</option>
+                    <option value="pike">Pike (Simplicity advocate)</option>
+                    <option value="carmack">Carmack (Performance-obsessed)</option>
+                    <option value="hickey">Hickey (Thoughtful, questions assumptions)</option>
+                    <option value="kay">Kay (Visionary, big-picture)</option>
+                    <option value="thompson">Thompson (Minimalist, Unix philosophy)</option>
+                    <option value="hopper">Hopper (Practical, action-oriented)</option>
+                </select>
+                <div class="input-hint">Choose the personality style you prefer</div>
+            </div>
+
+            <div class="setting-row">
+                <label for="tui-mode">TUI Mode</label>
+                <select id="tui-mode">
+                    <option value="simple">Simple (Default - Clean and balanced)</option>
+                    <option value="full">Full (Detailed multi-panel)</option>
+                    <option value="minimal">Minimal (One line)</option>
+                    <option value="off">Off (Verbose logs)</option>
+                </select>
+            </div>
+
+            <div class="setting-row">
+                <label for="planning-mode">Planning Mode</label>
+                <select id="planning-mode">
+                    <option value="interactive">Interactive (Asks questions - Recommended)</option>
+                    <option value="collaborative">Collaborative (Agent proposes, you refine)</option>
+                    <option value="autonomous">Autonomous (Agent decides)</option>
+                </select>
+                <div class="input-hint">How thorough planning should be</div>
+            </div>
+
+            <div class="setting-row">
+                <label>
+                    <input type="checkbox" id="quality-gates" checked /> Enable Quality Gates
+                </label>
+                <div class="input-hint">Automatic syntax, import, and test verification</div>
+            </div>
+
+            <div class="setting-row">
+                <label>
+                    <input type="checkbox" id="continuous-execution" checked /> Continuous Execution
+                </label>
+                <div class="input-hint">Run until verified correct (no step limits)</div>
+            </div>
+        </div>
+
+        <!-- Workspace Settings -->
+        <div class="setting-section">
+            <h2>📁 Workspace</h2>
+
+            <div class="setting-row">
+                <label for="workspace-dir">Workspace Directory</label>
+                <input type="text" id="workspace-dir" value="~/.gaia/workspace" />
+                <div class="input-hint">Where agent stores databases and cache</div>
+            </div>
+        </div>
+
+        <!-- Save/Reset Buttons -->
+        <div class="button-row">
+            <button class="btn" id="save-btn">Save Settings</button>
+            <button class="btn btn-secondary" id="reset-btn">Reset to Defaults</button>
+        </div>
+
+        <div class="status-message" id="status-message"></div>
+    </div>
+
+    <script>
+        // Load current settings
+        window.gaiaCode.getSettings().then(settings => {
+            document.getElementById('anthropic-key').value = settings.anthropic_key || '';
+            document.getElementById('perplexity-key').value = settings.perplexity_key || '';
+            document.getElementById('claude-model').value = settings.claude_model || 'claude-opus-4-6';
+            document.getElementById('persona').value = settings.persona || 'pike';
+            document.getElementById('tui-mode').value = settings.tui_mode || 'simple';
+            document.getElementById('planning-mode').value = settings.planning_mode || 'interactive';
+            document.getElementById('workspace-dir').value = settings.workspace_dir || '~/.gaia/workspace';
+            document.getElementById('quality-gates').checked = settings.quality_gates !== false;
+            document.getElementById('continuous-execution').checked = settings.continuous_execution !== false;
+
+            // Update status indicators
+            if (settings.anthropic_key || process.env.ANTHROPIC_API_KEY) {
+                document.getElementById('anthropic-status').textContent = '✓ Configured';
+                document.getElementById('anthropic-status').className = 'credential-status found';
+            } else {
+                document.getElementById('anthropic-status').textContent = '✗ Missing';
+                document.getElementById('anthropic-status').className = 'credential-status missing';
+            }
+
+            if (settings.perplexity_key || process.env.PERPLEXITY_API_KEY) {
+                document.getElementById('perplexity-status').textContent = '✓ Configured';
+                document.getElementById('perplexity-status').className = 'credential-status found';
+            }
+
+            // Show credential paths
+            document.getElementById('cred-path').textContent = `Stored in: ${settings.credentials_path || '~/.gaia/cache/credentials.json'}`;
+        });
+
+        // Model provider change
+        document.getElementById('model-provider').addEventListener('change', (e) => {
+            const provider = e.target.value;
+            document.getElementById('claude-model-row').style.display = provider === 'claude' ? 'block' : 'none';
+            document.getElementById('local-model-row').style.display = provider === 'local' ? 'block' : 'none';
+        });
+
+        // Save settings
+        document.getElementById('save-btn').addEventListener('click', async () => {
+            const settings = {
+                anthropic_key: document.getElementById('anthropic-key').value,
+                perplexity_key: document.getElementById('perplexity-key').value,
+                model_provider: document.getElementById('model-provider').value,
+                claude_model: document.getElementById('claude-model').value,
+                local_model: document.getElementById('local-model').value,
+                persona: document.getElementById('persona').value,
+                tui_mode: document.getElementById('tui-mode').value,
+                planning_mode: document.getElementById('planning-mode').value,
+                workspace_dir: document.getElementById('workspace-dir').value,
+                quality_gates: document.getElementById('quality-gates').checked,
+                continuous_execution: document.getElementById('continuous-execution').checked,
+            };
+
+            try {
+                await window.gaiaCode.saveSettings(settings);
+
+                const statusEl = document.getElementById('status-message');
+                statusEl.textContent = '✓ Settings saved successfully';
+                statusEl.className = 'status-message success';
+
+                setTimeout(() => {
+                    statusEl.style.display = 'none';
+                }, 3000);
+            } catch (error) {
+                const statusEl = document.getElementById('status-message');
+                statusEl.textContent = '✗ Failed to save settings: ' + error.message;
+                statusEl.className = 'status-message error';
+            }
+        });
+
+        // Reset to defaults
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            if (confirm('Reset all settings to defaults?')) {
+                document.getElementById('claude-model').value = 'claude-opus-4-6';
+                document.getElementById('persona').value = 'pike';
+                document.getElementById('tui-mode').value = 'simple';
+                document.getElementById('planning-mode').value = 'interactive';
+                document.getElementById('workspace-dir').value = '~/.gaia/workspace';
+                document.getElementById('quality-gates').checked = true;
+                document.getElementById('continuous-execution').checked = true;
+            }
+        });
+    </script>
+</body>
+</html>

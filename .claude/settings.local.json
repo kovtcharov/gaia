@@ -87,7 +87,12 @@
       "WebFetch",
       "WebFetch(domain:code.claude.com)",
       "WebFetch(domain:lemonade-server.ai)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(for f in C:Users*gaia-code.mdx)",
+      "Bash(do echo \"Found: $f\")",
+      "Bash(done)",
+      "Bash(bash fix_paths.sh)",
+      "Bash(python:*)"
     ],
     "deny": []
   },

@@ -20,24 +20,62 @@ from .agent import GaiaCodeAgent
 
 
 def cmd_gaia_code(args):
-    """Execute GAIA Code command."""
-    if args.status:
+    """Execute GAIA Code command or start interactive session."""
+    # Check for specific flags first
+    if hasattr(args, 'status') and args.status:
         return cmd_status(args)
-    elif args.audit:
+    elif hasattr(args, 'audit') and args.audit:
         return cmd_audit(args)
-    elif args.resume:
+    elif hasattr(args, 'resume') and args.resume:
         return cmd_resume(args)
-    elif args.checkpoint:
+    elif hasattr(args, 'checkpoint') and args.checkpoint:
         return cmd_checkpoint(args)
-    elif args.task:
+    elif hasattr(args, 'task') and args.task:
         return cmd_execute(args)
+    elif hasattr(args, 'interactive') and args.interactive:
+        return cmd_interactive(args)
     else:
-        print("Usage: gaia code <task> | --status | --audit | --resume | --checkpoint")
+        # No task provided - start interactive session by default
+        print("\n💡 Starting GAIA Code interactive session...")
+        print("   (Type /help for commands or just chat naturally)\n")
+        return cmd_interactive(args)
+
+
+def cmd_interactive(args):
+    """Start interactive chat session."""
+    from .interactive_session import start_interactive_session
+
+    workspace_dir = Path(args.workspace) if hasattr(args, 'workspace') and args.workspace else None
+    persona = args.persona if hasattr(args, 'persona') else 'pike'
+    tui_mode = args.tui if hasattr(args, 'tui') else 'simple'
+
+    try:
+        start_interactive_session(
+            persona=persona,
+            workspace_dir=workspace_dir,
+            tui_mode=tui_mode,
+        )
+        return 0
+    except KeyboardInterrupt:
+        print("\n\n👋 Session ended")
+        return 0
+    except Exception as e:
+        print(f"\n✗ Error: {e}")
+        if hasattr(args, 'debug') and args.debug:
+            import traceback
+            traceback.print_exc()
         return 1
 
 
 def cmd_execute(args):
     """Execute a coding task."""
+    import logging
+
+    # Set logging level based on debug flag
+    if not args.debug:
+        logging.getLogger().setLevel(logging.ERROR)
+        logging.getLogger("gaia").setLevel(logging.ERROR)
+
     workspace_dir = Path(args.workspace) if args.workspace else None
 
     # Create agent
@@ -45,43 +83,17 @@ def cmd_execute(args):
         workspace_dir=workspace_dir,
         enable_quality_gates=not args.no_quality_gates,
         enable_continuous_execution=not args.no_continuous,
+        tui_mode=args.tui,
         silent_mode=args.silent,
         debug=args.debug,
         use_claude=args.claude,
         use_chatgpt=args.chatgpt,
     )
 
-    # Execute task
-    print(f"🚀 GAIA Code: {args.task}")
-    print(f"📁 Workspace: {agent.shared_state.workspace_dir}")
-    print()
-
+    # Execute task - TUI handles all output
     try:
         result = agent.process_query(args.task, create_plan=not args.no_plan)
-
-        if result["success"]:
-            print("\n✅ Task completed successfully!")
-            if result.get("result"):
-                print(f"\nResult: {result['result']}")
-
-            # Show quality gate results
-            if result.get("quality_gates"):
-                print("\nQuality Gates:")
-                for gate in result["quality_gates"]:
-                    status = "✅" if gate.passed else "❌"
-                    print(f"  {status} {gate.gate_name}: {gate.message}")
-
-            # Show attempts
-            if result.get("attempts"):
-                print(f"\nAttempts: {result['attempts']}")
-
-            return 0
-        else:
-            print("\n❌ Task failed!")
-            if result.get("error"):
-                print(f"\nError: {result['error']}")
-
-            return 1
+        return 0 if result["success"] else 1
 
     except KeyboardInterrupt:
         print("\n\n⚠️  Interrupted. Creating checkpoint...")
@@ -303,6 +315,15 @@ def add_gaia_code_parser(subparsers):
         "--debug",
         action="store_true",
         help="Enable debug output",
+    )
+
+    # TUI configuration
+    parser.add_argument(
+        "--tui",
+        type=str,
+        choices=["full", "simple", "minimal", "off"],
+        default="simple",
+        help="TUI mode: full (detailed), simple (default, clean), minimal (one line), off (verbose logs)",
     )
 
     parser.set_defaults(func=cmd_gaia_code)

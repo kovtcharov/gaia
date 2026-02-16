@@ -24,9 +24,58 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import os
+
 from gaia.agents.base.agent import Agent
 from gaia.agents.base.console import AgentConsole, SilentConsole
 
+# Import CodeAgent tool mixins that are actually available
+try:
+    from gaia.agents.code.tools.file_io import FileIOToolsMixin
+    from gaia.agents.code.tools.testing import TestingMixin
+    from gaia.agents.code.tools.external_tools import ExternalToolsMixin
+    from gaia.agents.code.tools.code_formatting import CodeFormattingMixin
+    from gaia.agents.code.tools.code_tools import CodeToolsMixin
+    from gaia.agents.code.tools.project_management import ProjectManagementMixin
+    from gaia.agents.code.tools.error_fixing import ErrorFixingMixin
+    from gaia.agents.code.tools.typescript_tools import TypeScriptToolsMixin
+    from gaia.agents.code.tools.validation_parsing import ValidationAndParsingMixin
+    from gaia.agents.code.tools.validation_tools import ValidationToolsMixin
+    from gaia.agents.code.tools.web_dev_tools import WebToolsMixin
+    from gaia.agents.code.tools.cli_tools import CLIToolsMixin
+
+    CODEAGENT_TOOLS_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Some CodeAgent tools not available: {e}")
+    # Define empty mixins as fallback
+    class FileIOToolsMixin:
+        def register_file_io_tools(self): pass
+    class TestingMixin:
+        def register_testing_tools(self): pass
+    class ExternalToolsMixin:
+        def register_external_tools(self): pass
+    class CodeFormattingMixin:
+        def register_code_formatting_tools(self): pass
+    class CodeToolsMixin:
+        def register_code_tools(self): pass
+    class ProjectManagementMixin:
+        def register_project_management_tools(self): pass
+    class ErrorFixingMixin:
+        def register_error_fixing_tools(self): pass
+    class TypeScriptToolsMixin:
+        def register_typescript_tools(self): pass
+    class ValidationAndParsingMixin:
+        def register_validation_parsing_tools(self): pass
+    class ValidationToolsMixin:
+        def register_validation_tools(self): pass
+    class WebToolsMixin:
+        def register_web_tools(self): pass
+    class CLIToolsMixin:
+        def register_cli_tools(self): pass
+
+    CODEAGENT_TOOLS_AVAILABLE = False
+
+from .persona import PersonaEngine, create_persona
 from .quality_gates import EscalationLadder, QualityGateRunner
 from .shared_state import get_shared_state
 from .system_prompt import (
@@ -35,11 +84,29 @@ from .system_prompt import (
     get_tool_usage_guidelines,
 )
 from .tools import GaiaCodeTools
+from .tui import GaiaCodeSimpleTUI, create_tui
 
 logger = logging.getLogger(__name__)
 
 
-class GaiaCodeAgent(Agent, GaiaCodeTools):
+class GaiaCodeAgent(
+    Agent,
+    # CodeAgent tool mixins (70+ essential tools)
+    FileIOToolsMixin,          # read, write, edit files
+    TestingMixin,              # pytest, jest, coverage
+    ExternalToolsMixin,        # web_search, search_docs
+    CLIToolsMixin,             # shell execution
+    CodeFormattingMixin,       # black, prettier
+    ProjectManagementMixin,    # project management
+    ErrorFixingMixin,          # error fixing
+    TypeScriptToolsMixin,      # TypeScript/Node tools
+    ValidationAndParsingMixin, # validation helpers
+    ValidationToolsMixin,      # validation tools
+    WebToolsMixin,             # Next.js, React tools
+    CodeToolsMixin,            # core code tools
+    # GAIA Code RAC tools
+    GaiaCodeTools,             # RAC + M7 tools
+):
     """
     The world's most autonomous coding agent.
 
@@ -61,6 +128,8 @@ class GaiaCodeAgent(Agent, GaiaCodeTools):
         workspace_dir: Optional[Path] = None,
         enable_quality_gates: bool = True,
         enable_continuous_execution: bool = True,
+        tui_mode: str = "simple",
+        persona: str = "pike",  # Default to Pike (simplicity advocate)
         **kwargs,
     ):
         """
@@ -70,24 +139,66 @@ class GaiaCodeAgent(Agent, GaiaCodeTools):
             workspace_dir: Directory for agent workspace (default: ~/.gaia/workspace)
             enable_quality_gates: Enable quality gates (default: True)
             enable_continuous_execution: Remove step limits (default: True)
+            tui_mode: TUI mode - "full", "simple", "minimal", "off" (default: "simple")
+            persona: Personality profile - "direct", "collaborative", "socratic", "mentor", "pragmatic", "friendly" (default: "collaborative")
             **kwargs: Agent initialization parameters
         """
         # Set defaults for GAIA Code
         if "max_steps" not in kwargs:
             # Continuous execution: high limit (quality-driven, not step-driven)
             kwargs["max_steps"] = 1000 if enable_continuous_execution else 100
-        if "model_id" not in kwargs:
-            # Use the coding model
-            kwargs["model_id"] = "Qwen3-Coder-30B-A3B-Instruct-GGUF"
+
+        # Default to Claude Opus 4.6 for best performance
+        if "use_claude" not in kwargs and "use_chatgpt" not in kwargs:
+            kwargs["use_claude"] = True
+            if "claude_model" not in kwargs:
+                kwargs["claude_model"] = "claude-opus-4-6"
+
         if "max_plan_iterations" not in kwargs:
             # Allow many plan iterations for complex tasks
             kwargs["max_plan_iterations"] = 100
+
+        # Override model_id AFTER defaults to ensure Claude model is used
+        if kwargs.get("use_claude"):
+            kwargs["model_id"] = kwargs.get("claude_model", "claude-opus-4-6")
+
+        # Check credentials before initializing
+        from .credentials import check_and_setup_credentials
+
+        # Create console for credential prompts if TUI enabled
+        cred_console = None
+        if tui_mode != "off" and not kwargs.get("silent_mode"):
+            try:
+                from rich.console import Console
+                cred_console = Console()
+            except ImportError:
+                pass
+
+        # Check and setup credentials
+        cred_success, api_key = check_and_setup_credentials(
+            use_claude=kwargs.get("use_claude", True),
+            console=cred_console,
+            interactive=not kwargs.get("silent_mode", False),
+        )
+
+        if not cred_success:
+            raise RuntimeError(
+                "API key required but not provided. "
+                "Set ANTHROPIC_API_KEY environment variable or run interactively to configure."
+            )
+
+        # If API key was provided interactively, use it
+        if api_key and kwargs.get("use_claude", True):
+            os.environ["ANTHROPIC_API_KEY"] = api_key
 
         # Initialize base agent
         super().__init__(**kwargs)
 
         # Initialize shared state (singleton, shared across all agents)
         self.shared_state = get_shared_state(workspace_dir)
+
+        # Initialize persona engine
+        self.persona = create_persona(persona, workspace_dir)
 
         # Initialize quality gates
         self.quality_gates = QualityGateRunner()
@@ -98,6 +209,13 @@ class GaiaCodeAgent(Agent, GaiaCodeTools):
         # Initialize escalation ladder
         self.escalation_ladder = EscalationLadder()
 
+        # Initialize TUI
+        self.tui_mode = tui_mode
+        if tui_mode != "off" and not kwargs.get("silent_mode"):
+            self.tui = create_tui(mode=tui_mode)
+        else:
+            self.tui = None
+
         # Time tracking
         self.session_start = datetime.now()
         self.task_start = None
@@ -105,16 +223,37 @@ class GaiaCodeAgent(Agent, GaiaCodeTools):
         # Audit log
         self.audit_log = []
 
-        logger.info("GAIA Code Agent initialized")
-        logger.info(f"Workspace: {self.shared_state.workspace_dir}")
-        logger.info(f"Quality gates: {enable_quality_gates}")
-        logger.info(f"Continuous execution: {enable_continuous_execution}")
+        # Initialize validators (required by CodeAgent tools)
+        from gaia.security import PathValidator
+        from gaia.agents.code.validators import SyntaxValidator, ASTAnalyzer, AntipatternChecker, RequirementsValidator
+
+        self.path_validator = PathValidator(None)
+        self.syntax_validator = SyntaxValidator()
+        self.ast_analyzer = ASTAnalyzer()
+        self.antipattern_checker = AntipatternChecker()
+        self.requirements_validator = RequirementsValidator()
+
+        # IMPORTANT: Rebuild system prompt to include tools and persona
+        # The base Agent's rebuild_system_prompt() adds tools from _TOOL_REGISTRY
+        self.rebuild_system_prompt()
+
+        logger.debug("GAIA Code Agent initialized")  # Changed to debug
+        logger.debug(f"Workspace: {self.shared_state.workspace_dir}")
+        logger.debug(f"Persona: {self.persona.profile.name}")
+        logger.debug(f"Quality gates: {enable_quality_gates}")
+        logger.debug(f"Continuous execution: {enable_continuous_execution}")
+        logger.debug(f"TUI mode: {tui_mode}")
+        logger.debug(f"Model: Claude Opus 4.6" if kwargs.get("use_claude") else f"Model: {kwargs.get('model_id', 'local')}")
 
     def _get_system_prompt(self, _user_input: Optional[str] = None) -> str:
         """
-        Get the system prompt for GAIA Code.
+        Get the BASE system prompt for GAIA Code (without tools).
 
-        M0: Prompting Foundation - This is the most critical component.
+        The base Agent's rebuild_system_prompt() will add:
+        - Tools from _TOOL_REGISTRY
+        - Response format instructions
+
+        This method provides our custom prompt content.
         """
         # Core system prompt with RLM patterns
         prompt = get_core_system_prompt()
@@ -122,15 +261,71 @@ class GaiaCodeAgent(Agent, GaiaCodeTools):
         # Add tool usage guidelines
         prompt += "\n\n" + get_tool_usage_guidelines()
 
+        # Add persona-specific communication style
+        prompt += "\n\n" + self.persona.get_system_prompt_addition()
+
         return prompt
 
     def _register_tools(self) -> None:
-        """Register GAIA Code tools."""
-        # Register base tools (from inherited agent)
-        # These would come from the existing CodeAgent's tool mixins
-        # For now, we'll just register the GAIA-specific tools
+        """Register all tools: CodeAgent tools + GAIA Code RAC tools."""
+        # Register all CodeAgent tools (70+ tools)
+        if CODEAGENT_TOOLS_AVAILABLE:
+            try:
+                self.register_code_tools()           # Core code generation
+            except AttributeError:
+                pass
 
-        # Register GAIA Code-specific tools
+            try:
+                self.register_file_io_tools()        # File I/O
+            except AttributeError:
+                pass
+
+            try:
+                self.register_testing_tools()        # pytest, jest
+            except AttributeError:
+                pass
+
+            try:
+                self.register_external_tools()       # web_search, search_docs
+            except AttributeError:
+                pass
+
+            try:
+                self.register_cli_tools()            # shell execution
+            except AttributeError:
+                pass
+
+            try:
+                self.register_code_formatting_tools()  # black, prettier
+            except AttributeError:
+                pass
+
+            try:
+                self.register_project_management_tools()  # project management
+            except AttributeError:
+                pass
+
+            try:
+                self.register_error_fixing_tools()   # error fixing
+            except AttributeError:
+                pass
+
+            try:
+                self.register_typescript_tools()     # TypeScript/Node
+            except AttributeError:
+                pass
+
+            try:
+                self.register_validation_tools()     # validation
+            except AttributeError:
+                pass
+
+            try:
+                self.register_web_tools()            # Next.js, React
+            except AttributeError:
+                pass
+
+        # Register GAIA Code RAC tools (agent_query, recall, etc.)
         self.register_gaia_code_tools()
 
     def _create_console(self):
@@ -161,10 +356,23 @@ class GaiaCodeAgent(Agent, GaiaCodeTools):
         self.task_start = datetime.now()
         self._log_audit("TASK_START", {"query": query})
 
+        # Start TUI if available
+        if self.tui:
+            self.tui.start(query)
+
         # Create root task in master plan
         if create_plan:
             root_task = self.shared_state.plan.create_task(query)
             self._log_audit("PLAN_CREATE", {"task_id": root_task.id})
+
+            # Show plan in TUI if available
+            if self.tui and hasattr(self.tui, 'show_plan'):
+                tasks = self.shared_state.plan.get_all_tasks()
+                plan_data = [
+                    {"description": t.description, "status": t.status}
+                    for t in tasks
+                ]
+                self.tui.show_plan(plan_data)
         else:
             root_task = None
 
@@ -179,10 +387,31 @@ class GaiaCodeAgent(Agent, GaiaCodeTools):
                 {"elapsed_seconds": elapsed, "success": result["success"]},
             )
 
+            # Complete TUI if not already done
+            if self.tui and hasattr(self.tui, 'progress') and self.tui.progress.tasks:
+                message = result.get("result") or "Task completed"
+                self.tui.complete(success=result["success"], message=message)
+
             return result
+
+        except KeyboardInterrupt:
+            # Handle Ctrl+C gracefully
+            self._log_audit("TASK_INTERRUPTED", {"query": query})
+
+            if self.tui:
+                self.tui.complete(success=False, message="Interrupted by user")
+
+            # Create checkpoint before exiting
+            self.checkpoint()
+
+            raise
 
         except Exception as e:
             self._log_audit("TASK_ERROR", {"error": str(e)})
+
+            if self.tui:
+                self.tui.complete(success=False, message=f"Error: {str(e)}")
+
             raise
 
     def _execute_with_quality_gates(
@@ -203,12 +432,26 @@ class GaiaCodeAgent(Agent, GaiaCodeTools):
         while attempt < max_attempts:
             attempt += 1
 
+            # Update TUI if available
+            if self.tui:
+                self.tui.update(stage="Executing", current=query[:50], percent=attempt * 10)
+
             # Execute the task
             result = self._execute_task(query, root_task)
 
-            # Run quality gates
-            context = self._build_quality_context(result)
-            all_passed, gate_results = self.quality_gates.run_all(context)
+            # Skip quality gates if no files were created
+            if not result.get("files"):
+                return result
+
+            # Run quality gates on created files
+            file_paths = result.get("files", [])
+            gate_results = self.quality_gates.run_all(file_paths)
+            all_passed = self.quality_gates.all_passed(gate_results)
+
+            # Update TUI with gate results
+            if self.tui:
+                gates_status = {name: result.passed for name, result in gate_results.items()}
+                self.tui.update_quality_gates(gates_status)
 
             self._log_audit(
                 "QUALITY_GATES",
@@ -216,16 +459,21 @@ class GaiaCodeAgent(Agent, GaiaCodeTools):
                     "attempt": attempt,
                     "passed": all_passed,
                     "results": [
-                        {"gate": r.gate_name, "passed": r.passed, "message": r.message}
-                        for r in gate_results
+                        {"gate": name, "passed": r.passed, "message": r.message}
+                        for name, r in gate_results.items()
                     ],
                 },
             )
 
             # If all gates passed, we're done
             if all_passed:
-                result["quality_gates"] = gate_results
+                result["quality_gates"] = list(gate_results.values())
                 result["attempts"] = attempt
+
+                # Update TUI completion
+                if self.tui:
+                    self.tui.complete(success=True, message=result.get("result"))
+
                 return result
 
             # Gates failed - escalate
@@ -242,23 +490,26 @@ class GaiaCodeAgent(Agent, GaiaCodeTools):
 
             elif action == "decompose":
                 # Decompose into smaller subtasks using agent_query()
-                result = self._decompose_task(query, gate_results)
+                result = self._decompose_task(query, list(gate_results.values()))
                 self.escalation_ladder.reset()
                 return result
 
-            elif action == "cloud":
-                # Escalate to cloud LLM (if available)
-                result = self._escalate_to_cloud(query)
-                self.escalation_ladder.reset()
-                return result
+            elif action == "alternative":
+                # Try different approach
+                logger.info("Trying alternative approach...")
+                self.escalation_ladder.escalate()
+                continue
 
             elif action == "ask_user":
                 # Ask user for help
-                result = self._ask_user_for_help(query, gate_results)
+                result = self._ask_user_for_help(query, list(gate_results.values()))
                 self.escalation_ladder.reset()
                 return result
 
         # Max attempts reached
+        if self.tui:
+            self.tui.complete(success=False, message="Max attempts reached")
+
         return {
             "success": False,
             "result": None,
@@ -267,36 +518,63 @@ class GaiaCodeAgent(Agent, GaiaCodeTools):
 
     def _execute_task(self, query: str, root_task: Optional[Any]) -> Dict[str, Any]:
         """
-        Execute a single task (without quality gates).
+        Execute task using BASE AGENT's process_query (REUSES GAIA'S TOOL LOOP).
 
-        This would call the base Agent's process_query or run method.
-        For now, this is a placeholder.
-        """
-        # In the full implementation, this would:
-        # 1. Use the base Agent's conversation loop
-        # 2. Execute tools as needed
-        # 3. Return the final result
-        #
-        # For now, return a placeholder
-        return {
-            "success": True,
-            "result": f"Executed task: {query}",
-            "files": [],
-        }
+        The base Agent.process_query() handles:
+        - Full conversation loop
+        - Tool call parsing from JSON
+        - Tool execution via _execute_tool()
+        - Multi-step plans
+        - Everything!
 
-    def _build_quality_context(self, result: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Build context for quality gate checks.
+        We just wrap it with our enhancements.
 
-        Extracts relevant info from execution result.
+        Args:
+            query: Task to execute
+            root_task: Optional root task node
+
+        Returns:
+            Dict with execution result
         """
-        return {
-            "files": result.get("files", []),
-            "project_dir": result.get("project_dir", "."),
-        }
+        try:
+            # Track files before execution
+            files_before = set(self.shared_state.manifest.list_files())
+
+            logger.debug(f"Executing via base Agent.process_query: {query}")
+
+            # Call base Agent's process_query which has the full tool execution loop!
+            # This is the REAL execution method that handles tools
+            base_result = super().process_query(user_input=query)
+
+            # base_result is a dict with the final answer and details
+            success = True
+            result_text = base_result.get("answer", base_result.get("result", str(base_result)))
+
+            # Check what files were created
+            files_after = set(self.shared_state.manifest.list_files())
+            new_files = list(files_after - files_before)
+
+            logger.debug(f"Base Agent completed successfully")
+
+            return {
+                "success": success,
+                "result": result_text,
+                "files": new_files,
+                "project_dir": ".",
+            }
+
+        except Exception as e:
+            logger.error(f"Task execution failed: {e}")
+            return {
+                "success": False,
+                "result": None,
+                "error": str(e),
+                "files": [],
+            }
+
 
     def _decompose_task(
-        self, query: str, gate_results: List[Any]
+        self, query: str, gate_results: List["GateResult"]
     ) -> Dict[str, Any]:
         """
         Decompose task into smaller subtasks using agent_query().
@@ -312,11 +590,13 @@ class GaiaCodeAgent(Agent, GaiaCodeTools):
         # Create subtasks for each failed gate
         subtasks = []
         for gate in failed_gates:
-            if gate.gate_name == "Syntax":
+            gate_name = getattr(gate, 'gate_name', getattr(gate, 'name', 'unknown'))
+
+            if gate_name == "syntax":
                 subtasks.append("Fix all syntax errors")
-            elif gate.gate_name == "Imports":
+            elif gate_name == "imports":
                 subtasks.append("Fix all import errors")
-            elif gate.gate_name == "Tests":
+            elif gate_name == "tests":
                 subtasks.append("Fix all failing tests")
 
         # Execute each subtask via agent_query()
@@ -336,19 +616,16 @@ class GaiaCodeAgent(Agent, GaiaCodeTools):
 
     def _escalate_to_cloud(self, query: str) -> Dict[str, Any]:
         """
-        Escalate to cloud LLM (Claude or GPT-4).
+        Escalate to cloud LLM.
 
-        This would create a new agent with cloud LLM and retry the task.
+        Since Claude Opus 4.6 is already the default, this is already using cloud.
+        Just retry the task.
         """
-        # Placeholder: In full implementation, would use Claude API
-        return {
-            "success": False,
-            "result": None,
-            "error": "Cloud escalation not implemented yet",
-        }
+        logger.info("Already using Claude Opus 4.6 - retrying task")
+        return self._execute_task(query, None)
 
     def _ask_user_for_help(
-        self, query: str, gate_results: List[Any]
+        self, query: str, gate_results: List["GateResult"]
     ) -> Dict[str, Any]:
         """
         Ask user for help via message queue.
@@ -357,7 +634,8 @@ class GaiaCodeAgent(Agent, GaiaCodeTools):
         """
         # Send message to user
         failed_gates = [r for r in gate_results if not r.passed]
-        message = f"I'm stuck on the task: '{query}'. Failed quality gates: {', '.join(g.gate_name for g in failed_gates)}. What should I do?"
+        gate_names = [getattr(g, 'gate_name', getattr(g, 'name', 'unknown')) for g in failed_gates]
+        message = f"I'm stuck on the task: '{query}'. Failed quality gates: {', '.join(gate_names)}. What should I do?"
 
         msg_result = self.tool_send_message(content=message, priority="Question")
 

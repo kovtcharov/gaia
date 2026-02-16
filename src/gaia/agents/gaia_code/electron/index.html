@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<!-- Copyright(C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved. -->
+<!-- SPDX-License-Identifier: MIT -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self';">
+  <title>GAIA Code - Autonomous Coding Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ====================================================================
+       Title Bar
+       ==================================================================== -->
+  <div class="titlebar">
+    <div class="titlebar-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="var(--amd-red)" stroke="var(--amd-red)"/>
+      </svg>
+    </div>
+    <span class="titlebar-title">GAIA Code</span>
+    <div class="titlebar-controls">
+      <button class="titlebar-btn" onclick="window.gaiaCode.minimizeWindow()" aria-label="Minimize">
+        <svg width="12" height="12" viewBox="0 0 12 12"><rect y="5" width="12" height="2" fill="currentColor"/></svg>
+      </button>
+      <button class="titlebar-btn" onclick="window.gaiaCode.maximizeWindow()" aria-label="Maximize">
+        <svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+      </button>
+      <button class="titlebar-btn close" onclick="window.gaiaCode.closeWindow()" aria-label="Close">
+        <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       App Layout
+       ==================================================================== -->
+  <div class="app-layout">
+
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-panel="chat" data-tooltip="Agent Chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+      </button>
+      <button class="nav-item" data-panel="plan" data-tooltip="Task Plan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+        </svg>
+      </button>
+      <button class="nav-item" data-panel="database" data-tooltip="Database Inspector">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+        </svg>
+      </button>
+      <button class="nav-item" data-panel="audit" data-tooltip="Audit Log">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+        </svg>
+      </button>
+      <button class="nav-item" data-panel="codebase" data-tooltip="Codebase Index">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+        </svg>
+      </button>
+
+      <div class="nav-separator"></div>
+
+      <button class="nav-item" data-panel="specialists" data-tooltip="Specialists">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+      </button>
+      <button class="nav-item" data-panel="metrics" data-tooltip="Metrics">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+        </svg>
+      </button>
+      <button class="nav-item" data-panel="checkpoints" data-tooltip="Checkpoints">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+        </svg>
+      </button>
+
+      <div class="nav-spacer"></div>
+
+      <button class="nav-item" data-panel="settings" data-tooltip="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="main-content">
+
+      <!-- ================================================================
+           Panel: Agent Chat
+           ================================================================ -->
+      <div id="panel-chat" class="panel-view active">
+        <div class="chat-layout">
+          <div class="chat-main">
+            <div class="panel-header">
+              <h2>Agent Interaction</h2>
+              <div class="panel-header-actions">
+                <span id="agent-status-indicator" class="status-item">
+                  <span class="status-dot connecting"></span>
+                  <span id="agent-status-text">Connecting...</span>
+                </span>
+              </div>
+            </div>
+            <div id="chat-messages" class="chat-messages">
+              <div class="chat-empty">
+                <div class="chat-empty-icon">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                  </svg>
+                </div>
+                <h3>GAIA Code Agent</h3>
+                <p>Describe a coding task and the agent will plan, execute, test, and verify it autonomously.</p>
+              </div>
+            </div>
+            <div class="chat-input-area">
+              <div class="chat-input-wrapper">
+                <textarea id="chat-input" class="chat-input" placeholder="Describe your coding task..." rows="1"></textarea>
+                <button id="chat-send" class="chat-send-btn" disabled>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chat Sidebar: Live Status -->
+          <div class="chat-sidebar">
+            <!-- Quality Gates -->
+            <div class="sidebar-section">
+              <div class="sidebar-section-header" onclick="toggleSection(this)">
+                <h3>Quality Gates</h3>
+                <span class="chevron">&#9660;</span>
+              </div>
+              <div class="sidebar-section-body">
+                <div id="quality-gates-list">
+                  <div class="gate-item">
+                    <span class="gate-icon pending">-</span>
+                    <span class="gate-name">Syntax</span>
+                    <span class="gate-status">Pending</span>
+                  </div>
+                  <div class="gate-item">
+                    <span class="gate-icon pending">-</span>
+                    <span class="gate-name">Imports</span>
+                    <span class="gate-status">Pending</span>
+                  </div>
+                  <div class="gate-item">
+                    <span class="gate-icon pending">-</span>
+                    <span class="gate-name">Tests</span>
+                    <span class="gate-status">Pending</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Task Progress -->
+            <div class="sidebar-section">
+              <div class="sidebar-section-header" onclick="toggleSection(this)">
+                <h3>Task Progress</h3>
+                <span class="chevron">&#9660;</span>
+              </div>
+              <div class="sidebar-section-body">
+                <div id="task-progress-list">
+                  <div style="font-size: var(--font-size-sm); color: var(--text-tertiary);">No active tasks</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Active Specialists -->
+            <div class="sidebar-section">
+              <div class="sidebar-section-header" onclick="toggleSection(this)">
+                <h3>Specialists</h3>
+                <span class="chevron">&#9660;</span>
+              </div>
+              <div class="sidebar-section-body">
+                <div id="specialists-list">
+                  <div class="specialist-item">
+                    <span class="specialist-dot" style="background: var(--specialist-debugger);"></span>
+                    <span class="specialist-name">Debugger</span>
+                    <span class="specialist-status">Idle</span>
+                  </div>
+                  <div class="specialist-item">
+                    <span class="specialist-dot" style="background: var(--specialist-security);"></span>
+                    <span class="specialist-name">Security</span>
+                    <span class="specialist-status">Idle</span>
+                  </div>
+                  <div class="specialist-item">
+                    <span class="specialist-dot" style="background: var(--specialist-testing);"></span>
+                    <span class="specialist-name">Testing</span>
+                    <span class="specialist-status">Idle</span>
+                  </div>
+                  <div class="specialist-item">
+                    <span class="specialist-dot" style="background: var(--specialist-refactoring);"></span>
+                    <span class="specialist-name">Refactoring</span>
+                    <span class="specialist-status">Idle</span>
+                  </div>
+                  <div class="specialist-item">
+                    <span class="specialist-dot" style="background: var(--specialist-docs);"></span>
+                    <span class="specialist-name">Documentation</span>
+                    <span class="specialist-status">Idle</span>
+                  </div>
+                  <div class="specialist-item">
+                    <span class="specialist-dot" style="background: var(--specialist-performance);"></span>
+                    <span class="specialist-name">Performance</span>
+                    <span class="specialist-status">Idle</span>
+                  </div>
+                  <div class="specialist-item">
+                    <span class="specialist-dot" style="background: var(--specialist-architecture);"></span>
+                    <span class="specialist-name">Architecture</span>
+                    <span class="specialist-status">Idle</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Metrics -->
+            <div class="sidebar-section">
+              <div class="sidebar-section-header" onclick="toggleSection(this)">
+                <h3>Metrics</h3>
+                <span class="chevron">&#9660;</span>
+              </div>
+              <div class="sidebar-section-body">
+                <div class="metrics-grid">
+                  <div class="metric-card">
+                    <div class="metric-label">Elapsed</div>
+                    <div id="metric-elapsed" class="metric-value">0s</div>
+                  </div>
+                  <div class="metric-card">
+                    <div class="metric-label">Steps</div>
+                    <div id="metric-steps" class="metric-value">0</div>
+                  </div>
+                  <div class="metric-card">
+                    <div class="metric-label">Tasks</div>
+                    <div id="metric-tasks" class="metric-value">0</div>
+                  </div>
+                  <div class="metric-card">
+                    <div class="metric-label">Depth</div>
+                    <div id="metric-depth" class="metric-value">0</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================
+           Panel: Task Plan
+           ================================================================ -->
+      <div id="panel-plan" class="panel-view">
+        <div class="panel-header">
+          <h2>Master Plan</h2>
+          <div class="panel-header-actions">
+            <button class="btn btn-sm" onclick="refreshPlan()">Refresh</button>
+          </div>
+        </div>
+        <div id="plan-content" class="data-table-wrapper">
+          <div class="empty-state">
+            <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+            <h3>No Active Plan</h3>
+            <p>Start a task from the chat panel to see the execution plan here.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================
+           Panel: Database Inspector
+           ================================================================ -->
+      <div id="panel-database" class="panel-view">
+        <div class="panel-header">
+          <h2>Database Inspector</h2>
+        </div>
+        <div class="db-layout">
+          <div class="db-sidebar">
+            <div class="db-list">
+              <div class="db-item active" data-db="memory" onclick="selectDatabase(this, 'memory')">
+                <svg class="db-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                <span>memory.db</span>
+              </div>
+              <div id="db-tables-memory" class="db-table-list"></div>
+
+              <div class="db-item" data-db="knowledge" onclick="selectDatabase(this, 'knowledge')">
+                <svg class="db-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                <span>knowledge.db</span>
+              </div>
+              <div id="db-tables-knowledge" class="db-table-list"></div>
+
+              <div class="db-item" data-db="tools" onclick="selectDatabase(this, 'tools')">
+                <svg class="db-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                <span>tools.db</span>
+              </div>
+              <div id="db-tables-tools" class="db-table-list"></div>
+
+              <div class="db-item" data-db="skills" onclick="selectDatabase(this, 'skills')">
+                <svg class="db-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <span>skills.db</span>
+              </div>
+              <div id="db-tables-skills" class="db-table-list"></div>
+
+              <div class="db-item" data-db="agents" onclick="selectDatabase(this, 'agents')">
+                <svg class="db-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span>agents.db</span>
+              </div>
+              <div id="db-tables-agents" class="db-table-list"></div>
+
+              <div class="db-item" data-db="plan" onclick="selectDatabase(this, 'plan')">
+                <svg class="db-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                <span>plan.db</span>
+              </div>
+              <div id="db-tables-plan" class="db-table-list"></div>
+
+              <div class="db-item" data-db="manifest" onclick="selectDatabase(this, 'manifest')">
+                <svg class="db-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                <span>manifest</span>
+              </div>
+              <div id="db-tables-manifest" class="db-table-list"></div>
+            </div>
+          </div>
+
+          <div class="db-main">
+            <div class="sql-editor">
+              <div class="sql-input-row">
+                <textarea id="sql-input" class="sql-input" placeholder="SELECT * FROM ... LIMIT 50" rows="1"></textarea>
+                <button class="btn btn-primary btn-sm" onclick="executeSqlQuery()">Run</button>
+              </div>
+            </div>
+            <div id="db-results" class="data-table-wrapper">
+              <div class="empty-state">
+                <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                </svg>
+                <h3>Database Inspector</h3>
+                <p>Select a database from the sidebar or write a SQL query to inspect the agent's state.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================
+           Panel: Audit Log
+           ================================================================ -->
+      <div id="panel-audit" class="panel-view">
+        <div class="panel-header">
+          <h2>Audit Log</h2>
+          <div class="panel-header-actions">
+            <button class="btn btn-sm" onclick="refreshAuditLog()">Refresh</button>
+          </div>
+        </div>
+        <div class="audit-toolbar">
+          <div class="audit-filter">
+            <button class="filter-chip active" data-filter="all" onclick="filterAudit(this, 'all')">All</button>
+            <button class="filter-chip" data-filter="task" onclick="filterAudit(this, 'task')">Tasks</button>
+            <button class="filter-chip" data-filter="plan" onclick="filterAudit(this, 'plan')">Plan</button>
+            <button class="filter-chip" data-filter="quality" onclick="filterAudit(this, 'quality')">Quality</button>
+            <button class="filter-chip" data-filter="escalation" onclick="filterAudit(this, 'escalation')">Escalation</button>
+            <button class="filter-chip" data-filter="error" onclick="filterAudit(this, 'error')">Errors</button>
+          </div>
+        </div>
+        <div id="audit-entries" class="audit-entries">
+          <div class="empty-state">
+            <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <h3>No Audit Entries</h3>
+            <p>Audit entries appear as the agent processes tasks.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================
+           Panel: Codebase Index
+           ================================================================ -->
+      <div id="panel-codebase" class="panel-view">
+        <div class="panel-header">
+          <h2>Codebase Index</h2>
+          <div class="panel-header-actions">
+            <button class="btn btn-sm" onclick="refreshCodebaseIndex()">Index</button>
+          </div>
+        </div>
+        <div class="codebase-layout">
+          <div class="codebase-tree" id="codebase-tree">
+            <div class="empty-state" style="padding: var(--space-4);">
+              <p style="font-size: var(--font-size-xs); text-align: center;">Run "Index" to scan the repository structure</p>
+            </div>
+          </div>
+          <div class="codebase-detail">
+            <div class="codebase-stats" id="codebase-stats">
+              <div class="stat-card">
+                <div class="stat-value" id="stat-files">--</div>
+                <div class="stat-label">Files</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value" id="stat-symbols">--</div>
+                <div class="stat-label">Symbols</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value" id="stat-deps">--</div>
+                <div class="stat-label">Dependencies</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value" id="stat-issues">--</div>
+                <div class="stat-label">Issues</div>
+              </div>
+            </div>
+
+            <div class="tab-bar">
+              <button class="tab-item active" onclick="switchCodebaseTab(this, 'graph')">Dependency Graph</button>
+              <button class="tab-item" onclick="switchCodebaseTab(this, 'issues')">Issues</button>
+              <button class="tab-item" onclick="switchCodebaseTab(this, 'symbols')">Symbols</button>
+            </div>
+
+            <div id="codebase-tab-graph" class="dep-graph-container">
+              <div class="dep-graph-placeholder">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3">
+                  <circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><line x1="8.5" y1="7.5" x2="10" y2="16"/><line x1="15.5" y1="7.5" x2="14" y2="16"/>
+                </svg>
+                <p>Dependency graph renders when codebase is indexed</p>
+              </div>
+            </div>
+            <div id="codebase-tab-issues" class="issues-list" style="display: none;"></div>
+            <div id="codebase-tab-symbols" class="data-table-wrapper" style="display: none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================
+           Panel: Specialists
+           ================================================================ -->
+      <div id="panel-specialists" class="panel-view">
+        <div class="panel-header">
+          <h2>Specialist Agents</h2>
+          <div class="panel-header-actions">
+            <button class="btn btn-sm" onclick="refreshSpecialists()">Refresh</button>
+          </div>
+        </div>
+        <div id="specialists-content" class="data-table-wrapper">
+          <div class="empty-state">
+            <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+            </svg>
+            <h3>7 Specialist Agents</h3>
+            <p>Debugger, Security, Refactoring, Testing, Documentation, Performance, Architecture</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================
+           Panel: Metrics
+           ================================================================ -->
+      <div id="panel-metrics" class="panel-view">
+        <div class="panel-header">
+          <h2>Performance Metrics</h2>
+          <div class="panel-header-actions">
+            <button class="btn btn-sm" onclick="refreshMetrics()">Refresh</button>
+          </div>
+        </div>
+        <div id="metrics-content" style="padding: var(--space-4); overflow-y: auto; flex: 1;">
+          <div class="codebase-stats" style="border: none; padding: 0; margin-bottom: var(--space-4);">
+            <div class="stat-card">
+              <div class="stat-value" id="perf-session-time">--</div>
+              <div class="stat-label">Session Time</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="perf-task-time">--</div>
+              <div class="stat-label">Task Time</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="perf-total-steps">--</div>
+              <div class="stat-label">Total Steps</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="perf-gate-runs">--</div>
+              <div class="stat-label">Gate Runs</div>
+            </div>
+          </div>
+          <div class="codebase-stats" style="border: none; padding: 0;">
+            <div class="stat-card">
+              <div class="stat-value" id="perf-retries">--</div>
+              <div class="stat-label">Retries</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="perf-escalations">--</div>
+              <div class="stat-label">Escalations</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="perf-agent-calls">--</div>
+              <div class="stat-label">Agent Calls</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="perf-insights">--</div>
+              <div class="stat-label">Insights Stored</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================
+           Panel: Checkpoints
+           ================================================================ -->
+      <div id="panel-checkpoints" class="panel-view">
+        <div class="panel-header">
+          <h2>Checkpoint Manager</h2>
+          <div class="panel-header-actions">
+            <button class="btn btn-primary btn-sm" onclick="createCheckpoint()">Create Checkpoint</button>
+            <button class="btn btn-sm" onclick="refreshCheckpoints()">Refresh</button>
+          </div>
+        </div>
+        <div id="checkpoint-list" class="checkpoint-list">
+          <div class="empty-state">
+            <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+            </svg>
+            <h3>No Checkpoints</h3>
+            <p>Checkpoints allow you to save and restore the agent's state.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================
+           Panel: Settings
+           ================================================================ -->
+      <div id="panel-settings" class="panel-view">
+        <div class="panel-header">
+          <h2>Settings</h2>
+        </div>
+        <div style="padding: var(--space-4); overflow-y: auto; flex: 1;">
+          <div style="max-width: 600px;">
+            <h3 style="font-size: var(--font-size-md); margin-bottom: var(--space-4); color: var(--text-primary);">Connection</h3>
+            <div style="margin-bottom: var(--space-4);">
+              <label style="font-size: var(--font-size-sm); color: var(--text-secondary); display: block; margin-bottom: var(--space-1);">IPC Server Port</label>
+              <input type="number" value="9720" style="background: var(--bg-input); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); color: var(--text-primary); font-family: var(--font-mono); font-size: var(--font-size-sm); width: 120px;" />
+            </div>
+            <div style="margin-bottom: var(--space-4);">
+              <label style="font-size: var(--font-size-sm); color: var(--text-secondary); display: block; margin-bottom: var(--space-1);">Workspace Directory</label>
+              <input type="text" value="~/.gaia/workspace" style="background: var(--bg-input); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); color: var(--text-primary); font-family: var(--font-mono); font-size: var(--font-size-sm); width: 100%;" readonly />
+            </div>
+
+            <h3 style="font-size: var(--font-size-md); margin-bottom: var(--space-4); margin-top: var(--space-6); color: var(--text-primary);">Agent Configuration</h3>
+            <div style="margin-bottom: var(--space-4);">
+              <label style="font-size: var(--font-size-sm); color: var(--text-secondary); display: block; margin-bottom: var(--space-1);">Max Recursion Depth</label>
+              <input type="number" value="10" style="background: var(--bg-input); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); color: var(--text-primary); font-family: var(--font-mono); font-size: var(--font-size-sm); width: 120px;" />
+            </div>
+            <div style="margin-bottom: var(--space-4);">
+              <label style="font-size: var(--font-size-sm); color: var(--text-secondary); display: block; margin-bottom: var(--space-1);">Max Retry Count</label>
+              <input type="number" value="2" style="background: var(--bg-input); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); color: var(--text-primary); font-family: var(--font-mono); font-size: var(--font-size-sm); width: 120px;" />
+            </div>
+
+            <h3 style="font-size: var(--font-size-md); margin-bottom: var(--space-4); margin-top: var(--space-6); color: var(--text-primary);">About</h3>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.6;">
+              GAIA Code is AMD's autonomous coding agent built on the Recursive Agent Composition (RAC) architecture.
+              It uses quality-gate driven execution, persistent memory across sessions, and recursive task decomposition
+              to handle complex coding tasks autonomously.
+            </p>
+            <p style="font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: var(--space-3);">
+              Version 1.0.0 | GAIA Framework by AMD
+            </p>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main-content -->
+  </div><!-- /app-layout -->
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <div class="status-item">
+      <span id="status-bar-dot" class="status-dot connecting"></span>
+      <span id="status-bar-text">Connecting to IPC server...</span>
+    </div>
+    <div class="status-spacer"></div>
+    <div class="status-item" id="status-bar-workspace">~/.gaia/workspace</div>
+    <div class="status-item" id="status-bar-model">Claude Opus 4.6</div>
+    <div class="status-item" id="status-bar-timer">0:00</div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

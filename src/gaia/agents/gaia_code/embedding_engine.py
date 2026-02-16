@@ -17,7 +17,7 @@ This enables FAISS semantic search over insights, tools, skills, and agents.
 import logging
 import pickle
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 
 import numpy as np
 

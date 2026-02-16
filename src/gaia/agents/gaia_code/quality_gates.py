@@ -319,24 +319,39 @@ class QualityGateRunner:
             "tests": TestGate(),
         }
 
-    def run_all(self, context: Dict) -> Tuple[bool, List[GateResult]]:
+    def run_all(self, paths: List[str], **kwargs) -> Dict[str, "GateResult"]:
         """
         Run all enabled quality gates.
 
+        Args:
+            paths: List of file or directory paths to check
+            **kwargs: Additional arguments for gates
+
         Returns:
-            (all_passed, results): Tuple of overall pass/fail and individual results
+            Dict mapping gate name to GateResult
         """
-        results = []
+        results = {}
 
         for gate_name, gate in self.gates.items():
             if not gate.enabled:
                 continue
 
-            result = gate.check(context)
-            results.append(result)
+            result = gate.check(paths, **kwargs)
+            results[gate_name] = result
 
-        all_passed = all(r.passed for r in results)
-        return all_passed, results
+        return results
+
+    def all_passed(self, results: Dict[str, "GateResult"]) -> bool:
+        """
+        Check if all gates passed.
+
+        Args:
+            results: Dict of gate results from run_all()
+
+        Returns:
+            True if all gates passed
+        """
+        return all(r.passed for r in results.values())
 
     def enable_gate(self, gate_name: str):
         """Enable a quality gate."""

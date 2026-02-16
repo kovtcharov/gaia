@@ -47,6 +47,51 @@ This self-review step is mandatory - never skip verification of your output.
 
 ## Development Standards
 
+### File Operations and Path Handling
+
+**CRITICAL: Cross-Platform Path Safety**
+
+This repository is worked on from both WSL and PowerShell environments. To prevent file path corruption:
+
+1. **Always verify file paths before creation:**
+   - Use Python's `pathlib.Path` or `os.path` for path manipulation
+   - Never concatenate paths as strings
+   - Always use forward slashes `/` in Python path strings (Python handles conversion)
+
+2. **For file operations (Write, Edit, Read tools):**
+   - ALWAYS use complete absolute Windows paths: `C:\Users\14255\Work\gaia\src\gaia\...`
+   - NEVER use relative paths or WSL-style paths (`/mnt/c/...`)
+   - Verify the path format matches: `[Drive]:\path\to\file` (not `[Drive]:pathtopathfile`)
+
+3. **Before creating files, verify:**
+   ```python
+   from pathlib import Path
+   # Good - normalized Windows path
+   path = Path("C:/Users/14255/Work/gaia/src/gaia/agents/example.py")
+   assert path.drive == "C:"
+   assert path.is_absolute()
+   ```
+
+4. **If you encounter corrupted filenames:**
+   - Filenames with no backslashes (e.g., `C:Userspath`)
+   - Unicode escape sequences (e.g., `\uf03a`, `\uf05c`)
+   - These indicate path handling errors - stop and fix the root cause
+
+5. **Environment detection:**
+   - If in WSL: Convert paths to Windows format before file operations
+   - If in PowerShell: Use native Windows paths
+   - When in doubt: Use absolute Windows paths with forward slashes in Python (e.g., `C:/Users/...`)
+
+**Example of correct file creation:**
+```python
+# Good
+file_path = "C:/Users/14255/Work/gaia/src/gaia/agents/new_agent.py"
+
+# Bad - will cause corruption in WSL
+file_path = "C:Users14255Workgaiasrcgaia"  # Missing separators
+file_path = "/mnt/c/Users/..."  # WSL path not converted
+```
+
 ### Documentation Requirements
 
 **Every new feature must be documented.** Before completing any feature work:
