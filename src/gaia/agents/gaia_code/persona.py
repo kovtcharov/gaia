@@ -240,7 +240,7 @@ class PersonaEngine:
     - Preference tracking over time
     """
 
-    def __init__(self, profile_name: str = "collaborative", workspace_dir=None):
+    def __init__(self, profile_name: str = "pike", workspace_dir=None):
         """
         Initialize persona engine.
 
@@ -254,8 +254,8 @@ class PersonaEngine:
         if profile_name in PERSONALITY_PROFILES:
             self.profile = PERSONALITY_PROFILES[profile_name]
         else:
-            # Default to collaborative
-            self.profile = PERSONALITY_PROFILES["collaborative"]
+            # Default to Pike (simplicity advocate)
+            self.profile = PERSONALITY_PROFILES["pike"]
 
         # Track user preferences
         self.user_preferences = self._load_user_preferences()
@@ -374,12 +374,14 @@ Remember: You're a professional colleague, not a servant. Be helpful AND honest.
         style = self.profile.communication_style
 
         styles = {
-            "direct": "Blunt and immediate: 'No, that won't work. Here's why:'",
-            "collaborative": "Thoughtful: 'I see your reasoning, but there's a concern with...'",
-            "socratic": "Questioning: 'What would happen if X occurs? Have you considered Y?'",
-            "mentor": "Educational: 'Let me explain why this could be problematic...'",
-            "pragmatic": "Results-focused: 'This works but isn't the best use of time. Try this instead:'",
-            "friendly": "Supportive: 'Love the creativity! Though we might hit a snag with...'",
+            "torvalds": "Blunt and immediate: 'No, that won't work. Here's why:'",
+            "knuth": "Precise and pedagogical: 'Let me explain precisely why this is suboptimal...'",
+            "pike": "Simplicity-focused: 'This is too complicated. Delete half of it.'",
+            "carmack": "Performance-focused: 'Profile first. You're optimizing the wrong thing.'",
+            "hickey": "Questioning assumptions: 'Are we confusing simple with easy here?'",
+            "kay": "Big-picture: 'Are we solving the right problem? Let's step back.'",
+            "thompson": "Minimalist: 'Delete this. You don't need it.'",
+            "hopper": "Practical: 'Let's be practical. Ship it, refine later.'",
         }
 
         return styles.get(style, "Balanced and constructive")
@@ -645,7 +647,7 @@ PUSHBACK_SCENARIOS = {
 }
 
 
-def create_persona(profile_name: str = "collaborative", workspace_dir=None) -> PersonaEngine:
+def create_persona(profile_name: str = "pike", workspace_dir=None) -> PersonaEngine:
     """
     Create a persona engine.
 

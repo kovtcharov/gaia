@@ -81,6 +81,10 @@ class Agent(abc.ABC):
         max_consecutive_repeats: int = 4,
         min_context_size: int = 32768,
         skip_lemonade: bool = False,
+        # RAC (Recursive Agent Composition) parameters - opt-in
+        enable_shared_state: bool = False,
+        workspace_dir: Optional[str] = None,
+        enable_audit_log: bool = False,
     ):
         """
         Initialize the Agent with LLM client.
@@ -105,6 +109,11 @@ class Agent(abc.ABC):
             min_context_size: Minimum context size required for this agent (default: 32768).
             skip_lemonade: If True, skip Lemonade server initialization (default: False).
                           Use this when connecting to a different OpenAI-compatible backend.
+            enable_shared_state: If True, initializes SharedAgentState with persistent memory,
+                                knowledge DB, tool/skill registries (default: False).
+            workspace_dir: Directory for agent workspace when shared state is enabled
+                          (default: ~/.gaia/workspace).
+            enable_audit_log: If True, enables audit logging for all actions (default: False).
 
         Note: Uses local LLM server by default unless use_claude or use_chatgpt is True.
         """
@@ -212,6 +221,21 @@ You must respond ONLY in valid JSON. No text before { or after }.
         )
         self.chat = ChatSDK(chat_config)
         self.model_id = model_id
+
+        # RAC: Initialize shared state if enabled
+        self.shared_state = None
+        self.audit_log = []
+        self.session_start = datetime.datetime.now()
+        self.task_start = None
+
+        if enable_shared_state:
+            from gaia.agents.base.shared_state import get_shared_state
+            from pathlib import Path as _Path
+
+            ws_dir = _Path(workspace_dir) if workspace_dir else None
+            self.shared_state = get_shared_state(ws_dir)
+
+        self._enable_audit_log = enable_audit_log
 
         # Print system prompt if show_prompts is enabled
         # Debug: Check the actual value of show_prompts
@@ -781,9 +805,16 @@ You must respond ONLY in valid JSON. No text before { or after }.
             logger.debug(f"📥 LLM Response: {response}")
 
         # STEP 1: Fast path - detect plain text conversational responses
-        # If response doesn't start with '{', it's likely plain text
-        # Accept it immediately without logging errors
+        # If response doesn't start with '{', check if it contains JSON in
+        # code fences (e.g., ```json {...} ```) before treating as plain text.
         if not response.startswith("{"):
+            # Check for JSON inside code fences - LLMs often wrap JSON this way
+            if "```" in response and "{" in response:
+                extracted = self._extract_json_from_response(response)
+                if extracted:
+                    logger.debug("[PARSE] Extracted JSON from code-fenced response")
+                    return extracted
+
             logger.debug(
                 f"[PARSE] Plain text conversational response (length: {len(response)})"
             )
@@ -1395,6 +1426,143 @@ You must respond ONLY in valid JSON. No text before { or after }.
         # Simple truncation
         half = max_chars // 2 - 20
         return f"{content_str[:half]}\n...[truncated]...\n{content_str[-half:]}"
+
+    # =========================================================================
+    # RAC (Recursive Agent Composition) Methods
+    # These are available to all agents that enable shared_state or audit_log.
+    # =========================================================================
+
+    def _log_audit(self, action_type: str, details: Dict[str, Any]):
+        """
+        Log an action to the audit trail.
+
+        All actions are timestamped and persisted. Only active when
+        enable_audit_log=True was passed to __init__.
+        """
+        if not self._enable_audit_log:
+            return
+
+        entry = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "action_type": action_type,
+            "details": details,
+        }
+
+        self.audit_log.append(entry)
+
+        if self.debug:
+            logger.debug(f"AUDIT: {action_type} - {json.dumps(details, default=str)}")
+
+    def get_audit_log(self) -> List[Dict[str, Any]]:
+        """Get the complete audit log for this session."""
+        return self.audit_log
+
+    def get_progress(self) -> Dict[str, Any]:
+        """
+        Get current progress on the task.
+
+        Returns info about plan, completed steps, current step, etc.
+        Requires shared_state to be enabled.
+        """
+        if not self.shared_state:
+            return {
+                "total_tasks": 0,
+                "completed": 0,
+                "in_progress": 0,
+                "pending": 0,
+                "failed": 0,
+                "progress_percent": 0,
+                "elapsed_seconds": None,
+            }
+
+        tasks = self.shared_state.plan.get_all_tasks()
+
+        completed = [t for t in tasks if t.status == "completed"]
+        in_progress = [t for t in tasks if t.status == "in_progress"]
+        pending = [t for t in tasks if t.status == "pending"]
+        failed = [t for t in tasks if t.status == "failed"]
+
+        elapsed = None
+        if self.task_start:
+            elapsed = (datetime.datetime.now() - self.task_start).total_seconds()
+
+        return {
+            "total_tasks": len(tasks),
+            "completed": len(completed),
+            "in_progress": len(in_progress),
+            "pending": len(pending),
+            "failed": len(failed),
+            "progress_percent": (
+                int((len(completed) / len(tasks)) * 100) if tasks else 0
+            ),
+            "elapsed_seconds": elapsed,
+        }
+
+    def checkpoint(self) -> Dict[str, Any]:
+        """
+        Create a checkpoint of current state for crash recovery.
+
+        Requires shared_state to be enabled. Saves plan state, audit log,
+        and timing information to a JSON file in the workspace.
+        """
+        if not self.shared_state:
+            return {"success": False, "error": "Shared state not enabled"}
+
+        checkpoint_data = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "session_start": self.session_start.isoformat(),
+            "task_start": self.task_start.isoformat() if self.task_start else None,
+            "plan_tasks": [
+                t.to_dict() for t in self.shared_state.plan.get_all_tasks()
+            ],
+            "audit_log": self.audit_log,
+        }
+
+        checkpoint_path = self.shared_state.workspace_dir / "checkpoint.json"
+        with open(checkpoint_path, "w") as f:
+            json.dump(checkpoint_data, f, indent=2, default=str)
+
+        return {
+            "success": True,
+            "checkpoint_path": str(checkpoint_path),
+            "timestamp": checkpoint_data["timestamp"],
+        }
+
+    def resume_from_checkpoint(self) -> bool:
+        """
+        Resume from a previous checkpoint.
+
+        Requires shared_state to be enabled. Restores timing and audit log
+        from the checkpoint file.
+        """
+        if not self.shared_state:
+            return False
+
+        checkpoint_path = self.shared_state.workspace_dir / "checkpoint.json"
+
+        if not checkpoint_path.exists():
+            return False
+
+        try:
+            with open(checkpoint_path, "r") as f:
+                checkpoint_data = json.load(f)
+
+            self.session_start = datetime.datetime.fromisoformat(
+                checkpoint_data["session_start"]
+            )
+            if checkpoint_data.get("task_start"):
+                self.task_start = datetime.datetime.fromisoformat(
+                    checkpoint_data["task_start"]
+                )
+
+            self.audit_log = checkpoint_data.get("audit_log", [])
+
+            logger.info(f"Resumed from checkpoint: {checkpoint_data['timestamp']}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to resume from checkpoint: {e}")
+            return False
 
     def process_query(
         self,
@@ -2397,6 +2565,16 @@ You must respond ONLY in valid JSON. No text before { or after }.
             "error_count": len(self.error_history),
             "error_history": self.error_history,  # Include the full error history
         }
+
+        # Persist conversation history for session continuity
+        # This ensures conversation_history is kept in sync after each query
+        if final_answer:
+            self.conversation_history.append(
+                {"role": "user", "content": user_input}
+            )
+            self.conversation_history.append(
+                {"role": "assistant", "content": final_answer}
+            )
 
         # Write trace to file if requested
         if trace:

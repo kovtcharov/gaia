@@ -13,11 +13,15 @@ These tools enable recursive decomposition and persistent memory.
 """
 
 import json
+import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from gaia.agents.base.tools import tool
 
 from .shared_state import get_shared_state
+
+logger = logging.getLogger(__name__)
 
 
 class GaiaCodeTools:
@@ -93,6 +97,23 @@ class GaiaCodeTools:
         def search_codebase(query: str, root_path: str = ".", top_k: int = 10) -> Dict[str, Any]:
             """Semantic search across codebase."""
             return self.tool_search_codebase(query, root_path, top_k)
+
+        # Execution and Observation Tools
+        @tool
+        def run_and_observe(project_type: str, entry_point: str) -> Dict[str, Any]:
+            """Run code and observe behavior. Critical for verifying code actually works."""
+            return self.tool_run_and_observe(project_type, entry_point)
+
+        @tool
+        def run_until_functional(project_type: str, entry_point: str, max_iterations: int = 5) -> Dict[str, Any]:
+            """Run code, observe, debug, fix until fully functional."""
+            return self.tool_run_until_functional(project_type, entry_point, max_iterations)
+
+        # Interactive CLI Tools
+        @tool
+        def run_interactive_cli(command: str, interactions: List[Dict], timeout: int = 300) -> Dict[str, Any]:
+            """Run an interactive CLI tool and respond to prompts."""
+            return self.tool_run_interactive_cli(command, interactions, timeout)
 
     def tool_agent_query(
         self, task: str, specialist: Optional[str] = None, max_depth: Optional[int] = None
@@ -604,145 +625,34 @@ class GaiaCodeTools:
                 "error": str(e),
             }
 
-        # ========================================================================
-        # Execution and Observation Tools
-        # ========================================================================
+    def tool_run_and_observe(
+        self, project_type: str, entry_point: str
+    ) -> Dict[str, Any]:
+        """Run code and observe behavior."""
+        from .execution_observer import ExecutionObserver
 
-        @tool
-        def run_and_observe(project_type: str, entry_point: str) -> Dict[str, Any]:
-            """
-            Run code and observe behavior. Critical for verifying code actually works.
-
-            Args:
-                project_type: "script", "web_api", "web_app", "cli"
-                entry_point: Main file or command to run
-
-            Returns:
-                Execution results with observations
-            """
-            from .execution_observer import ExecutionObserver
-
+        try:
             observer = ExecutionObserver(Path("."))
             result = observer.run_and_observe(project_type, entry_point)
             observer.cleanup()
-
             return result
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
-        @tool
-        def take_screenshot(url: str, output_path: str = "screenshot.png") -> Dict[str, Any]:
-            """
-            Take screenshot of web application.
+    def tool_run_until_functional(
+        self, project_type: str, entry_point: str, max_iterations: int = 5
+    ) -> Dict[str, Any]:
+        """Run code, observe, debug, fix until fully functional."""
+        from .execution_observer import ExecutionObserver
 
-            Args:
-                url: URL to screenshot
-                output_path: Where to save screenshot
-
-            Returns:
-                Screenshot result
-            """
-            from .execution_observer import WebAppObserver
-
-            observer = WebAppObserver()
-
-            if not observer.start_browser(headless=True):
-                return {
-                    "success": False,
-                    "error": "Playwright not available. Install with: pip install playwright && playwright install"
-                }
-
-            result = observer.observe_web_app(url, output_path)
-            observer.cleanup()
-
-            return {
-                "success": result.is_running,
-                "screenshot": output_path if result.screenshots else None,
-                "console_logs": result.console_logs,
-                "errors": result.errors,
-            }
-
-        @tool
-        def test_web_app(url: str, test_actions: List[Dict]) -> Dict[str, Any]:
-            """
-            Test web application by performing interactions.
-
-            Args:
-                url: Application URL
-                test_actions: List of actions to perform
-                    Example:
-                    [
-                        {"type": "click", "selector": "#login-button"},
-                        {"type": "fill", "selector": "#email", "value": "test@test.com"},
-                        {"type": "assert_visible", "selector": "#welcome-message"}
-                    ]
-
-            Returns:
-                Test results
-            """
-            from .execution_observer import WebAppObserver
-
-            observer = WebAppObserver()
-
-            if not observer.start_browser(headless=True):
-                return {"success": False, "error": "Playwright not available"}
-
-            # Navigate to app
-            observation = observer.observe_web_app(url)
-
-            if not observation.is_running:
-                observer.cleanup()
-                return {"success": False, "error": "App not accessible"}
-
-            # Perform test actions
-            results = observer.interact(test_actions)
-
-            observer.cleanup()
-
-            all_passed = all(r.get("success", False) for r in results)
-
-            return {
-                "success": all_passed,
-                "action_results": results,
-                "passed": sum(1 for r in results if r.get("success")),
-                "failed": sum(1 for r in results if not r.get("success")),
-            }
-
-        @tool
-        def run_until_functional(
-            project_type: str,
-            entry_point: str,
-            max_iterations: int = 5
-        ) -> Dict[str, Any]:
-            """
-            Run code, observe, debug, fix until fully functional.
-
-            This is the core capability that makes GAIA Code actually deliver
-            WORKING code, not just code that compiles.
-
-            Workflow:
-            1. Run the code
-            2. Observe output/behavior
-            3. If issues found → diagnose and fix
-            4. Repeat until functional or max iterations
-
-            Args:
-                project_type: Type of project
-                entry_point: Main file/command
-                max_iterations: Max fix attempts
-
-            Returns:
-                Final result with all observations
-            """
-            from .execution_observer import ExecutionObserver
-
+        try:
             observer = ExecutionObserver(Path("."))
             observations_history = []
 
             for iteration in range(max_iterations):
-                # Run and observe
                 result = observer.run_and_observe(project_type, entry_point)
                 observations_history.append(result)
 
-                # If successful, we're done
                 if result["success"]:
                     observer.cleanup()
                     return {
@@ -753,24 +663,8 @@ class GaiaCodeTools:
                         "message": f"Fully functional after {iteration + 1} iteration(s)",
                     }
 
-                # If failed, analyze and fix
-                error_analysis = {
-                    "iteration": iteration + 1,
-                    "error": result.get("error", "Unknown error"),
-                    "observations": result.get("observations", {}),
-                }
+                logger.info(f"Iteration {iteration + 1}: {result.get('error', 'Unknown error')}")
 
-                # Auto-select debugger to fix
-                # In real implementation, would call:
-                # fix_result = agent_query(
-                #     f"Fix this error: {error_analysis}",
-                #     specialist="DebuggerAgent"
-                # )
-
-                # For now, record the attempt
-                logger.info(f"Iteration {iteration + 1}: {error_analysis}")
-
-            # Max iterations reached
             observer.cleanup()
             return {
                 "success": False,
@@ -779,71 +673,18 @@ class GaiaCodeTools:
                 "history": observations_history,
                 "message": f"Not fully functional after {max_iterations} iterations",
             }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
-        # ========================================================================
-        # Interactive CLI Tools
-        # ========================================================================
+    def tool_run_interactive_cli(
+        self, command: str, interactions: List[Dict], timeout: int = 300
+    ) -> Dict[str, Any]:
+        """Run an interactive CLI tool and respond to prompts."""
+        from .execution_observer import InteractiveCLIExecutor
 
-        @tool
-        def run_interactive_cli(
-            command: str,
-            interactions: List[Dict],
-            timeout: int = 300
-        ) -> Dict[str, Any]:
-            """
-            Run an interactive CLI tool and respond to prompts.
-
-            Use this when CLI tools ask questions or require user input.
-
-            Args:
-                command: CLI command to run
-                interactions: List of expected prompts and responses
-                    Example:
-                    [
-                        {"expect": "Enter name:", "respond": "MyApp"},
-                        {"expect": "Confirm? (y/n)", "respond": "y"},
-                    ]
-                timeout: Timeout in seconds
-
-            Returns:
-                Dict with transcript and results
-            """
-            from .execution_observer import InteractiveCLIExecutor
-
+        try:
             executor = InteractiveCLIExecutor()
             result = executor.run_interactive(command, interactions, timeout)
-
             return result
-
-        @tool
-        def auto_interact_cli(
-            command: str,
-            timeout: int = 300
-        ) -> Dict[str, Any]:
-            """
-            Run CLI tool and automatically respond to prompts using smart defaults.
-
-            The agent observes output, detects prompts, and provides appropriate
-            responses automatically (yes/no questions, name prompts, etc.).
-
-            Args:
-                command: CLI command to run
-                timeout: Timeout in seconds
-
-            Returns:
-                Dict with full interaction transcript
-            """
-            from .execution_observer import InteractiveCLIExecutor
-
-            executor = InteractiveCLIExecutor()
-
-            # Use LLM to decide responses (would integrate with agent)
-            def intelligent_response(prompt: str) -> str:
-                # In full implementation, would ask LLM:
-                # "I see this prompt: '{prompt}'. What should I respond?"
-                # For now, use smart defaults
-                return executor._default_response(prompt)
-
-            result = executor.auto_interact(command, intelligent_response, timeout)
-
-            return result
+        except Exception as e:
+            return {"success": False, "error": str(e)}

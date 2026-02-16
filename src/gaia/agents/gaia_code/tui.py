@@ -117,11 +117,12 @@ class GaiaCodeTUI:
         # State
         self.current_task: Optional[str] = None
         self.task_progress: List[TaskProgress] = []
-        self.quality_gates: Dict[str, str] = {}  # gate -> status
+        self.quality_gates_state: Dict[str, str] = {}  # gate -> status
         self.activity_log: List[str] = []  # Last 5 activities
         self.started_at: Optional[datetime] = None
         self.current_step: int = 0
         self.total_steps: int = 0
+        self._completed: bool = False
 
         # Rich components
         self.layout = self._create_layout()
@@ -164,6 +165,7 @@ class GaiaCodeTUI:
         self.current_task = task
         self.started_at = datetime.now()
         self.total_steps = estimated_steps
+        self._completed = False
 
         # Create progress bar
         if estimated_steps > 0:
@@ -180,59 +182,47 @@ class GaiaCodeTUI:
         )
         self.live.start()
 
-    def update_step(self, step: int, description: str):
+    def update(self, stage: str, current: str, percent: int = None, completed: int = None):
         """
-        Update current step.
+        Update progress (unified interface).
 
         Args:
-            step: Current step number
-            description: Step description
+            stage: Current stage name
+            current: Current activity description
+            percent: Progress percentage (0-100)
+            completed: Completed steps (if percent not provided)
         """
-        self.current_step = step
+        if percent is not None:
+            self.current_step = percent
+        elif completed is not None:
+            self.current_step = completed
 
-        if self.task_id is not None:
-            self.progress.update(self.task_id, completed=step)
+        self._add_activity(f"{stage}: {current}")
 
-        self._add_activity(f"Step {step}: {description}")
+        if self.task_id is not None and percent is not None:
+            self.progress.update(self.task_id, completed=percent)
 
         if self.live:
             self.live.update(self._render())
 
-    def update_task_progress(self, tasks: List[TaskProgress]):
-        """
-        Update task progress.
-
-        Args:
-            tasks: List of task progress objects
-        """
-        self.task_progress = tasks
-
-        if self.live:
-            self.live.update(self._render())
-
-    def update_quality_gates(self, gates: Dict[str, str]):
+    def update_quality_gates(self, gates: Dict[str, bool]):
         """
         Update quality gate status.
 
         Args:
-            gates: Dict mapping gate name to status ("pass" | "fail" | "running" | "pending")
+            gates: Dict mapping gate name to passed (bool)
         """
-        self.quality_gates = gates
+        self.quality_gates_state = {
+            name: ("pass" if passed else "fail")
+            for name, passed in gates.items()
+        }
 
         if self.live:
             self.live.update(self._render())
 
-    def add_activity(self, message: str):
-        """
-        Add an activity message.
-
-        Args:
-            message: Activity message
-        """
-        self._add_activity(message)
-
-        if self.live:
-            self.live.update(self._render())
+    def show_plan(self, tasks: List[Dict]):
+        """Show the task plan (no-op for full TUI, plan visible in layout)."""
+        pass
 
     def _add_activity(self, message: str):
         """Internal: Add activity and keep only last 5."""
@@ -251,6 +241,10 @@ class GaiaCodeTUI:
             success: Whether task succeeded
             message: Optional completion message
         """
+        if self._completed:
+            return
+        self._completed = True
+
         if self.live:
             self.live.stop()
 
@@ -384,10 +378,10 @@ class GaiaCodeTUI:
         table.add_column("Gate", style="bold")
         table.add_column("Status")
 
-        if not self.quality_gates:
+        if not self.quality_gates_state:
             table.add_row("Quality Gates", "[dim]Not started[/dim]")
         else:
-            for gate, status in self.quality_gates.items():
+            for gate, status in self.quality_gates_state.items():
                 if status == "pass":
                     icon = "✓"
                     style = "green"
@@ -558,10 +552,12 @@ class GaiaCodeSimpleTUI:
         )
         self.task_id: Optional[TaskID] = None
         self.started_at: Optional[datetime] = None
+        self._completed: bool = False
 
     def start(self, task: str):
         """Start a task."""
         self.started_at = datetime.now()
+        self._completed = False
 
         # Show task
         self.console.print()
@@ -634,6 +630,10 @@ class GaiaCodeSimpleTUI:
 
     def complete(self, success: bool = True, message: Optional[str] = None):
         """Complete the task."""
+        if self._completed:
+            return
+        self._completed = True
+
         if self.progress.tasks:
             self.progress.stop()
 
@@ -735,7 +735,7 @@ class GaiaCodeMinimalTUI:
     Perfect for: Users who want the least distraction.
 
     Shows:
-    ⟳ Step 5/12 • Creating auth endpoints • 42% • 2m 34s
+    ⟳ Executing • Creating auth endpoints • 42% • 2m 34s
     """
 
     def __init__(self, console: Optional[Console] = None):
@@ -743,19 +743,27 @@ class GaiaCodeMinimalTUI:
         self.console = console or Console()
         self.status: Optional[Status] = None
         self.started_at: Optional[datetime] = None
+        self._completed: bool = False
 
     def start(self, task: str):
         """Start task."""
         self.started_at = datetime.now()
+        self._completed = False
         self.console.print(f"\n[bold cyan]GAIA Code:[/bold cyan] {task}\n")
 
-    def update(self, step: int, total: int, current: str, percent: int = None):
-        """Update status line."""
-        if percent is None and total > 0:
-            percent = int((step / total) * 100)
+    def update(self, stage: str, current: str, percent: int = None, completed: int = None):
+        """
+        Update status line (unified interface).
 
+        Args:
+            stage: Current stage name
+            current: Current activity description
+            percent: Progress percentage (0-100)
+            completed: Completed steps (if percent not provided)
+        """
+        pct = percent if percent is not None else (completed or 0)
         elapsed = self._elapsed()
-        status_text = f"Step {step}/{total} • {current} • {percent}% • {elapsed}"
+        status_text = f"{stage} • {current} • {pct}% • {elapsed}"
 
         if self.status:
             self.status.update(status_text)
@@ -763,8 +771,29 @@ class GaiaCodeMinimalTUI:
             self.status = Status(status_text, spinner="dots", console=self.console)
             self.status.start()
 
+    def update_quality_gates(self, gates: Dict[str, bool]):
+        """
+        Update quality gate status.
+
+        Args:
+            gates: Dict of gate_name -> passed
+        """
+        gate_parts = []
+        for gate, passed in gates.items():
+            icon = "✓" if passed else "✗"
+            gate_parts.append(f"{icon} {gate}")
+        self.update(stage="Quality Gates", current=" ".join(gate_parts))
+
+    def show_plan(self, tasks: List[Dict]):
+        """Show plan (minimal: just print count)."""
+        self.console.print(f"[dim]Plan: {len(tasks)} task(s)[/dim]")
+
     def complete(self, success: bool = True, message: str = None):
         """Complete task."""
+        if self._completed:
+            return
+        self._completed = True
+
         if self.status:
             self.status.stop()
 

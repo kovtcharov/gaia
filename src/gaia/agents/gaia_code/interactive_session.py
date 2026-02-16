@@ -140,24 +140,25 @@ class InteractiveSession:
 
     def _handle_message(self, message: str):
         """Handle a regular chat message."""
-        # Add to conversation history
-        self.conversation_history.append({"role": "user", "content": message})
-
-        # Show user's message
-        if self.console:
-            self.console.print(f"\n[bold cyan]You:[/bold cyan] {message}")
-            self.console.print()
+        # DON'T add user message here - base Agent.process_query() handles
+        # appending both user and assistant messages to conversation_history.
+        # We just need to make sure prior history is synced to the agent.
+        # The agent.conversation_history already has prior messages from
+        # previous process_query calls.
 
         # Get agent response
         try:
-            # For now, use the agent's process_query
-            # In full implementation, would maintain conversation context
+            # Use the agent's process_query with the full conversation context
+            # process_query reads self.conversation_history for prior context,
+            # adds the new user message, gets LLM response, and appends both
+            # user + assistant to self.conversation_history at the end.
             result = self.agent.process_query(message, create_plan=False)
 
             response = result.get("result", "Task completed")
 
-            # Add to conversation history
-            self.conversation_history.append({"role": "assistant", "content": response})
+            # Sync agent's conversation_history back to our local copy
+            # (agent.conversation_history now includes the new user+assistant pair)
+            self.conversation_history = list(self.agent.conversation_history)
 
             # Show agent's response
             self._show_agent_response(response)
@@ -383,6 +384,7 @@ class InteractiveSession:
     def cmd_clear(self):
         """Clear conversation history."""
         self.conversation_history.clear()
+        self.agent.conversation_history.clear()
 
         if self.console:
             self.console.clear()

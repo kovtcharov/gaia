@@ -26,6 +26,8 @@ from typing import Any, Dict, List, Optional
 
 import os
 
+logger = logging.getLogger(__name__)
+
 from gaia.agents.base.agent import Agent
 from gaia.agents.base.console import AgentConsole, SilentConsole
 
@@ -77,7 +79,6 @@ except ImportError as e:
 
 from .persona import PersonaEngine, create_persona
 from .quality_gates import EscalationLadder, QualityGateRunner
-from .shared_state import get_shared_state
 from .system_prompt import (
     get_core_system_prompt,
     get_error_recovery_prompts,
@@ -85,8 +86,6 @@ from .system_prompt import (
 )
 from .tools import GaiaCodeTools
 from .tui import GaiaCodeSimpleTUI, create_tui
-
-logger = logging.getLogger(__name__)
 
 
 class GaiaCodeAgent(
@@ -191,37 +190,48 @@ class GaiaCodeAgent(
         if api_key and kwargs.get("use_claude", True):
             os.environ["ANTHROPIC_API_KEY"] = api_key
 
-        # Initialize base agent
+        # Enable RAC features from base Agent
+        kwargs["enable_shared_state"] = True
+        kwargs["workspace_dir"] = str(workspace_dir) if workspace_dir else None
+        kwargs["enable_audit_log"] = True
+
+        # Initialize base agent (with RAC: shared_state, audit_log, time tracking)
         super().__init__(**kwargs)
 
-        # Initialize shared state (singleton, shared across all agents)
-        self.shared_state = get_shared_state(workspace_dir)
+        # Suppress noisy warnings from base framework unless debug mode
+        # Must be AFTER super().__init__() since Agent.__init__ calls basicConfig
+        if not kwargs.get("debug"):
+            for name in ["gaia.chat", "gaia.chat.prompts", "gaia.chat.sdk",
+                         "gaia.llm", "gaia.agents"]:
+                logging.getLogger(name).setLevel(logging.ERROR)
+            # Also suppress via GAIA's custom logger system
+            try:
+                from gaia.logger import log_manager
+                log_manager.set_level("gaia.chat", logging.ERROR)
+            except (ImportError, AttributeError):
+                pass
 
-        # Initialize persona engine
+        # Clear stale tasks from previous sessions to prevent plan accumulation
+        self.shared_state.plan.clear_all_tasks()
+
+        # Initialize persona engine (coding-specific)
         self.persona = create_persona(persona, workspace_dir)
 
-        # Initialize quality gates
+        # Initialize quality gates (from base module)
         self.quality_gates = QualityGateRunner()
         if not enable_quality_gates:
             for gate_name in self.quality_gates.gates:
                 self.quality_gates.disable_gate(gate_name)
 
-        # Initialize escalation ladder
+        # Initialize escalation ladder (from base module)
         self.escalation_ladder = EscalationLadder()
 
-        # Initialize TUI
+        # Initialize TUI (coding-specific)
         self.tui_mode = tui_mode
         if tui_mode != "off" and not kwargs.get("silent_mode"):
             self.tui = create_tui(mode=tui_mode)
         else:
             self.tui = None
-
-        # Time tracking
-        self.session_start = datetime.now()
-        self.task_start = None
-
-        # Audit log
-        self.audit_log = []
 
         # Initialize validators (required by CodeAgent tools)
         from gaia.security import PathValidator
@@ -237,7 +247,7 @@ class GaiaCodeAgent(
         # The base Agent's rebuild_system_prompt() adds tools from _TOOL_REGISTRY
         self.rebuild_system_prompt()
 
-        logger.debug("GAIA Code Agent initialized")  # Changed to debug
+        logger.debug("GAIA Code Agent initialized")
         logger.debug(f"Workspace: {self.shared_state.workspace_dir}")
         logger.debug(f"Persona: {self.persona.profile.name}")
         logger.debug(f"Quality gates: {enable_quality_gates}")
@@ -387,8 +397,8 @@ class GaiaCodeAgent(
                 {"elapsed_seconds": elapsed, "success": result["success"]},
             )
 
-            # Complete TUI if not already done
-            if self.tui and hasattr(self.tui, 'progress') and self.tui.progress.tasks:
+            # Complete TUI (guard against double-complete is inside each TUI class)
+            if self.tui:
                 message = result.get("result") or "Task completed"
                 self.tui.complete(success=result["success"], message=message)
 
@@ -546,9 +556,9 @@ class GaiaCodeAgent(
             # This is the REAL execution method that handles tools
             base_result = super().process_query(user_input=query)
 
-            # base_result is a dict with the final answer and details
-            success = True
-            result_text = base_result.get("answer", base_result.get("result", str(base_result)))
+            # base_result is a dict with keys: status, result, conversation, steps_taken, etc.
+            success = base_result.get("status") == "success"
+            result_text = base_result.get("result", str(base_result))
 
             # Check what files were created
             files_after = set(self.shared_state.manifest.list_files())
@@ -646,56 +656,7 @@ class GaiaCodeAgent(
             "message_id": msg_result["message_id"],
         }
 
-    def _log_audit(self, action_type: str, details: Dict[str, Any]):
-        """
-        Log an action to the audit trail.
-
-        All actions are timestamped and persisted.
-        """
-        entry = {
-            "timestamp": datetime.now().isoformat(),
-            "action_type": action_type,
-            "details": details,
-        }
-
-        self.audit_log.append(entry)
-
-        # Also log to console if debug mode
-        if self.debug:
-            logger.debug(f"AUDIT: {action_type} - {json.dumps(details)}")
-
-    def get_audit_log(self) -> List[Dict[str, Any]]:
-        """Get the complete audit log for this session."""
-        return self.audit_log
-
-    def get_progress(self) -> Dict[str, Any]:
-        """
-        Get current progress on the task.
-
-        Returns info about plan, completed steps, current step, etc.
-        """
-        tasks = self.shared_state.plan.get_all_tasks()
-
-        completed = [t for t in tasks if t.status == "completed"]
-        in_progress = [t for t in tasks if t.status == "in_progress"]
-        pending = [t for t in tasks if t.status == "pending"]
-        failed = [t for t in tasks if t.status == "failed"]
-
-        elapsed = None
-        if self.task_start:
-            elapsed = (datetime.now() - self.task_start).total_seconds()
-
-        return {
-            "total_tasks": len(tasks),
-            "completed": len(completed),
-            "in_progress": len(in_progress),
-            "pending": len(pending),
-            "failed": len(failed),
-            "progress_percent": (
-                int((len(completed) / len(tasks)) * 100) if tasks else 0
-            ),
-            "elapsed_seconds": elapsed,
-        }
+    # _log_audit, get_audit_log, get_progress are inherited from base Agent
 
     def checkpoint(self) -> Dict[str, Any]:
         """

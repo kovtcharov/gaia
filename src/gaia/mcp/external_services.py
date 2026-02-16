@@ -452,29 +452,35 @@ class Context7Service(ExternalMCPService):
 
 
 class PerplexityService(ExternalMCPService):
-    """Perplexity web search service."""
+    """Perplexity web search service.
+
+    Uses the Perplexity API directly via HTTP for reliability,
+    with MCP subprocess as fallback.
+    """
 
     def __init__(self, api_key: Optional[str] = None):
         """
-        Initialize Perplexity MCP service.
+        Initialize Perplexity service.
 
         Args:
             api_key: Perplexity API key (defaults to PERPLEXITY_API_KEY env var)
         """
-        api_key = api_key or os.getenv("PERPLEXITY_API_KEY")
-        if not api_key:
+        self.api_key = api_key or os.getenv("PERPLEXITY_API_KEY")
+        if not self.api_key:
             logger.warning(
                 "PERPLEXITY_API_KEY not set - web search will not be available"
             )
 
         super().__init__(
             command=["npx", "-y", "server-perplexity-ask"],
-            env={"PERPLEXITY_API_KEY": api_key} if api_key else {},
+            env={"PERPLEXITY_API_KEY": self.api_key} if self.api_key else {},
         )
 
     def search_web(self, query: str) -> Dict[str, Any]:
         """
         Search the web using Perplexity.
+
+        Uses direct HTTP API call (more reliable than MCP subprocess).
 
         Args:
             query: Search query
@@ -482,12 +488,80 @@ class PerplexityService(ExternalMCPService):
         Returns:
             Web search results with answer and sources
         """
+        if not self.api_key:
+            return {
+                "success": False,
+                "error": "PERPLEXITY_API_KEY not set. Set it in your environment to enable web search.",
+                "answer": "",
+            }
+
+        # Primary: Direct HTTP API call (reliable)
+        result = self._search_via_api(query)
+        if result.get("success"):
+            return result
+
+        # Fallback: MCP subprocess
+        logger.info("Direct API failed, trying MCP subprocess fallback")
+        return self._search_via_mcp(query)
+
+    def _search_via_api(self, query: str) -> Dict[str, Any]:
+        """Search using Perplexity HTTP API directly."""
+        try:
+            import urllib.request
+            import urllib.error
+
+            url = "https://api.perplexity.ai/chat/completions"
+            payload = json.dumps({
+                "model": "sonar",
+                "messages": [
+                    {"role": "system", "content": "Be precise and concise."},
+                    {"role": "user", "content": query},
+                ],
+            })
+
+            req = urllib.request.Request(
+                url,
+                data=payload.encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                method="POST",
+            )
+
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+            # Extract answer from OpenAI-compatible response
+            choices = data.get("choices", [])
+            if choices:
+                answer = choices[0].get("message", {}).get("content", "")
+                return {"success": True, "answer": answer, "raw_result": data}
+
+            return {"success": False, "error": "No response from Perplexity", "answer": ""}
+
+        except urllib.error.HTTPError as e:
+            error_body = ""
+            try:
+                error_body = e.read().decode("utf-8")
+            except Exception:
+                pass
+            logger.error(f"Perplexity API error {e.code}: {error_body}")
+            return {"success": False, "error": f"API error {e.code}: {error_body}", "answer": ""}
+
+        except Exception as e:
+            logger.error(f"Perplexity API call failed: {e}")
+            return {"success": False, "error": str(e), "answer": ""}
+
+    def _search_via_mcp(self, query: str) -> Dict[str, Any]:
+        """Fallback: Search using MCP subprocess."""
         result = self.call_tool(
             "perplexity_ask", {"messages": [{"role": "user", "content": query}]}
         )
 
         if "error" in result:
-            logger.error(f"Perplexity search failed: {result['error']}")
+            logger.error(f"Perplexity MCP search failed: {result['error']}")
             return {"success": False, "error": result["error"], "answer": ""}
 
         # Extract answer from response

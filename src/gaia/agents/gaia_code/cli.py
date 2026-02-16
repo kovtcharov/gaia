@@ -21,6 +21,13 @@ from .agent import GaiaCodeAgent
 
 def cmd_gaia_code(args):
     """Execute GAIA Code command or start interactive session."""
+    import logging
+
+    # Set logging level based on debug flag
+    if not (hasattr(args, 'debug') and args.debug):
+        logging.getLogger().setLevel(logging.ERROR)
+        logging.getLogger("gaia").setLevel(logging.ERROR)
+
     # Check for specific flags first
     if hasattr(args, 'status') and args.status:
         return cmd_status(args)
@@ -36,8 +43,6 @@ def cmd_gaia_code(args):
         return cmd_interactive(args)
     else:
         # No task provided - start interactive session by default
-        print("\n💡 Starting GAIA Code interactive session...")
-        print("   (Type /help for commands or just chat naturally)\n")
         return cmd_interactive(args)
 
 
@@ -69,26 +74,27 @@ def cmd_interactive(args):
 
 def cmd_execute(args):
     """Execute a coding task."""
-    import logging
-
-    # Set logging level based on debug flag
-    if not args.debug:
-        logging.getLogger().setLevel(logging.ERROR)
-        logging.getLogger("gaia").setLevel(logging.ERROR)
-
     workspace_dir = Path(args.workspace) if args.workspace else None
+    persona = getattr(args, 'persona', 'pike')
 
-    # Create agent
-    agent = GaiaCodeAgent(
+    # Build kwargs - only pass use_claude/use_chatgpt if explicitly requested
+    # This lets the agent's default (Claude Opus) take effect when neither is specified
+    agent_kwargs = dict(
         workspace_dir=workspace_dir,
         enable_quality_gates=not args.no_quality_gates,
         enable_continuous_execution=not args.no_continuous,
         tui_mode=args.tui,
+        persona=persona,
         silent_mode=args.silent,
         debug=args.debug,
-        use_claude=args.claude,
-        use_chatgpt=args.chatgpt,
     )
+    if args.claude:
+        agent_kwargs["use_claude"] = True
+    if args.chatgpt:
+        agent_kwargs["use_chatgpt"] = True
+
+    # Create agent
+    agent = GaiaCodeAgent(**agent_kwargs)
 
     # Execute task - TUI handles all output
     try:
@@ -264,6 +270,23 @@ def add_gaia_code_parser(subparsers):
         "--checkpoint",
         action="store_true",
         help="Create checkpoint",
+    )
+
+    # Interactive mode
+    parser.add_argument(
+        "-i",
+        "--interactive",
+        action="store_true",
+        help="Start interactive chat session",
+    )
+
+    # Persona selection
+    parser.add_argument(
+        "--persona",
+        type=str,
+        choices=["torvalds", "knuth", "pike", "carmack", "hickey", "kay", "thompson", "hopper"],
+        default="pike",
+        help="Agent persona (default: pike)",
     )
 
     # Configuration flags
