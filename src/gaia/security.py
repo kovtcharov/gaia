@@ -36,6 +36,14 @@ class PathValidator:
         else:
             self.allowed_paths.add(Path.cwd().resolve())
 
+        # Always allow common safe directories for agent-created temp files
+        for safe_dir in ["/tmp", Path.home() / ".gaia"]:
+            try:
+                safe_path = Path(safe_dir).resolve()
+                self.allowed_paths.add(safe_path)
+            except Exception:
+                pass
+
         # Setup cache directory
         self.cache_dir = Path.home() / ".gaia" / "cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)

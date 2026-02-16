@@ -805,8 +805,8 @@ You must respond ONLY in valid JSON. No text before { or after }.
             logger.debug(f"📥 LLM Response: {response}")
 
         # STEP 1: Fast path - detect plain text conversational responses
-        # If response doesn't start with '{', check if it contains JSON in
-        # code fences (e.g., ```json {...} ```) before treating as plain text.
+        # If response doesn't start with '{', check if it contains JSON
+        # (in code fences or embedded after text) before treating as plain text.
         if not response.startswith("{"):
             # Check for JSON inside code fences - LLMs often wrap JSON this way
             if "```" in response and "{" in response:
@@ -814,6 +814,18 @@ You must respond ONLY in valid JSON. No text before { or after }.
                 if extracted:
                     logger.debug("[PARSE] Extracted JSON from code-fenced response")
                     return extracted
+
+            # Check for JSON embedded after conversational text (no code fences)
+            # LLMs sometimes prefix JSON with casual text like "Sure, here's..."
+            if "{" in response:
+                json_start = response.index("{")
+                candidate = response[json_start:]
+                # Only attempt if the JSON candidate contains tool-call keys
+                if '"tool"' in candidate or '"answer"' in candidate:
+                    extracted = self._extract_json_from_response(candidate)
+                    if extracted:
+                        logger.debug("[PARSE] Extracted JSON embedded after plain text")
+                        return extracted
 
             logger.debug(
                 f"[PARSE] Plain text conversational response (length: {len(response)})"
@@ -1687,6 +1699,32 @@ You must respond ONLY in valid JSON. No text before { or after }.
                     # Resolve dynamic parameters from previous step results
                     tool_args = self._resolve_plan_parameters(tool_args, step_results)
 
+                    # Detect placeholder args ("...", "placeholder", etc.)
+                    # LLMs often abbreviate later plan steps with "..." placeholders.
+                    # If we detect placeholders, skip literal execution and ask the
+                    # LLM to generate real content for this step instead.
+                    has_placeholder = False
+                    if isinstance(tool_args, dict):
+                        for arg_key, arg_val in tool_args.items():
+                            if isinstance(arg_val, str) and arg_val.strip() in ("...", "…", "placeholder", "TODO"):
+                                has_placeholder = True
+                                break
+                    if has_placeholder:
+                        logger.debug(f"Plan step {self.current_step + 1} has placeholder args, asking LLM to generate real content")
+                        step_desc = next_step.get("description", f"Execute {tool_name}")
+                        regen_prompt = (
+                            f"Step {self.current_step + 1} of the plan needs real content (not placeholder '...').\n"
+                            f"Step description: {step_desc}\n"
+                            f"Tool: {tool_name}\n"
+                            f"Generate the actual tool call with complete, real arguments.\n"
+                            f"Task: {user_input}\n"
+                        )
+                        messages.append({"role": "user", "content": regen_prompt})
+                        self.current_plan = []
+                        self.total_plan_steps = 0
+                        self.execution_state = self.STATE_NORMAL
+                        continue
+
                     # Create a parsed response structure as if it came from the LLM
                     parsed = {
                         "thought": f"Executing step {self.current_step + 1} of the plan",
@@ -2307,6 +2345,26 @@ You must respond ONLY in valid JSON. No text before { or after }.
 
                     # Continue to next iteration to get corrected plan
                     continue
+
+                # Filter out plan steps with placeholder content ("...")
+                # LLMs abbreviate later steps with "..." when the response is too long.
+                # These steps can't be executed literally and will cause errors.
+                filtered_plan = []
+                for step in parsed["plan"]:
+                    args = step.get("tool_args", {})
+                    has_placeholder = False
+                    if isinstance(args, dict):
+                        for v in args.values():
+                            if isinstance(v, str) and v.strip() in ("...", "…", "placeholder", "TODO"):
+                                has_placeholder = True
+                                break
+                    if not has_placeholder:
+                        filtered_plan.append(step)
+                    else:
+                        logger.debug(f"Filtered out plan step with placeholder args: {step.get('tool', 'unknown')}")
+                if len(filtered_plan) < len(parsed["plan"]):
+                    logger.debug(f"Filtered {len(parsed['plan']) - len(filtered_plan)} placeholder steps from plan")
+                    parsed["plan"] = filtered_plan
 
                 # Plan is valid - proceed with execution
                 self.current_plan = parsed["plan"]

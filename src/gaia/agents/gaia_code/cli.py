@@ -352,3 +352,44 @@ def add_gaia_code_parser(subparsers):
     parser.set_defaults(func=cmd_gaia_code)
 
     return parser
+
+
+def main():
+    """Standalone CLI entry point for gaia-code-rac."""
+    parser = argparse.ArgumentParser(
+        description="GAIA Code: Autonomous coding agent with RAC architecture",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  gaia-code-rac "Build a REST API with authentication"
+  gaia-code-rac "Create a calculator with tests" --tui simple
+  gaia-code-rac -i                       # Interactive mode
+  gaia-code-rac --status                 # Show progress
+  gaia-code-rac --resume                 # Resume from checkpoint
+""",
+    )
+
+    # Reuse the same argument setup
+    parser.add_argument("task", nargs="?", help="Coding task to execute")
+    parser.add_argument("--status", action="store_true", help="Show current progress")
+    parser.add_argument("--audit", action="store_true", help="Show audit log")
+    parser.add_argument("--resume", action="store_true", help="Resume from checkpoint")
+    parser.add_argument("--checkpoint", action="store_true", help="Create checkpoint")
+    parser.add_argument("-i", "--interactive", action="store_true", help="Interactive chat session")
+    parser.add_argument("--persona", type=str, default="pike",
+                        choices=["torvalds", "knuth", "pike", "carmack", "hickey", "kay", "thompson", "hopper"],
+                        help="Agent persona (default: pike)")
+    parser.add_argument("--workspace", type=str, help="Workspace directory")
+    parser.add_argument("--no-quality-gates", action="store_true", help="Disable quality gates")
+    parser.add_argument("--no-continuous", action="store_true", help="Disable continuous execution")
+    parser.add_argument("--no-plan", action="store_true", help="Disable plan creation")
+    parser.add_argument("--claude", action="store_true", help="Use Claude API")
+    parser.add_argument("--chatgpt", action="store_true", help="Use ChatGPT/OpenAI API")
+    parser.add_argument("--silent", action="store_true", help="Silent mode")
+    parser.add_argument("--debug", action="store_true", help="Enable debug output")
+    parser.add_argument("--tui", type=str, default="simple",
+                        choices=["full", "simple", "minimal", "off"],
+                        help="TUI mode (default: simple)")
+
+    args = parser.parse_args()
+    sys.exit(cmd_gaia_code(args))

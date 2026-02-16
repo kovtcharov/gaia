@@ -334,8 +334,23 @@ class KnowledgeDB:
 
         return insight_id
 
+    @staticmethod
+    def _sanitize_fts5_query(query: str) -> str:
+        """Sanitize a query string for FTS5 MATCH.
+
+        FTS5 treats characters like . : - @ as special syntax.
+        Replace them with spaces so the query works as plain word search.
+        """
+        import re
+        # Replace FTS5 special chars with spaces, keep alphanumeric and underscores
+        sanitized = re.sub(r'[^\w\s]', ' ', query)
+        # Collapse multiple spaces
+        sanitized = re.sub(r'\s+', ' ', sanitized).strip()
+        return sanitized if sanitized else query
+
     def recall(self, query: str, top_k: int = 5) -> List[Dict]:
         """Search insights using FTS5 full-text search."""
+        safe_query = self._sanitize_fts5_query(query)
         with self.lock:
             cursor = self.conn.execute(
                 """
@@ -346,7 +361,7 @@ class KnowledgeDB:
                 ORDER BY rank
                 LIMIT ?
             """,
-                (query, top_k),
+                (safe_query, top_k),
             )
 
             results = []
@@ -495,6 +510,7 @@ class ToolsDB:
 
     def find_tools(self, query: str, top_k: int = 10) -> List[Dict]:
         """Find tools using FTS5 search."""
+        safe_query = self._sanitize_fts5_query(query)
         with self.lock:
             cursor = self.conn.execute(
                 """
@@ -505,7 +521,7 @@ class ToolsDB:
                 ORDER BY rank
                 LIMIT ?
             """,
-                (query, top_k),
+                (safe_query, top_k),
             )
 
             results = []

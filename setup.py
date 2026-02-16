@@ -194,7 +194,6 @@ setup(
             "gaia-mcp = gaia.mcp.mcp_bridge:main",
             "gaia-emr = gaia.agents.emr.cli:main",
             "gaia-code = gaia.agents.code.cli:main",
-            "gaia-code-rac = gaia.agents.gaia_code.cli:main",  # New RAC-based code agent
         ]
     },
     python_requires=">=3.10",
