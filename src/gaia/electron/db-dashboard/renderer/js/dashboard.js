@@ -4,8 +4,8 @@
 /**
  * Dashboard Overview
  *
- * Renders the main overview page with statistics, summaries, and analysis
- * across all databases in the workspace.
+ * Renders the main overview page with statistics, summaries, analysis,
+ * and GitHub-style data visualizations across all databases in the workspace.
  */
 
 const Dashboard = {
@@ -51,6 +51,8 @@ const Dashboard = {
         topTools: [],
         errorTrend: [],
         contextUsage: [],
+        activityHeatmap: [],
+        trendStats: null,
       };
 
       // Gather row counts per database
@@ -73,7 +75,7 @@ const Dashboard = {
         }
       }
 
-      // Query logs.db for recent errors
+      // Query logs.db for recent errors, activity, and trends
       const logsDb = existingDbs.find(d => d.name === 'logs.db');
       if (logsDb) {
         try {
@@ -122,6 +124,23 @@ const Dashboard = {
             dashData.errorTrend = trendResult.rows;
           }
         } catch (e) { /* ignore */ }
+
+        // Activity heatmap: count log entries per day for the last 7 days
+        try {
+          const heatmapResult = await window.dbAPI.executeSQL(
+            logsDb.path,
+            `SELECT DATE(timestamp) as date, COUNT(*) as count FROM runtime_logs WHERE timestamp >= DATE('now', '-7 days') GROUP BY DATE(timestamp) ORDER BY date ASC`,
+            true
+          );
+          if (heatmapResult.success && heatmapResult.rows) {
+            dashData.activityHeatmap = heatmapResult.rows;
+          }
+        } catch (e) { /* ignore */ }
+
+        // Trend stats: total logs, error rate, context usage -- last 24h vs previous 24h
+        try {
+          dashData.trendStats = await this._computeTrendStats(logsDb.path);
+        } catch (e) { /* ignore */ }
       }
 
       // Query plan.db for active tasks
@@ -154,19 +173,33 @@ const Dashboard = {
         } catch (e) { /* ignore */ }
       }
 
-      // Query tools.db for top tools
+      // Query tools.db for top tools (get top 10 for the bar chart)
       const toolsDb = existingDbs.find(d => d.name === 'tools.db');
       if (toolsDb) {
         try {
           const toolResult = await window.dbAPI.executeSQL(
             toolsDb.path,
-            `SELECT name, usage_count, success_count, avg_duration_ms FROM tools ORDER BY usage_count DESC LIMIT 5`,
+            `SELECT name, usage_count, success_count, avg_duration_ms FROM tools ORDER BY usage_count DESC LIMIT 10`,
             true
           );
           if (toolResult.success && toolResult.rows) {
             dashData.topTools = toolResult.rows;
           }
         } catch (e) { /* ignore */ }
+
+        // Also get total tool call count for trend stats
+        if (dashData.trendStats) {
+          try {
+            const totalToolResult = await window.dbAPI.executeSQL(
+              toolsDb.path,
+              `SELECT COALESCE(SUM(usage_count), 0) as total FROM tools`,
+              true
+            );
+            if (totalToolResult.success && totalToolResult.rows && totalToolResult.rows.length > 0) {
+              dashData.trendStats.totalToolCalls = totalToolResult.rows[0].total || 0;
+            }
+          } catch (e) { /* ignore */ }
+        }
       }
 
       AppState.dashboardData = dashData;
@@ -174,6 +207,85 @@ const Dashboard = {
     } catch (err) {
       container.innerHTML = `<div class="empty-state">Dashboard error: ${escapeHtml(err.message)}</div>`;
     }
+  },
+
+  /**
+   * Compute trend stats comparing last 24h vs previous 24h.
+   * @param {string} logsDbPath
+   * @returns {Object}
+   */
+  async _computeTrendStats(logsDbPath) {
+    const stats = {
+      totalLogs24h: 0,
+      totalLogsPrev24h: 0,
+      errors24h: 0,
+      errorsPrev24h: 0,
+      avgContext24h: 0,
+      avgContextPrev24h: 0,
+      totalToolCalls: 0,
+    };
+
+    // Total logs last 24h
+    try {
+      const r = await window.dbAPI.executeSQL(
+        logsDbPath,
+        `SELECT COUNT(*) as cnt FROM runtime_logs WHERE timestamp >= DATETIME('now', '-1 day')`,
+        true
+      );
+      if (r.success && r.rows && r.rows.length > 0) stats.totalLogs24h = r.rows[0].cnt || 0;
+    } catch (e) { /* ignore */ }
+
+    // Total logs previous 24h (24h-48h ago)
+    try {
+      const r = await window.dbAPI.executeSQL(
+        logsDbPath,
+        `SELECT COUNT(*) as cnt FROM runtime_logs WHERE timestamp >= DATETIME('now', '-2 days') AND timestamp < DATETIME('now', '-1 day')`,
+        true
+      );
+      if (r.success && r.rows && r.rows.length > 0) stats.totalLogsPrev24h = r.rows[0].cnt || 0;
+    } catch (e) { /* ignore */ }
+
+    // Errors last 24h
+    try {
+      const r = await window.dbAPI.executeSQL(
+        logsDbPath,
+        `SELECT COUNT(*) as cnt FROM runtime_logs WHERE level IN ('ERROR', 'CRITICAL') AND timestamp >= DATETIME('now', '-1 day')`,
+        true
+      );
+      if (r.success && r.rows && r.rows.length > 0) stats.errors24h = r.rows[0].cnt || 0;
+    } catch (e) { /* ignore */ }
+
+    // Errors previous 24h
+    try {
+      const r = await window.dbAPI.executeSQL(
+        logsDbPath,
+        `SELECT COUNT(*) as cnt FROM runtime_logs WHERE level IN ('ERROR', 'CRITICAL') AND timestamp >= DATETIME('now', '-2 days') AND timestamp < DATETIME('now', '-1 day')`,
+        true
+      );
+      if (r.success && r.rows && r.rows.length > 0) stats.errorsPrev24h = r.rows[0].cnt || 0;
+    } catch (e) { /* ignore */ }
+
+    // Average context tokens last 24h
+    try {
+      const r = await window.dbAPI.executeSQL(
+        logsDbPath,
+        `SELECT AVG(context_tokens) as avg_ctx FROM runtime_logs WHERE context_tokens IS NOT NULL AND timestamp >= DATETIME('now', '-1 day')`,
+        true
+      );
+      if (r.success && r.rows && r.rows.length > 0) stats.avgContext24h = r.rows[0].avg_ctx || 0;
+    } catch (e) { /* ignore */ }
+
+    // Average context tokens previous 24h
+    try {
+      const r = await window.dbAPI.executeSQL(
+        logsDbPath,
+        `SELECT AVG(context_tokens) as avg_ctx FROM runtime_logs WHERE context_tokens IS NOT NULL AND timestamp >= DATETIME('now', '-2 days') AND timestamp < DATETIME('now', '-1 day')`,
+        true
+      );
+      if (r.success && r.rows && r.rows.length > 0) stats.avgContextPrev24h = r.rows[0].avg_ctx || 0;
+    } catch (e) { /* ignore */ }
+
+    return stats;
   },
 
   /**
@@ -186,7 +298,84 @@ const Dashboard = {
 
     container.innerHTML = '';
 
-    // === Overview Card ===
+    // ================================================================
+    // Row 1: Stats Cards with Trends + Donut Chart (side by side)
+    // ================================================================
+    const vizRow1 = document.createElement('div');
+    vizRow1.className = 'dash-viz-row';
+
+    // --- Stats Cards ---
+    const { section: statsSection, body: statsBody } = this._createSection('Stats (Last 24h)', 'trend-stats');
+    statsSection.classList.add('dash-viz-flex-grow');
+    statsBody.id = 'chart-stats-cards';
+    this._renderTrendStats(data);
+    vizRow1.appendChild(statsSection);
+
+    // --- Donut Chart ---
+    if (data.dbStats.length > 0) {
+      const { section: donutSection, body: donutBody } = this._createSection('Database Size Breakdown', 'size-donut');
+      donutBody.innerHTML = `
+        <div class="donut-chart-layout">
+          <div class="donut-chart-canvas-wrap" style="position:relative">
+            <canvas id="chart-donut-canvas"></canvas>
+          </div>
+          <div class="donut-chart-legend" id="chart-donut-legend"></div>
+        </div>
+      `;
+      vizRow1.appendChild(donutSection);
+    }
+
+    container.appendChild(vizRow1);
+
+    // Draw the donut chart after DOM is ready
+    if (data.dbStats.length > 0) {
+      requestAnimationFrame(() => {
+        const donutData = data.dbStats.map(db => ({
+          label: db.label,
+          value: db.sizeBytes,
+        }));
+        Charts.drawDonutChart('chart-donut-canvas', donutData, {
+          size: 170,
+          lineWidth: 26,
+          centerLabel: formatBytes(data.totalSize),
+          centerSub: 'Total',
+        });
+        Charts.drawDonutLegend('chart-donut-legend', donutData);
+      });
+    }
+
+    // ================================================================
+    // Row 2: Activity Heatmap + Tool Usage Bar Chart
+    // ================================================================
+    const vizRow2 = document.createElement('div');
+    vizRow2.className = 'dash-viz-row';
+
+    // --- Activity Heatmap ---
+    const { section: heatSection, body: heatBody } = this._createSection('Activity (Last 7 Days)', 'activity-heatmap');
+    heatSection.classList.add('dash-viz-flex-grow');
+    heatBody.innerHTML = '<div id="chart-heatmap" class="chart-heatmap-container"></div>';
+    vizRow2.appendChild(heatSection);
+
+    // --- Top Tools Bar Chart ---
+    const { section: barSection, body: barBody } = this._createSection('Top Tools', 'tools-bar');
+    barBody.innerHTML = '<div id="chart-tools-bar" class="chart-bar-container"></div>';
+    vizRow2.appendChild(barSection);
+
+    container.appendChild(vizRow2);
+
+    // Draw heatmap and bar chart after DOM ready
+    requestAnimationFrame(() => {
+      Charts.drawHeatmap('chart-heatmap', data.activityHeatmap || []);
+      const barData = (data.topTools || []).map(t => ({
+        label: t.name,
+        value: t.usage_count || 0,
+      }));
+      Charts.drawBarChart('chart-tools-bar', barData);
+    });
+
+    // ================================================================
+    // Overview Card (simpler now that stats cards exist above)
+    // ================================================================
     const { section: overviewSection, body: overviewBody } = this._createSection('Overview', 'overview');
     overviewBody.innerHTML = `
       <div class="dash-overview-grid">
@@ -299,8 +488,8 @@ const Dashboard = {
     }
     summaryRow2.appendChild(insSection);
 
-    // --- Top Tools ---
-    const { section: toolSection, body: toolBody } = this._createSection('Top 5 Tools', 'tools');
+    // --- Top Tools (original list view, kept as secondary) ---
+    const { section: toolSection, body: toolBody } = this._createSection('Tool Success Rates', 'tools-detail');
     if (data.topTools.length > 0) {
       let toolHtml = '<div class="dash-list">';
       const maxUsage = Math.max(...data.topTools.map(t => t.usage_count || 0), 1);
@@ -347,6 +536,83 @@ const Dashboard = {
       warnBody.innerHTML = warnHtml;
       container.appendChild(warnSection);
     }
+  },
+
+  /**
+   * Render trend stats cards using the Charts module.
+   * @param {Object} data - Dashboard data
+   */
+  _renderTrendStats(data) {
+    const ts = data.trendStats;
+    const stats = [];
+
+    // Total Logs
+    const logsDiff = ts ? ts.totalLogs24h - ts.totalLogsPrev24h : 0;
+    stats.push({
+      label: 'Total Logs (24h)',
+      value: ts ? ts.totalLogs24h.toLocaleString() : data.dbStats.reduce((s, d) => s + d.totalRows, 0).toLocaleString(),
+      trend: logsDiff > 0 ? 'up' : logsDiff < 0 ? 'down' : 'stable',
+      trendValue: logsDiff !== 0 ? (logsDiff > 0 ? '+' : '') + logsDiff.toLocaleString() : 'stable',
+      trendGood: null, // Neutral - more logs is neither good nor bad
+    });
+
+    // Error Rate
+    if (ts) {
+      const errRate24 = ts.totalLogs24h > 0 ? (ts.errors24h / ts.totalLogs24h) * 100 : 0;
+      const errRatePrev = ts.totalLogsPrev24h > 0 ? (ts.errorsPrev24h / ts.totalLogsPrev24h) * 100 : 0;
+      const errDiff = errRate24 - errRatePrev;
+      stats.push({
+        label: 'Error Rate',
+        value: errRate24.toFixed(1) + '%',
+        trend: errDiff > 0.1 ? 'up' : errDiff < -0.1 ? 'down' : 'stable',
+        trendValue: Math.abs(errDiff) > 0.1 ? (errDiff > 0 ? '+' : '') + errDiff.toFixed(1) + '%' : 'stable',
+        trendGood: errDiff < -0.1 ? true : errDiff > 0.1 ? false : null,
+      });
+    } else {
+      stats.push({
+        label: 'Error Rate',
+        value: '--',
+        trend: 'stable',
+        trendValue: 'no data',
+        trendGood: null,
+      });
+    }
+
+    // Average Context Usage
+    if (ts && ts.avgContext24h > 0) {
+      const ctxDiff = ts.avgContext24h - ts.avgContextPrev24h;
+      const ctxK = Math.round(ts.avgContext24h / 1000);
+      stats.push({
+        label: 'Avg Context',
+        value: ctxK > 0 ? ctxK + 'K tokens' : Math.round(ts.avgContext24h) + ' tokens',
+        trend: ctxDiff > 100 ? 'up' : ctxDiff < -100 ? 'down' : 'stable',
+        trendValue: Math.abs(ctxDiff) > 100 ? (ctxDiff > 0 ? '+' : '') + Math.round(ctxDiff / 1000) + 'K' : 'stable',
+        trendGood: null,
+      });
+    } else {
+      stats.push({
+        label: 'Avg Context',
+        value: '--',
+        trend: 'stable',
+        trendValue: 'no data',
+        trendGood: null,
+      });
+    }
+
+    // Tool Calls
+    const totalToolCalls = ts ? (ts.totalToolCalls || 0) : 0;
+    stats.push({
+      label: 'Tool Calls',
+      value: totalToolCalls.toLocaleString(),
+      trend: totalToolCalls > 0 ? 'up' : 'stable',
+      trendValue: totalToolCalls > 0 ? 'active' : 'no data',
+      trendGood: totalToolCalls > 0 ? true : null,
+    });
+
+    // Use requestAnimationFrame to ensure the container is in DOM
+    requestAnimationFrame(() => {
+      Charts.drawStatsCards('chart-stats-cards', stats);
+    });
   },
 
   /**

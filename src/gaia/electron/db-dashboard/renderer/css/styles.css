@@ -1706,3 +1706,399 @@ select {
 #db-history-container {
   flex-shrink: 0;
 }
+
+/* ========================================================================
+   Charts & Visualizations (GitHub-style)
+   ======================================================================== */
+
+/* --- Visualization Row Layout --- */
+.dash-viz-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.dash-viz-row > .dash-section {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.dash-viz-flex-grow {
+  flex: 1.4 !important;
+}
+
+@media (max-width: 900px) {
+  .dash-viz-row {
+    flex-direction: column;
+  }
+}
+
+/* --- Donut Chart Layout --- */
+.donut-chart-layout {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px;
+}
+
+.donut-chart-canvas-wrap {
+  flex-shrink: 0;
+}
+
+.donut-chart-canvas-wrap canvas {
+  display: block;
+}
+
+/* Donut Legend */
+.donut-chart-legend {
+  flex: 1;
+  min-width: 0;
+}
+
+.donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.donut-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.donut-legend-name {
+  flex: 1;
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.donut-legend-size {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+
+.donut-legend-pct {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  min-width: 40px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* Donut Tooltip */
+.chart-tooltip {
+  display: none;
+  position: absolute;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.chart-tooltip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chart-tooltip-value {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.chart-tooltip-pct {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* --- Activity Heatmap --- */
+.chart-heatmap-container {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.heatmap-svg {
+  display: block;
+}
+
+/* Heatmap cells */
+.heatmap-cell {
+  stroke: var(--bg-primary);
+  stroke-width: 2;
+  transition: opacity 0.15s;
+  cursor: default;
+}
+
+.heatmap-cell:hover {
+  opacity: 0.8;
+  stroke: var(--border-secondary);
+  stroke-width: 2;
+}
+
+.heatmap-level-0 { fill: var(--bg-tertiary); }
+.heatmap-level-1 { fill: #0e4429; }
+.heatmap-level-2 { fill: #006d32; }
+.heatmap-level-3 { fill: #26a641; }
+.heatmap-level-4 { fill: #39d353; }
+
+/* Heatmap count text */
+.heatmap-count {
+  fill: rgba(255, 255, 255, 0.85);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
+/* Heatmap day labels */
+.heatmap-label {
+  fill: var(--text-muted);
+  font-size: 10px;
+  font-family: var(--font-sans);
+  text-anchor: middle;
+}
+
+/* Heatmap legend */
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.heatmap-legend-label {
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 0 4px;
+}
+
+.heatmap-legend-cell {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.heatmap-legend-cell.heatmap-level-0 { background: var(--bg-tertiary); }
+.heatmap-legend-cell.heatmap-level-1 { background: #0e4429; }
+.heatmap-legend-cell.heatmap-level-2 { background: #006d32; }
+.heatmap-legend-cell.heatmap-level-3 { background: #26a641; }
+.heatmap-legend-cell.heatmap-level-4 { background: #39d353; }
+
+/* --- Horizontal Bar Chart (GitHub language bar style) --- */
+.chart-bar-container {
+  padding: 16px;
+}
+
+.bar-chart-stacked {
+  display: flex;
+  width: 100%;
+  height: 10px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg-primary);
+  margin-bottom: 14px;
+}
+
+.bar-chart-segment {
+  height: 100%;
+  min-width: 2px;
+  transition: width 0.4s ease, opacity 0.15s;
+}
+
+.bar-chart-segment:hover {
+  opacity: 0.8;
+}
+
+/* Bar chart legend */
+.bar-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.bar-chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.bar-chart-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.bar-chart-legend-name {
+  color: var(--text-primary);
+  font-weight: 500;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar-chart-legend-pct {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.bar-chart-legend-count {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+/* --- Stats Cards (GitHub profile stats style) --- */
+.stats-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.stats-card:hover {
+  border-color: var(--border-secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+#chart-stats-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  padding: 14px;
+}
+
+@media (min-width: 1200px) {
+  #chart-stats-cards {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.stats-card-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.stats-card-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.stats-card-trend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.stats-trend-icon {
+  font-size: 12px;
+}
+
+.stats-trend-good {
+  color: var(--accent-success);
+}
+
+.stats-trend-bad {
+  color: var(--accent-danger);
+}
+
+.stats-trend-neutral {
+  color: var(--text-muted);
+}
+
+/* --- Chart entrance animations --- */
+@keyframes chartFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dash-viz-row .dash-section {
+  animation: chartFadeIn 0.35s ease-out;
+}
+
+.dash-viz-row .dash-section:nth-child(2) {
+  animation-delay: 0.08s;
+}
+
+.stats-card {
+  animation: chartFadeIn 0.3s ease-out backwards;
+}
+
+.stats-card:nth-child(1) { animation-delay: 0.05s; }
+.stats-card:nth-child(2) { animation-delay: 0.10s; }
+.stats-card:nth-child(3) { animation-delay: 0.15s; }
+.stats-card:nth-child(4) { animation-delay: 0.20s; }
+
+.bar-chart-segment {
+  animation: barGrow 0.5s ease-out backwards;
+}
+
+@keyframes barGrow {
+  from {
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  to {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+}
+
+.heatmap-cell {
+  animation: chartFadeIn 0.3s ease-out backwards;
+}
+
+.heatmap-cell:nth-child(1) { animation-delay: 0.02s; }
+.heatmap-cell:nth-child(2) { animation-delay: 0.04s; }
+.heatmap-cell:nth-child(3) { animation-delay: 0.06s; }
+.heatmap-cell:nth-child(4) { animation-delay: 0.08s; }
+.heatmap-cell:nth-child(5) { animation-delay: 0.10s; }
+.heatmap-cell:nth-child(6) { animation-delay: 0.12s; }
+.heatmap-cell:nth-child(7) { animation-delay: 0.14s; }

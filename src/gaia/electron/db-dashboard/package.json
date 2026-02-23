@@ -1,20 +1,43 @@
 {
   "name": "@gaia/db-dashboard",
-  "version": "1.0.0",
-  "description": "GAIA Agent Database Dashboard - View and edit SQLite databases",
+  "version": "2.0.0",
+  "description": "GAIA Agent Database Dashboard - React + TypeScript + Vite + Electron",
   "main": "main.js",
   "author": "AMD AI Group",
   "license": "MIT",
+  "type": "module",
   "scripts": {
+    "dev": "vite",
+    "dev:electron": "concurrently \"cross-env NODE_ENV=development vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "build": "vite build",
+    "preview": "vite preview",
     "start": "electron .",
-    "dev": "NODE_ENV=development electron .",
     "dev:browser": "node dev-server.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
-    "chokidar": "^3.6.0"
+    "framer-motion": "^11.18.0",
+    "lucide-react": "^0.469.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-window": "^1.8.10",
+    "recharts": "^2.15.0",
+    "@tanstack/react-query": "^5.62.0"
   },
   "devDependencies": {
-    "electron": "^31.0.0"
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/react-window": "^1.8.8",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
+    "electron": "^31.0.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "wait-on": "^8.0.1"
   }
 }

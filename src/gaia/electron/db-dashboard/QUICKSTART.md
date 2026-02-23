@@ -1,145 +1,82 @@
 # GAIA DB Dashboard - Quick Start
 
-**Real-time monitoring for GAIA Code agent execution**
+**Modern React + TypeScript dashboard for real-time GAIA agent monitoring**
 
 ---
 
-## Prerequisites
-
-Install build tools (required for better-sqlite3):
-
-```bash
-sudo apt-get update && sudo apt-get install -y build-essential
-```
-
-## Installation (One-Time)
+## Installation
 
 ```bash
 cd src/gaia/electron/db-dashboard
 npm install
 ```
 
-Takes 2-3 minutes. Installs Electron, better-sqlite3, and chokidar.
+**Takes:** 3-4 minutes
+**Installs:** React 18, TypeScript, Vite, Electron, Tailwind, Recharts, React Query, Framer Motion
 
 ---
 
 ## Running
 
-### Start the Dashboard
+### Development Mode (Recommended)
 
 ```bash
-cd /mnt/c/Users/14255/Work/gaia/src/gaia/electron/db-dashboard
+npm run dev:electron
+```
+
+Opens Electron window with:
+- Hot Module Replacement (HMR) - instant updates as you edit
+- React DevTools support
+- Fast refresh
+
+### Production Mode
+
+```bash
+npm run build
 npm start
 ```
 
-**Dashboard opens automatically showing:**
-- Default workspace: `/home/user/.gaia/workspace/`
-- All 7 databases (6 existing + logs.db when created)
-- Dashboard overview with stats
-- Auto-refresh: ON, every 2 seconds
+---
+
+## Features
+
+✅ **Zero flashing** - React Query + placeholderData keeps UI stable
+✅ **GitHub-style UI** - Modern dark theme, smooth animations
+✅ **Live updates** - Auto-refresh with configurable interval (1s-10s)
+✅ **Fast** - Virtualized tables handle 100K+ rows
+✅ **Smart caching** - React Query prevents unnecessary refetches
+✅ **Smooth charts** - Recharts with transitions
 
 ---
 
-## Database Paths
+## Using with GAIA Code
 
-**All databases live in:**
-```
-/home/user/.gaia/workspace/
-```
-
-**Current databases:**
-- `agents.db` (24 KB)
-- `knowledge.db` (56 KB) ← You can edit insights here
-- `memory.db` (20 KB)
-- `plan.db` (12 KB)
-- `skills.db` (20 KB)
-- `tools.db` (52 KB)
-- `logs.db` (created on first GAIA Code run with new code)
-
----
-
-## How to Use with GAIA Code
-
-### Terminal 1: Dashboard (start first)
+### Terminal 1: Dashboard
 ```bash
-cd /mnt/c/Users/14255/Work/gaia/src/gaia/electron/db-dashboard
-npm start
+cd src/gaia/electron/db-dashboard
+npm run dev:electron
 ```
-
-**Configure:**
-- Ensure "Auto" is ON ✓
-- Set refresh to 2s
-- Click "logs.db" tab to prepare for monitoring
 
 ### Terminal 2: GAIA Code
 ```bash
-cd /mnt/c/Users/14255/Work/gaia
-
-# Run your task
-gaia-code "Your task here" --tui simple
+gaia-code "Your task" --tui simple
 ```
 
-**Watch live in dashboard:**
-- logs.db updates every 2s with new log entries
-- Dashboard shows context usage, error count
-- Changed rows flash green
+**Watch:**
+- Dashboard shows live stats
+- logs.db tab updates smoothly (no flashing)
+- Charts update in real-time
 
 ---
 
-## Key Features
+## Database Location
 
-**Dashboard (Overview) Tab:**
-- Cross-database statistics
-- Recent errors from logs.db
-- Active tasks from plan.db
-- Context usage sparkline chart
-- Top tools usage
+Default: `~/.gaia/workspace/`
 
-**logs.db Tab:**
-- See all runtime logs (DEBUG, INFO, WARNING, ERROR)
-- Filter by level: Click column header → filter ERROR
-- Search messages: Type in search box
-- Watch context warnings appear in real-time
-
-**Auto-Refresh:**
-- Configurable: 0.5s, 1s, 2s, 5s, 10s
-- Toggle on/off
-- Auto-pauses during editing
-- "Updated: Xs ago" indicator
-
-**Edit Mode:**
-- Turn off "Read-Only" toggle
-- Click any cell to edit
-- Add/delete rows
-- Changes save immediately
+**Databases:**
+- memory.db, knowledge.db, tools.db, skills.db, agents.db, plan.db
+- logs.db (created on first run)
 
 ---
-
-## What to Watch For
-
-### ✅ Agent Using RAC Properly
-- Dashboard context graph stays under 24K tokens (blue bars)
-- plan.db shows 4-5 tasks with "agent_query" in descriptions
-- No context warnings in logs.db
-
-### ⚠️ Agent Needs to Adapt
-- Dashboard shows yellow bars (>24K tokens)
-- logs.db shows: "Context at 75% of limit"
-- Agent should query get_logs() and decompose
-
-### ❌ Agent Failing
-- Red bars in context graph (>30K tokens)
-- logs.db shows: "Context limit exceeded", "Emergency compaction"
-- plan.db shows 19 granular tasks (not decomposed)
-
----
-
-## Next Steps
-
-1. **Install:** `npm install` (one-time, 2-3 min)
-2. **Start dashboard:** `npm start`
-3. **Verify:** See 6 databases in tabs (logs.db appears after first run)
-4. **Run GAIA Code** in another terminal
-5. **Watch:** logs.db updates in real-time
 
 Ready to monitor! 🚀

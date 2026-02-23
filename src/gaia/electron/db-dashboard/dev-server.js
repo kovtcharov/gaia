@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * GAIA DB Dashboard - Development Server
+ * GAIA DB Dashboard - Development Server (Browser Mode)
  *
- * Serves the dashboard UI in browser mode with a mock dbAPI that uses
- * better-sqlite3 directly (no Electron IPC required).
+ * Provides an HTTP API backend that mirrors the Electron IPC handlers,
+ * allowing the React + Vite frontend to run in a browser without Electron.
+ *
+ * The React frontend (served by Vite on port 5173) calls this API server
+ * through a browser-mode dbAPI shim injected at startup.
  *
  * Usage:
  *   node dev-server.js [workspace-path]
@@ -14,6 +17,9 @@
  *   node dev-server.js ~/.gaia/workspace
  *   node dev-server.js C:/Users/me/.gaia/workspace
  *   node dev-server.js /home/user/.gaia/workspace
+ *
+ * Then open http://localhost:5173 (Vite) which proxies API calls to this server,
+ * or open http://localhost:3847 for the standalone legacy renderer.
  */
 
 const http = require('http');
@@ -69,9 +75,12 @@ const MIME_TYPES = {
   '.html': 'text/html',
   '.css': 'text/css',
   '.js': 'application/javascript',
+  '.mjs': 'application/javascript',
   '.json': 'application/json',
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
+  '.tsx': 'application/javascript',
+  '.ts': 'application/javascript',
 };
 
 // Database connection cache
@@ -214,7 +223,7 @@ const apiHandlers = {
 
 // Create server
 const server = http.createServer((req, res) => {
-  // CORS for dev
+  // CORS for dev (allow Vite dev server on port 5173)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -250,7 +259,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Static files
+  // Static files - try renderer/ directory for legacy fallback
   let filePath = req.url === '/' ? '/index.html' : req.url;
   filePath = path.join(__dirname, 'renderer', filePath);
 
@@ -319,9 +328,11 @@ window.dbAPI = {
 
 server.listen(PORT, () => {
   console.log(`\nGAIA DB Dashboard - Development Server`);
-  console.log(`  URL:       http://localhost:${PORT}`);
+  console.log(`  API URL:   http://localhost:${PORT}`);
   console.log(`  Workspace: ${WORKSPACE}`);
-  console.log(`  Mode:      Browser (read-only)\n`);
+  console.log(`  Mode:      Browser API backend (read-only)\n`);
+  console.log(`  For React UI: Run 'npm run dev' in another terminal, then open http://localhost:5173`);
+  console.log(`  For Legacy UI: Open http://localhost:${PORT} directly\n`);
 
   // List available databases
   if (fs.existsSync(WORKSPACE)) {
