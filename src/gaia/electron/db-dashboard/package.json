@@ -1,0 +1,20 @@
+{
+  "name": "@gaia/db-dashboard",
+  "version": "1.0.0",
+  "description": "GAIA Agent Database Dashboard - View and edit SQLite databases",
+  "main": "main.js",
+  "author": "AMD AI Group",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "NODE_ENV=development electron .",
+    "dev:browser": "node dev-server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "chokidar": "^3.6.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}

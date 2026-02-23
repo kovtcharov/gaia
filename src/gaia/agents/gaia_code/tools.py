@@ -34,7 +34,37 @@ class GaiaCodeTools:
 
         @tool
         def agent_query(task: str, specialist: Optional[str] = None, max_depth: Optional[int] = None) -> Dict[str, Any]:
-            """Delegate a subtask to a sub-agent with fresh context. Use for recursive decomposition."""
+            """
+            Delegate a subtask to a sub-agent with FRESH CONTEXT (200K tokens).
+
+            **USE THIS FOR:**
+            - Generating files >500 lines
+            - Multi-file tasks (>3 related files)
+            - Complex components requiring deep focus
+            - When approaching context limits
+
+            **BENEFITS:**
+            - Sub-agent gets dedicated 200K token context
+            - Parent stays context-lean (only coordinates)
+            - Better code quality (sub-agent focuses on one thing)
+            - Prevents context exhaustion
+
+            **EXAMPLES:**
+
+            # Generate large implementation file
+            agent_query(task="Generate agent.cpp with processQuery() loop, 5-state machine, plan execution. ~600 lines. Match Python agent.py architecture.", specialist="cpp-developer")
+
+            # Generate multiple test files
+            agent_query(task="Generate all unit test files (test_agent.cpp, test_tool_registry.cpp, test_mcp_client.cpp). Use GoogleTest. Aim for 80+ tests total.", specialist="test-engineer")
+
+            # Generate related headers
+            agent_query(task="Generate C++ type system: types.h (enums, structs), json_utils.h (parsing), tool_registry.h (registration). 3 files, ~400 lines total.", specialist="cpp-developer")
+
+            **Args:**
+            - task: Detailed description of what the sub-agent should do
+            - specialist: Optional specialist agent type (e.g., "cpp-developer", "test-engineer")
+            - max_depth: Maximum recursion depth (default: 3)
+            """
             return self.tool_agent_query(task, specialist, max_depth)
 
         @tool
@@ -66,6 +96,160 @@ class GaiaCodeTools:
         def send_message(content: str, priority: str = "FYI") -> Dict[str, Any]:
             """Send a message to the user."""
             return self.tool_send_message(content, priority)
+
+        @tool
+        def get_audit_log(limit: int = 20) -> Dict[str, Any]:
+            """
+            Retrieve recent audit log entries for introspection.
+
+            The audit log contains timestamped records of all agent actions:
+            tool executions, state transitions, errors, context warnings, etc.
+
+            Useful for:
+            - Debugging why something went wrong
+            - Understanding what actions were taken
+            - Analyzing context usage patterns
+            - Reviewing error history
+
+            Args:
+                limit: Maximum number of recent entries to return (default: 20)
+
+            Returns:
+                Dict with 'entries' list containing recent audit log records
+            """
+            log = self.get_audit_log()
+            recent = log[-limit:] if len(log) > limit else log
+            return {
+                "status": "success",
+                "total_entries": len(log),
+                "returned": len(recent),
+                "entries": recent
+            }
+
+        @tool
+        def get_context_metrics() -> Dict[str, Any]:
+            """
+            Get current input context usage metrics.
+
+            Returns token counts, percentage of limit, and warnings if approaching limit.
+
+            Useful for:
+            - Detecting when to use agent_query() decomposition
+            - Understanding why context warnings appeared
+            - Diagnosing context exhaustion issues
+
+            Returns:
+                Dict with current_tokens, max_tokens, percentage, warnings_triggered
+            """
+            # Query context warnings from logs
+            context_warnings = []
+            if self.shared_state:
+                context_warnings = self.shared_state.logs.query_logs(
+                    search="context",
+                    limit=20
+                )
+
+            return {
+                "status": "success",
+                "max_input_tokens": self.max_input_tokens,
+                "warning_threshold": self.WARNING_INPUT_TOKENS,
+                "emergency_threshold": self.EMERGENCY_INPUT_TOKENS,
+                "warnings_triggered": list(self._context_warnings_shown),
+                "warning_count": len(context_warnings),
+                "recent_warnings": context_warnings[-5:] if context_warnings else [],
+                "message": (
+                    "No context warnings. Task is properly decomposed." if not context_warnings
+                    else f"⚠️  {len(context_warnings)} context warning(s) triggered. Consider using agent_query()."
+                )
+            }
+
+        @tool
+        def get_logs(
+            level: Optional[str] = None,
+            search: Optional[str] = None,
+            limit: int = 50,
+            since_step: Optional[int] = None
+        ) -> Dict[str, Any]:
+            """
+            Query runtime logs for self-introspection and adaptive strategy.
+
+            The agent can query ALL runtime logs (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+            to understand what's happening under its hood and adapt its approach.
+
+            **Use this to:**
+            - Debug failures: get_logs(level="ERROR", limit=10)
+            - Understand warnings: get_logs(level="WARNING")
+            - Track context growth: get_logs(search="context", limit=20)
+            - Review recent activity: get_logs(limit=50)
+            - Analyze specific steps: get_logs(since_step=10)
+
+            **Adaptive strategy examples:**
+
+            # Detect repeated failures
+            errors = get_logs(level="ERROR", limit=5)
+            # If same error 3+ times → change approach (use agent_query, split file, etc.)
+
+            # Monitor context usage
+            context_logs = get_logs(search="context limit")
+            # If warnings present → decompose remaining work via agent_query
+
+            # Understand tool patterns
+            tool_logs = get_logs(search="Tool execution", limit=20)
+            # See which tools succeed/fail, adapt tool selection
+
+            Args:
+                level: Filter by log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+                search: Full-text search in log messages (e.g., "context", "failed", "truncated")
+                limit: Maximum entries to return (default: 50)
+                since_step: Only show logs from this step onwards
+
+            Returns:
+                Dict with logs array, summary stats, and adaptive insights
+            """
+            if not self.shared_state:
+                return {
+                    "status": "error",
+                    "error": "Shared state not enabled. Logs not available."
+                }
+
+            logs = self.shared_state.logs.query_logs(
+                level=level,
+                search=search,
+                limit=limit,
+                since_step=since_step
+            )
+
+            # Analyze for patterns
+            error_count = sum(1 for log in logs if log["level"] == "ERROR")
+            warning_count = sum(1 for log in logs if log["level"] == "WARNING")
+            critical_count = sum(1 for log in logs if log["level"] == "CRITICAL")
+            context_mentions = sum(1 for log in logs if "context" in log["message"].lower())
+
+            # Generate adaptive insights
+            insights = []
+            if error_count >= 3:
+                insights.append(f"⚠️  {error_count} errors detected - consider changing approach or using agent_query()")
+            if warning_count >= 2:
+                insights.append(f"⚠️  {warning_count} warnings - review and adapt strategy")
+            if context_mentions >= 1:
+                insights.append(f"⚠️  Context warnings detected - use agent_query() to decompose remaining work")
+
+            return {
+                "status": "success",
+                "count": len(logs),
+                "logs": logs,
+                "summary": {
+                    "errors": error_count,
+                    "warnings": warning_count,
+                    "critical": critical_count,
+                    "context_warnings": context_mentions
+                },
+                "insights": insights if insights else ["No issues detected. Proceeding normally."],
+                "recommendation": (
+                    "Continue current approach" if not insights
+                    else "Adapt strategy based on insights above"
+                )
+            }
 
         # M7: Codebase analysis tools
         @tool

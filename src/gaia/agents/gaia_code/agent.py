@@ -150,11 +150,11 @@ class GaiaCodeAgent(
             # Continuous execution: high limit (quality-driven, not step-driven)
             kwargs["max_steps"] = 1000 if enable_continuous_execution else 100
 
-        # Default to Claude Opus 4.6 for best performance
+        # Default to Claude Sonnet 4.6 for best speed/cost balance
         if "use_claude" not in kwargs and "use_chatgpt" not in kwargs:
             kwargs["use_claude"] = True
             if "claude_model" not in kwargs:
-                kwargs["claude_model"] = "claude-opus-4-6"
+                kwargs["claude_model"] = "claude-sonnet-4-6"
 
         if "max_plan_iterations" not in kwargs:
             # Allow many plan iterations for complex tasks
@@ -162,7 +162,7 @@ class GaiaCodeAgent(
 
         # Override model_id AFTER defaults to ensure Claude model is used
         if kwargs.get("use_claude"):
-            kwargs["model_id"] = kwargs.get("claude_model", "claude-opus-4-6")
+            kwargs["model_id"] = kwargs.get("claude_model", "claude-sonnet-4-6")
 
         # Check credentials before initializing
         from .credentials import check_and_setup_credentials

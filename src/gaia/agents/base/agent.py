@@ -61,6 +61,12 @@ class Agent(abc.ABC):
     STATE_ERROR_RECOVERY = "ERROR_RECOVERY"
     STATE_COMPLETION = "COMPLETION"
 
+    # Context limits - Philosophy: Agents should DECOMPOSE to stay under these limits
+    # If approaching these limits, use agent_query() for recursive decomposition
+    DEFAULT_MAX_INPUT_TOKENS = 32768   # Hard limit on input context (32K tokens)
+    WARNING_INPUT_TOKENS = 24576       # Warn at 75% of limit (24K tokens)
+    EMERGENCY_INPUT_TOKENS = 30720     # Emergency pruning at 93.75% of limit (30K tokens)
+
     def __init__(
         self,
         use_claude: bool = False,
@@ -81,6 +87,8 @@ class Agent(abc.ABC):
         max_consecutive_repeats: int = 4,
         min_context_size: int = 32768,
         skip_lemonade: bool = False,
+        # Context management
+        max_input_tokens: Optional[int] = None,  # Hard limit on input tokens (default: 32768)
         # RAC (Recursive Agent Composition) parameters - opt-in
         enable_shared_state: bool = False,
         workspace_dir: Optional[str] = None,
@@ -109,6 +117,8 @@ class Agent(abc.ABC):
             min_context_size: Minimum context size required for this agent (default: 32768).
             skip_lemonade: If True, skip Lemonade server initialization (default: False).
                           Use this when connecting to a different OpenAI-compatible backend.
+            max_input_tokens: Hard limit on input context tokens. If None, uses DEFAULT_MAX_INPUT_TOKENS (32768).
+                             Agents should decompose tasks to stay well under this limit.
             enable_shared_state: If True, initializes SharedAgentState with persistent memory,
                                 knowledge DB, tool/skill registries (default: False).
             workspace_dir: Directory for agent workspace when shared state is enabled
@@ -117,6 +127,10 @@ class Agent(abc.ABC):
 
         Note: Uses local LLM server by default unless use_claude or use_chatgpt is True.
         """
+        # Context management
+        self.max_input_tokens = max_input_tokens or self.DEFAULT_MAX_INPUT_TOKENS
+        self._context_warnings_shown = set()  # Track which warnings we've shown
+
         self.error_history = []  # Store error history for learning
         self.conversation_history = (
             []
@@ -227,13 +241,33 @@ You must respond ONLY in valid JSON. No text before { or after }.
         self.audit_log = []
         self.session_start = datetime.datetime.now()
         self.task_start = None
+        self.db_log_handler = None  # Database log handler for introspection
 
         if enable_shared_state:
-            from gaia.agents.base.shared_state import get_shared_state
+            from gaia.agents.base.shared_state import get_shared_state, DatabaseLogHandler
             from pathlib import Path as _Path
+            from uuid import uuid4
 
             ws_dir = _Path(workspace_dir) if workspace_dir else None
             self.shared_state = get_shared_state(ws_dir)
+
+            # Set up database log handler for full introspection
+            self.session_id = str(uuid4())
+            self.db_log_handler = DatabaseLogHandler(
+                logs_db=self.shared_state.logs,
+                session_id=self.session_id,
+                agent_name=self.__class__.__name__
+            )
+
+            # Attach to all gaia.* loggers to capture everything
+            for logger_name in ["gaia", "gaia.agents", "gaia.chat", "gaia.llm", "gaia.rag", "gaia.mcp"]:
+                lg = logging.getLogger(logger_name)
+                lg.addHandler(self.db_log_handler)
+                # Ensure DEBUG level is captured (console handler may filter, but DB gets all)
+                if lg.level > logging.DEBUG:
+                    lg.setLevel(logging.DEBUG)
+
+            logger.info("[Agent] Database logging enabled for session %s", self.session_id)
 
         self._enable_audit_log = enable_audit_log
 
@@ -381,6 +415,193 @@ You must respond ONLY in valid JSON. No text before { or after }.
             silence_final_answer = getattr(self, "output_dir", None) is not None
             return SilentConsole(silence_final_answer=silence_final_answer)
         return AgentConsole()
+
+    def _estimate_message_tokens(self, messages: List[Dict]) -> int:
+        """
+        Estimate token count for messages array.
+        Uses rough heuristic: 1 token ≈ 4 characters.
+
+        This is intentionally conservative (overestimates) to ensure we stay under limits.
+        """
+        total_chars = 0
+        for msg in messages:
+            # Serialize message to get accurate char count
+            msg_json = json.dumps(msg, default=self._json_serialize_fallback)
+            total_chars += len(msg_json)
+
+        # Conservative estimate: 1 token = 4 chars
+        estimated_tokens = total_chars // 4
+        return estimated_tokens
+
+    def _check_context_size(self, messages: List[Dict], system_prompt: str, step_num: int) -> bool:
+        """
+        Monitor input context size and warn if approaching limits.
+
+        Philosophy: Agents should DECOMPOSE tasks (via agent_query) to stay under 32K input tokens.
+        Hitting warning thresholds indicates the task should have been decomposed earlier.
+
+        Returns:
+            True if hard limit exceeded (emergency compaction needed), False otherwise
+        """
+        # Estimate tokens
+        message_tokens = self._estimate_message_tokens(messages)
+        system_tokens = len(system_prompt) // 4
+        total_tokens = message_tokens + system_tokens
+
+        # Calculate percentage of limit
+        percent = (total_tokens / self.max_input_tokens) * 100
+
+        # Warning at 75%
+        if total_tokens >= self.WARNING_INPUT_TOKENS and "warning" not in self._context_warnings_shown:
+            self._context_warnings_shown.add("warning")
+            self.console.print_warning(
+                f"⚠️  Context approaching limit: {total_tokens:,}/{self.max_input_tokens:,} tokens ({percent:.1f}%)\n"
+                f"   Consider using agent_query() to decompose remaining work into subtasks.\n"
+                f"   Each sub-agent gets fresh {self.DEFAULT_MAX_INPUT_TOKENS:,} token context."
+            )
+            logger.warning(f"[CONTEXT] At {percent:.1f}% of limit ({total_tokens:,} tokens at step {step_num})")
+
+            # Log to audit for introspection
+            self._log_audit("context_warning", {
+                "level": "warning",
+                "step": step_num,
+                "tokens": total_tokens,
+                "limit": self.max_input_tokens,
+                "percent": round(percent, 1),
+                "message": f"Context at 75% of limit ({total_tokens:,} tokens)"
+            })
+
+        # Emergency warning at 93.75%
+        elif total_tokens >= self.EMERGENCY_INPUT_TOKENS and "emergency" not in self._context_warnings_shown:
+            self._context_warnings_shown.add("emergency")
+            self.console.print_error(
+                f"🚨 CRITICAL: Context near limit: {total_tokens:,}/{self.max_input_tokens:,} tokens ({percent:.1f}%)\n"
+                f"   Next LLM call may fail. STRONGLY RECOMMENDED: Use agent_query() to delegate remaining work.\n"
+                f"   Automatic compaction will activate if limit is exceeded."
+            )
+            logger.error(f"[CONTEXT] At CRITICAL level: {percent:.1f}% ({total_tokens:,} tokens at step {step_num})")
+
+            # Log to audit for introspection
+            self._log_audit("context_warning", {
+                "level": "emergency",
+                "step": step_num,
+                "tokens": total_tokens,
+                "limit": self.max_input_tokens,
+                "percent": round(percent, 1),
+                "message": f"Context at CRITICAL 93.75% of limit ({total_tokens:,} tokens)"
+            })
+
+        # Hard limit enforcement
+        if total_tokens >= self.max_input_tokens:
+            self.console.print_error(
+                f"❌ Context limit exceeded: {total_tokens:,}/{self.max_input_tokens:,} tokens\n"
+                f"   Automatic compaction activated. Will summarize older messages.\n"
+                f"   RECOMMENDATION: Redesign task to use agent_query() decomposition."
+            )
+            logger.error(
+                f"[CONTEXT] LIMIT EXCEEDED at step {step_num}: {total_tokens:,} tokens\n"
+                f"[CONTEXT] This should NEVER happen with proper task decomposition.\n"
+                f"[CONTEXT] Agent should have used agent_query() to delegate subtasks.\n"
+                f"[CONTEXT] Emergency compaction activating..."
+            )
+
+            # Log to audit for introspection and debugging
+            self._log_audit("context_limit_exceeded", {
+                "level": "critical",
+                "step": step_num,
+                "tokens": total_tokens,
+                "limit": self.max_input_tokens,
+                "percent": round(percent, 1),
+                "message_count": len(messages),
+                "message": f"Context limit EXCEEDED at {total_tokens:,} tokens - emergency compaction triggered"
+            })
+
+            return True  # Compaction needed
+
+        return False  # No compaction needed
+
+    def _compact_messages_to_limit(self, messages: List[Dict], system_prompt: str) -> List[Dict]:
+        """
+        Emergency compaction: Summarize old messages to fit under max_input_tokens.
+
+        This is a FALLBACK that should NEVER be needed with proper agent_query() usage.
+        When this function runs, it logs detailed diagnostics for debugging.
+
+        Strategy:
+        1. Keep first user message (the original task)
+        2. Summarize messages 1 through -6 into a single summary message
+        3. Keep last 5 messages unchanged (recent context)
+        """
+        logger.error(
+            f"[CONTEXT] EMERGENCY COMPACTION TRIGGERED\n"
+            f"[CONTEXT] This indicates improper task decomposition.\n"
+            f"[CONTEXT] Messages before compaction: {len(messages)}\n"
+            f"[CONTEXT] Total estimated tokens: {self._estimate_message_tokens(messages):,}"
+        )
+
+        if len(messages) <= 6:  # Can't compact further
+            logger.error("[CONTEXT] Too few messages to compact. Task design is fundamentally broken.")
+            self.console.print_error(
+                "⚠️  Cannot compact further. Context limit exceeded with minimal conversation.\n"
+                "   The task is too large for a single agent. Must use agent_query() decomposition."
+            )
+            # Return messages as-is and let the API fail with a clear error
+            return messages
+
+        # Separate messages into: first, middle (to summarize), last 5 (keep)
+        first_msg = messages[0]
+        middle_msgs = messages[1:-5]
+        last_5_msgs = messages[-5:]
+
+        # Summarize middle messages using LLM
+        summary_prompt = f"""Summarize this conversation history concisely (max 500 tokens):
+
+{json.dumps(middle_msgs, indent=2, default=self._json_serialize_fallback)[:10000]}
+
+Include:
+- Key decisions made
+- Files created/modified
+- Tools used
+- Any blockers encountered
+
+Format as bullet list."""
+
+        try:
+            summary_response = self.chat.send_messages(
+                messages=[{"role": "user", "content": summary_prompt}],
+                system_prompt="You summarize conversation history concisely."
+            )
+            summary = summary_response.text
+        except Exception as e:
+            # Fallback if summarization fails
+            logger.error(f"[CONTEXT] Summarization failed: {e}. Using simple truncation.")
+            summary = f"[Compacted {len(middle_msgs)} messages from steps 2-{len(messages)-5}]"
+
+        # Build compacted message list
+        compacted = [
+            first_msg,  # Original task
+            {"role": "system", "content": f"📋 Previous work summary (steps 2-{len(messages)-5}):\n{summary}"},
+            *last_5_msgs  # Recent context
+        ]
+
+        pruned_count = len(messages) - len(compacted)
+        compacted_tokens = self._estimate_message_tokens(compacted)
+
+        logger.error(
+            f"[CONTEXT] Compaction complete:\n"
+            f"[CONTEXT] - Removed {pruned_count} messages\n"
+            f"[CONTEXT] - Kept {len(compacted)} messages\n"
+            f"[CONTEXT] - Tokens after compaction: {compacted_tokens:,}\n"
+            f"[CONTEXT] - Reduction: {self._estimate_message_tokens(messages) - compacted_tokens:,} tokens"
+        )
+
+        self.console.print_warning(
+            f"⚠️  Emergency compaction: {pruned_count} messages summarized\n"
+            f"   Tokens reduced: {self._estimate_message_tokens(messages):,} → {compacted_tokens:,}\n"
+            f"   This should NEVER happen. Use agent_query() for large tasks."
+        )
+
+        return compacted
 
     @abc.abstractmethod
     def _register_tools(self):
@@ -1646,9 +1867,30 @@ You must respond ONLY in valid JSON. No text before { or after }.
         # Only add planning reminder in PLANNING state
         if self.execution_state == self.STATE_PLANNING:
             prompt += (
-                "IMPORTANT: ALWAYS BEGIN WITH A PLAN before executing any tools.\n"
-                "First create a detailed plan with all necessary steps, then execute the first step.\n"
-                "When creating a plan with multiple steps:\n"
+                "IMPORTANT: Analyze task complexity before planning.\n"
+                "\n"
+                "**For COMPLEX tasks (>5 files, >1000 LOC, multi-component systems):**\n"
+                "Use RECURSIVE DECOMPOSITION via agent_query() to delegate independent subtasks to sub-agents.\n"
+                "Each sub-agent gets FRESH CONTEXT - this prevents context exhaustion.\n"
+                "\n"
+                "Example for \"Port framework to C++ (19 files)\":\n"
+                "{\n"
+                "  \"thought\": \"This requires 19 files. I'll decompose into 4 component-based subtasks.\",\n"
+                "  \"goal\": \"Coordinate recursive decomposition\",\n"
+                "  \"plan\": [\n"
+                "    {\"tool\": \"agent_query\", \"tool_args\": {\"task\": \"Generate type system headers (types.h, json_utils.h, tool_registry.h)\"}},\n"
+                "    {\"tool\": \"agent_query\", \"tool_args\": {\"task\": \"Generate MCP client (mcp_client.h/cpp)\"}},\n"
+                "    {\"tool\": \"agent_query\", \"tool_args\": {\"task\": \"Generate Agent base class (agent.h/cpp)\"}},\n"
+                "    {\"tool\": \"agent_query\", \"tool_args\": {\"task\": \"Generate all unit tests (test_*.cpp)\"}}\n"
+                "  ],\n"
+                "  \"tool\": \"agent_query\",\n"
+                "  \"tool_args\": {\"task\": \"Generate type system headers (types.h, json_utils.h, tool_registry.h)\"}\n"
+                "}\n"
+                "\n"
+                "**For SIMPLE tasks (<5 files, single component):**\n"
+                "Create a direct plan with write_file, run_cli_command, etc.\n"
+                "\n"
+                "When creating any plan:\n"
                 "   1. ALWAYS follow the plan in the correct order, starting with the FIRST step.\n"
                 "   2. Include both a plan and a 'tool' field, the 'tool' field MUST match the tool in the first step of the plan.\n"
                 "   3. Create plans with clear, executable steps that include both the tool name and the exact arguments for each step.\n"
@@ -1662,6 +1904,10 @@ You must respond ONLY in valid JSON. No text before { or after }.
             # In chat mode, we'll just add to messages array
             steps_taken += 1
             logger.debug(f"Step {steps_taken}/{steps_limit}")
+
+            # Update step number in log handler for automatic tagging
+            if self.db_log_handler:
+                self.db_log_handler.set_step(steps_taken)
 
             # Display current step
             self.console.print_step_header(steps_taken, steps_limit)
@@ -2018,6 +2264,11 @@ You must respond ONLY in valid JSON. No text before { or after }.
                             prompt, f"Prompt (Step {steps_taken})"
                         )
 
+                # Check context size and compact if needed
+                needs_compaction = self._check_context_size(messages, self.system_prompt, steps_taken)
+                if needs_compaction:
+                    messages = self._compact_messages_to_limit(messages, self.system_prompt)
+
                 # Get streaming response from ChatSDK with proper conversation history
                 try:
                     response_stream = self.chat.send_messages_stream(
@@ -2098,6 +2349,11 @@ You must respond ONLY in valid JSON. No text before { or after }.
                         print(
                             f"[DEBUG] Current step: {self.current_step}/{self.total_plan_steps}"
                         )
+
+                # Check context size and compact if needed
+                needs_compaction = self._check_context_size(messages, self.system_prompt, steps_taken)
+                if needs_compaction:
+                    messages = self._compact_messages_to_limit(messages, self.system_prompt)
 
                 # Get complete response from ChatSDK
                 try:
@@ -2266,16 +2522,22 @@ You must respond ONLY in valid JSON. No text before { or after }.
                 # Set the parsed response to the new plan for further processing
                 parsed = parsed_plan
             else:
-                # Display the agent's reasoning in real-time (only if provided)
-                # Skip if we just displayed thought/goal for a plan request above
+                # Display the agent's reasoning in real-time
+                # Always show thought/goal (even if empty) for transparency
                 thought = parsed.get("thought", "").strip()
                 goal = parsed.get("goal", "").strip()
 
+                # Always display thought (with warning if empty/placeholder)
                 if thought and thought != "No explicit reasoning provided":
                     self.console.print_thought(thought)
+                elif not parsed.get("answer"):  # Not in final answer mode
+                    self.console.print_thought("[⚠️  Empty thought - possible LLM issue]")
 
+                # Always display goal (with warning if empty/placeholder)
                 if goal and goal != "No explicit goal provided":
                     self.console.print_goal(goal)
+                elif not parsed.get("answer"):  # Not in final answer mode
+                    self.console.print_goal("[⚠️  No goal specified - possible LLM issue]")
 
             # Process plan if available
             if "plan" in parsed:
@@ -2372,7 +2634,21 @@ You must respond ONLY in valid JSON. No text before { or after }.
                 self.total_plan_steps = len(self.current_plan)
                 self.execution_state = self.STATE_EXECUTING_PLAN
                 logger.debug(
-                    f"New plan created with {self.total_plan_steps} steps: {self.current_plan}"
+                    f"New plan created with {self.total_plan_steps} steps"
+                )
+
+                # Display the plan to the user before execution starts
+                if self.plan_iterations > 0:
+                    self.console.print_info(
+                        f"📋 Refined Plan (Iteration {self.plan_iterations + 1}/{self.max_plan_iterations if self.max_plan_iterations > 0 else 'unlimited'})"
+                    )
+                else:
+                    self.console.print_info("📋 Execution Plan Created")
+
+                # Show the full plan with formatting
+                self.console.print_plan(self.current_plan, current_step=-1)
+                self.console.print_info(
+                    f"Starting execution of {self.total_plan_steps} step{'s' if self.total_plan_steps > 1 else ''}..."
                 )
 
             # If the response contains a tool call, execute it

@@ -31,7 +31,7 @@ import sqlite3
 import threading
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
@@ -249,6 +249,316 @@ class MemoryDB:
             )
             self.conn.commit()
         logger.debug("[MemoryDB] tool result stored tool=%s", tool_name)
+
+
+class LogsDB:
+    """
+    Runtime logs database for agent introspection.
+
+    Stores ALL runtime logs (DEBUG, INFO, WARNING, ERROR, CRITICAL) to enable:
+    - Self-debugging: Agent can query "what errors occurred?"
+    - Pattern detection: Identify repeated failures
+    - Context monitoring: Track token usage over time
+    - Performance analysis: Measure tool execution times
+
+    Future extensibility:
+    - Code introspection: Link logs to source code locations
+    - Trace visualization: Show execution flow
+    - Performance profiling: Identify bottlenecks
+    """
+
+    def __init__(self, db_path: Path):
+        self.db_path = db_path
+        self.conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        self.lock = threading.Lock()
+        self._init_db()
+        logger.debug("[LogsDB] initialized at %s", db_path)
+
+    def _init_db(self):
+        """Initialize database schema with extensibility for future introspection."""
+        with self.lock:
+            # Core logs table
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS runtime_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    level TEXT NOT NULL,
+                    logger_name TEXT NOT NULL,
+                    module TEXT,
+                    function_name TEXT,
+                    line_number INTEGER,
+                    message TEXT NOT NULL,
+                    step_number INTEGER,
+                    context_tokens INTEGER,
+                    session_id TEXT,
+                    agent_name TEXT,
+                    extras TEXT,
+                    -- Future extensibility columns:
+                    source_file TEXT,        -- Link to source code (future)
+                    source_line INTEGER,     -- Line in source (future)
+                    execution_time_ms REAL,  -- Performance tracking (future)
+                    parent_log_id INTEGER,   -- Causality chain (future)
+                    trace_id TEXT            -- Distributed tracing (future)
+                )
+            """)
+
+            # Indexes for fast queries
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_logs_timestamp
+                ON runtime_logs(timestamp DESC)
+            """)
+
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_logs_level
+                ON runtime_logs(level)
+            """)
+
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_logs_session
+                ON runtime_logs(session_id)
+            """)
+
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_logs_step
+                ON runtime_logs(step_number)
+            """)
+
+            # FTS5 virtual table for full-text search
+            self.conn.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS logs_fts USING fts5(
+                    message,
+                    logger_name,
+                    module,
+                    function_name,
+                    content=runtime_logs,
+                    content_rowid=id
+                )
+            """)
+
+            # Triggers to keep FTS5 in sync
+            self.conn.execute("""
+                CREATE TRIGGER IF NOT EXISTS logs_ai AFTER INSERT ON runtime_logs BEGIN
+                    INSERT INTO logs_fts(rowid, message, logger_name, module, function_name)
+                    VALUES (new.id, new.message, new.logger_name, new.module, new.function_name);
+                END
+            """)
+
+            self.conn.execute("""
+                CREATE TRIGGER IF NOT EXISTS logs_ad AFTER DELETE ON runtime_logs BEGIN
+                    DELETE FROM logs_fts WHERE rowid = old.id;
+                END
+            """)
+
+            self.conn.commit()
+
+    def log(
+        self,
+        level: str,
+        logger_name: str,
+        message: str,
+        module: str = None,
+        function_name: str = None,
+        line_number: int = None,
+        step_number: int = None,
+        context_tokens: int = None,
+        session_id: str = None,
+        agent_name: str = None,
+        extras: Dict = None,
+    ):
+        """Store a log entry with full context."""
+        with self.lock:
+            self.conn.execute(
+                """
+                INSERT INTO runtime_logs
+                (timestamp, level, logger_name, module, function_name, line_number,
+                 message, step_number, context_tokens, session_id, agent_name, extras)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    datetime.now().isoformat(),
+                    level,
+                    logger_name,
+                    module,
+                    function_name,
+                    line_number,
+                    message,
+                    step_number,
+                    context_tokens,
+                    session_id,
+                    agent_name,
+                    json.dumps(extras) if extras else None,
+                ),
+            )
+            self.conn.commit()
+
+    def query_logs(
+        self,
+        level: str = None,
+        search: str = None,
+        since: str = None,
+        since_step: int = None,
+        limit: int = 100,
+    ) -> List[Dict]:
+        """Query logs with filters and full-text search."""
+
+        if search:
+            # Use FTS5 for full-text search
+            sanitized = _sanitize_fts5_query(search)
+            if not sanitized:
+                logger.debug("[LogsDB] empty search query")
+                return []
+
+            query = """
+                SELECT l.id, l.timestamp, l.level, l.logger_name, l.module,
+                       l.function_name, l.line_number, l.message, l.step_number,
+                       l.context_tokens, l.session_id, l.agent_name, l.extras
+                FROM runtime_logs l
+                JOIN logs_fts f ON l.id = f.rowid
+                WHERE logs_fts MATCH ?
+            """
+            params = [sanitized]
+
+            # Add additional filters
+            if level:
+                query += " AND l.level = ?"
+                params.append(level)
+
+            if since:
+                query += " AND l.timestamp >= ?"
+                params.append(since)
+
+            if since_step is not None:
+                query += " AND l.step_number >= ?"
+                params.append(since_step)
+
+            query += " ORDER BY l.timestamp DESC LIMIT ?"
+            params.append(limit)
+
+        else:
+            # Standard query without FTS
+            query = "SELECT * FROM runtime_logs WHERE 1=1"
+            params = []
+
+            if level:
+                query += " AND level = ?"
+                params.append(level)
+
+            if since:
+                query += " AND timestamp >= ?"
+                params.append(since)
+
+            if since_step is not None:
+                query += " AND step_number >= ?"
+                params.append(since_step)
+
+            query += " ORDER BY timestamp DESC LIMIT ?"
+            params.append(limit)
+
+        with self.lock:
+            cursor = self.conn.execute(query, params)
+            rows = cursor.fetchall()
+
+        return [
+            {
+                "id": row[0],
+                "timestamp": row[1],
+                "level": row[2],
+                "logger_name": row[3],
+                "module": row[4],
+                "function_name": row[5],
+                "line_number": row[6],
+                "message": row[7],
+                "step_number": row[8],
+                "context_tokens": row[9],
+                "session_id": row[10],
+                "agent_name": row[11],
+                "extras": json.loads(row[12]) if row[12] else None,
+            }
+            for row in rows
+        ]
+
+    def rotate_old_logs(self, keep_days: int = 7) -> int:
+        """Remove logs older than keep_days to prevent unbounded growth."""
+        cutoff = (datetime.now() - timedelta(days=keep_days)).isoformat()
+
+        with self.lock:
+            deleted = self.conn.execute(
+                "DELETE FROM runtime_logs WHERE timestamp < ?", (cutoff,)
+            ).rowcount
+            self.conn.commit()
+
+        if deleted > 0:
+            logger.info("[LogsDB] Rotated %d old log entries", deleted)
+
+        return deleted
+
+    def get_summary(self) -> Dict[str, Any]:
+        """Get database summary statistics."""
+        with self.lock:
+            cursor = self.conn.execute("""
+                SELECT
+                    COUNT(*) as total,
+                    COUNT(CASE WHEN level='ERROR' THEN 1 END) as errors,
+                    COUNT(CASE WHEN level='WARNING' THEN 1 END) as warnings,
+                    COUNT(CASE WHEN level='CRITICAL' THEN 1 END) as critical,
+                    MIN(timestamp) as oldest,
+                    MAX(timestamp) as newest
+                FROM runtime_logs
+            """)
+            row = cursor.fetchone()
+
+        return {
+            "total_logs": row[0],
+            "errors": row[1],
+            "warnings": row[2],
+            "critical": row[3],
+            "oldest_log": row[4],
+            "newest_log": row[5],
+        }
+
+
+class DatabaseLogHandler(logging.Handler):
+    """
+    Custom logging handler that writes to logs.db for agent introspection.
+
+    Captures ALL Python logging and stores in SQLite. The agent can then
+    query these logs via tools to understand its runtime state and adapt strategy.
+    """
+
+    def __init__(self, logs_db: LogsDB, session_id: str, agent_name: str):
+        super().__init__()
+        self.logs_db = logs_db
+        self.session_id = session_id
+        self.agent_name = agent_name
+        self.step_number = 0  # Updated by agent during execution
+
+    def emit(self, record: logging.LogRecord):
+        """Called for every log message - stores to database."""
+        try:
+            # Extract extras if provided via logging.log(..., extra={...})
+            context_tokens = getattr(record, "context_tokens", None)
+            step = getattr(record, "step_number", self.step_number)
+
+            self.logs_db.log(
+                level=record.levelname,
+                logger_name=record.name,
+                message=record.getMessage(),
+                module=record.module,
+                function_name=record.funcName,
+                line_number=record.lineno,
+                step_number=step,
+                context_tokens=context_tokens,
+                session_id=self.session_id,
+                agent_name=self.agent_name,
+                extras=getattr(record, "extras", None),
+            )
+        except Exception:
+            # Don't let logging failures break the agent
+            pass
+
+    def set_step(self, step: int):
+        """Update current step number for automatic log tagging."""
+        self.step_number = step
 
 
 class KnowledgeDB:
@@ -1405,6 +1715,7 @@ class SharedAgentState:
         self.tools = ToolsDB(workspace_dir / "tools.db")
         self.skills = SkillsDB(workspace_dir / "skills.db")
         self.agents = AgentsDB(workspace_dir / "agents.db")
+        self.logs = LogsDB(workspace_dir / "logs.db")  # Runtime logs for introspection
 
         # Initialize plan and manifest
         self.plan = MasterPlan(workspace_dir / "plan.db")
@@ -1413,6 +1724,14 @@ class SharedAgentState:
         # Initialize call stack and message queue
         self.call_stack = AgentCallStack(max_depth=10)
         self.message_queue = MessageQueue()
+
+        # Rotate old logs to prevent unbounded growth
+        try:
+            deleted = self.logs.rotate_old_logs(keep_days=7)
+            if deleted > 0:
+                logger.debug("[SharedState] rotated %d old log entries", deleted)
+        except Exception as e:
+            logger.warning("[SharedState] log rotation failed: %s", e)
 
         # Mark as initialized
         self._initialized = True
