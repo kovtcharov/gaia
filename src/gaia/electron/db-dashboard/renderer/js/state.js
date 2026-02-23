@@ -89,4 +89,8 @@ const AppState = {
     autoScrollToNew: false,  // Whether to auto-scroll when new rows appear
     showChangeToasts: true,  // Whether to show toast when data changes
   },
+
+  // History log: circular buffer of recent database operations
+  // Each entry: { id, timestamp, database, operation, table, rowCount, details }
+  historyLog: [],
 };

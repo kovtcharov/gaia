@@ -1517,3 +1517,192 @@ select {
   background: rgba(231, 76, 94, 0.2);
   color: var(--accent-danger);
 }
+
+/* ========================================================================
+   History Log
+   ======================================================================== */
+
+/* --- Shared list container --- */
+.history-log-list {
+  padding: 4px 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* --- Individual entry --- */
+.history-entry {
+  padding: 4px 14px;
+  border-bottom: 1px solid var(--border-primary);
+  font-size: 12px;
+  transition: background 0.1s;
+}
+
+.history-entry:last-child {
+  border-bottom: none;
+}
+
+.history-entry:hover {
+  background: var(--bg-hover);
+}
+
+.history-entry-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+
+/* --- Timestamp --- */
+.history-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  min-width: 52px;
+  flex-shrink: 0;
+}
+
+/* --- Database name (dashboard view) --- */
+.history-db-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-accent);
+  font-family: var(--font-mono);
+  min-width: 80px;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* --- Operation badges --- */
+.history-op {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 52px;
+  text-align: center;
+}
+
+.history-op-select {
+  background: rgba(88, 184, 216, 0.2);
+  color: var(--accent-info);
+}
+
+.history-op-insert {
+  background: rgba(76, 175, 106, 0.2);
+  color: var(--accent-success);
+}
+
+.history-op-update {
+  background: rgba(230, 162, 60, 0.2);
+  color: var(--accent-warning);
+}
+
+.history-op-delete {
+  background: rgba(231, 76, 94, 0.2);
+  color: var(--accent-danger);
+}
+
+/* --- Table name --- */
+.history-table {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+  flex-shrink: 0;
+}
+
+/* --- Row count --- */
+.history-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* --- Details line (below main line) --- */
+.history-details {
+  padding: 1px 14px 3px 60px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+
+/* --- Per-database history panel (collapsible, below data grid) --- */
+.history-db-panel {
+  border-top: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.history-db-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.history-db-header:hover {
+  background: var(--bg-hover);
+}
+
+.history-db-toggle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.history-db-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  border-radius: 8px;
+}
+
+.history-db-content {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.history-db-content.hidden {
+  display: none;
+}
+
+.history-db-empty {
+  padding: 12px 14px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* --- Database history panel container --- */
+#db-history-container {
+  flex-shrink: 0;
+}

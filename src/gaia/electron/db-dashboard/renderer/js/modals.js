@@ -162,6 +162,16 @@ const Modals = {
     if (result.success) {
       showToast('Row inserted', 'success');
       this.hide('add-row-modal');
+
+      // Log INSERT operation to history
+      HistoryLog.addEntry(
+        HistoryLog.dbNameFromPath(AppState.currentDbPath),
+        'INSERT',
+        AppState.currentTable,
+        1,
+        HistoryLog.buildDetails(data)
+      );
+
       DataGrid.load();
       TableList.load();
     } else {

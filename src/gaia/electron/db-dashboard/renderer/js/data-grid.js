@@ -42,9 +42,19 @@ const DataGrid = {
     document.getElementById('row-count-display').textContent =
       `${result.pagination.totalRows.toLocaleString()} rows`;
 
+    // Log SELECT operation to history
+    HistoryLog.addEntry(
+      HistoryLog.dbNameFromPath(AppState.currentDbPath),
+      'SELECT',
+      AppState.currentTable,
+      result.rows.length,
+      AppState.filterValue ? `filter: ${AppState.filterColumn || 'all'}="${AppState.filterValue}"` : ''
+    );
+
     this.renderHead();
     this.renderBody();
     this.renderPagination();
+    this._updateDatabaseHistoryPanel();
   },
 
   /**
@@ -342,6 +352,16 @@ const DataGrid = {
     if (result.success) {
       showToast(`Updated ${edit.column}`, 'success');
       Modals.hide('edit-cell-modal');
+
+      // Log UPDATE operation to history
+      HistoryLog.addEntry(
+        HistoryLog.dbNameFromPath(edit.dbPath),
+        'UPDATE',
+        edit.table,
+        1,
+        `${edit.primaryKey.column}=${edit.primaryKey.value}, ${edit.column}="${truncate(newValue, 40)}"`
+      );
+
       this.load(); // Refresh
     } else {
       showToast(`Update failed: ${result.error}`, 'error');
@@ -377,11 +397,49 @@ const DataGrid = {
     if (result.success) {
       showToast('Row deleted', 'success');
       Modals.hide('delete-modal');
+
+      // Log DELETE operation to history
+      HistoryLog.addEntry(
+        HistoryLog.dbNameFromPath(del.dbPath),
+        'DELETE',
+        del.table,
+        1,
+        `${del.primaryKey.column}=${del.primaryKey.value}`
+      );
+
       this.load(); // Refresh
       // Refresh table list to update row counts
       TableList.load();
     } else {
       showToast(`Delete failed: ${result.error}`, 'error');
     }
+  },
+
+  /**
+   * Update the per-database history panel below the data grid.
+   */
+  _updateDatabaseHistoryPanel() {
+    const container = document.getElementById('db-history-container');
+    if (!container) return;
+
+    const dbName = HistoryLog.dbNameFromPath(AppState.currentDbPath);
+    // Preserve collapsed/expanded state
+    const existingPanel = container.querySelector('.history-db-panel');
+    const wasExpanded = existingPanel
+      ? !existingPanel.querySelector('.history-db-content').classList.contains('hidden')
+      : false;
+
+    container.innerHTML = '';
+    const panel = HistoryLog.renderDatabaseHistory(dbName);
+
+    // Restore expanded state
+    if (wasExpanded) {
+      const content = panel.querySelector('.history-db-content');
+      const toggle = panel.querySelector('.history-db-toggle');
+      if (content) content.classList.remove('hidden');
+      if (toggle) toggle.textContent = '[-]';
+    }
+
+    container.appendChild(panel);
   },
 };

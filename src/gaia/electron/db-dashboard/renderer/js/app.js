@@ -39,6 +39,9 @@
     AutoRefresh.init();
     AutoRefresh.start();
 
+    // Start history log relative time updates
+    HistoryLog.startRelativeTimeUpdates();
+
     // Load dashboard as default view
     await Dashboard.load();
   }

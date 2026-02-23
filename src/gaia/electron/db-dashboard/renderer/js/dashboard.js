@@ -211,6 +211,9 @@ const Dashboard = {
     `;
     container.appendChild(overviewSection);
 
+    // === Activity History ===
+    container.appendChild(HistoryLog.renderDashboardHistory());
+
     // === Database Stats Table ===
     if (data.dbStats.length > 0) {
       const { section: dbSection, body: dbBody } = this._createSection('Database Details', 'db-details');

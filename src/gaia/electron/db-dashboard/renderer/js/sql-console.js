@@ -42,11 +42,42 @@ const SqlConsole = {
       return;
     }
 
+    // Log to history
+    const dbName = HistoryLog.dbNameFromPath(AppState.currentDbPath);
     if (result.type === 'query') {
+      HistoryLog.addEntry(dbName, 'SELECT', this._extractTable(sql), result.rowCount || 0, `SQL: ${truncate(sql, 60)}`);
       this.renderQueryResult(result);
     } else {
+      const op = this._detectOperation(sql);
+      HistoryLog.addEntry(dbName, op, this._extractTable(sql), result.changes || 0, `SQL: ${truncate(sql, 60)}`);
       this.renderStatementResult(result);
     }
+  },
+
+  /**
+   * Detect the SQL operation type from a query string.
+   * @param {string} sql
+   * @returns {string}
+   */
+  _detectOperation(sql) {
+    const first = sql.trim().split(/\s+/)[0].toUpperCase();
+    if (first === 'INSERT') return 'INSERT';
+    if (first === 'UPDATE') return 'UPDATE';
+    if (first === 'DELETE') return 'DELETE';
+    if (first === 'SELECT') return 'SELECT';
+    return first;
+  },
+
+  /**
+   * Extract the table name from a SQL query (best-effort).
+   * @param {string} sql
+   * @returns {string}
+   */
+  _extractTable(sql) {
+    const normalized = sql.trim().replace(/\s+/g, ' ');
+    // Match: FROM tableName, INTO tableName, UPDATE tableName
+    const match = normalized.match(/(?:FROM|INTO|UPDATE)\s+[`"']?(\w+)[`"']?/i);
+    return match ? match[1] : '(sql)';
   },
 
   /**
