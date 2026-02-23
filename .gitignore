@@ -202,3 +202,7 @@ test_*.png
 diffusers_*.png
 sdxl_base_*.png
 docs/playbooks/sd-agent/index-backup.mdx
+# Local analysis and documentation (not for repo)
+output_analysis/
+RUNNING_GAIA_CODE_WITH_DASHBOARD.md
+READY_TO_RUN.md
