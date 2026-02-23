@@ -244,6 +244,147 @@ def register_specialists(state) -> int:
     return count
 
 
+def register_initial_skills(state) -> int:
+    """
+    Register initial coding workflow patterns in skills.db.
+
+    These are common multi-step patterns the agent uses repeatedly.
+    Registered once on startup; actual usage is tracked via record_usage().
+
+    Returns:
+        Number of skills registered
+    """
+    initial_skills = [
+        {
+            "name": "debug_error_fix",
+            "description": "Read failing file, analyse error, apply targeted fix, verify",
+            "category": "debugging",
+            "domain": "python",
+            "steps": [
+                {"step": 1, "action": "read_file", "description": "Read the file with the error"},
+                {"step": 2, "action": "analyze", "description": "Identify root cause of the error"},
+                {"step": 3, "action": "edit_file", "description": "Apply minimal targeted fix"},
+                {"step": 4, "action": "run_syntax_check", "description": "Verify fix is syntactically valid"},
+            ],
+            "tools_used": ["read_file", "edit_file", "check_syntax", "run_pytest"],
+        },
+        {
+            "name": "create_feature",
+            "description": "Plan feature, create implementation file, write tests, run tests",
+            "category": "coding",
+            "domain": "python",
+            "steps": [
+                {"step": 1, "action": "plan", "description": "Outline the feature structure"},
+                {"step": 2, "action": "write_file", "description": "Implement the feature"},
+                {"step": 3, "action": "write_file", "description": "Write tests for the feature"},
+                {"step": 4, "action": "run_pytest", "description": "Run tests and verify"},
+            ],
+            "tools_used": ["write_file", "run_pytest", "check_syntax"],
+        },
+        {
+            "name": "refactor_code",
+            "description": "Read code, identify improvement areas, refactor, run tests",
+            "category": "refactoring",
+            "domain": "python",
+            "steps": [
+                {"step": 1, "action": "read_file", "description": "Read the code to refactor"},
+                {"step": 2, "action": "analyze", "description": "Identify code smells and improvement areas"},
+                {"step": 3, "action": "edit_file", "description": "Apply refactoring changes"},
+                {"step": 4, "action": "run_pytest", "description": "Run existing tests to verify no regressions"},
+            ],
+            "tools_used": ["read_file", "edit_file", "run_pytest", "format_code"],
+        },
+        {
+            "name": "git_commit_workflow",
+            "description": "Stage changed files, write descriptive commit message, commit",
+            "category": "git",
+            "domain": "version_control",
+            "steps": [
+                {"step": 1, "action": "git_status", "description": "Check what files changed"},
+                {"step": 2, "action": "git_diff", "description": "Review the changes"},
+                {"step": 3, "action": "git_commit", "description": "Create commit with descriptive message"},
+            ],
+            "tools_used": ["git_status", "git_diff", "git_commit"],
+        },
+        {
+            "name": "add_tests",
+            "description": "Read existing code, write comprehensive unit tests, run and verify",
+            "category": "testing",
+            "domain": "python",
+            "steps": [
+                {"step": 1, "action": "read_file", "description": "Read the file to test"},
+                {"step": 2, "action": "analyze", "description": "Identify testable units and edge cases"},
+                {"step": 3, "action": "write_file", "description": "Write unit tests with good coverage"},
+                {"step": 4, "action": "run_pytest", "description": "Run tests to verify they pass"},
+                {"step": 5, "action": "check_coverage", "description": "Check coverage is adequate"},
+            ],
+            "tools_used": ["read_file", "write_file", "run_pytest", "check_coverage"],
+        },
+        {
+            "name": "write_documentation",
+            "description": "Read code, write docstrings and README, verify accuracy",
+            "category": "documentation",
+            "domain": "python",
+            "steps": [
+                {"step": 1, "action": "read_file", "description": "Read the code to document"},
+                {"step": 2, "action": "edit_file", "description": "Add/update docstrings"},
+                {"step": 3, "action": "write_file", "description": "Update or create README"},
+            ],
+            "tools_used": ["read_file", "edit_file", "write_file"],
+        },
+        {
+            "name": "security_audit",
+            "description": "Scan code for vulnerabilities, report findings, apply fixes",
+            "category": "security",
+            "domain": "python",
+            "steps": [
+                {"step": 1, "action": "glob_search", "description": "Find all source files"},
+                {"step": 2, "action": "analyze", "description": "Scan for OWASP top 10 vulnerabilities"},
+                {"step": 3, "action": "edit_file", "description": "Apply security fixes"},
+                {"step": 4, "action": "run_pytest", "description": "Verify fixes don't break functionality"},
+            ],
+            "tools_used": ["glob_search", "grep_content", "edit_file", "run_pytest"],
+        },
+        {
+            "name": "codebase_exploration",
+            "description": "Index codebase, search for relevant symbols, understand architecture",
+            "category": "analysis",
+            "domain": "any",
+            "steps": [
+                {"step": 1, "action": "index_codebase", "description": "Build semantic index of repository"},
+                {"step": 2, "action": "analyze_architecture", "description": "Get architecture overview"},
+                {"step": 3, "action": "search_codebase", "description": "Search for relevant components"},
+            ],
+            "tools_used": ["index_codebase", "analyze_architecture", "search_codebase", "find_symbol"],
+        },
+    ]
+
+    count = 0
+    for skill in initial_skills:
+        try:
+            # Skip if already registered (idempotent on repeated startups)
+            existing = state.skills.conn.execute(
+                "SELECT id FROM skills WHERE name = ?", (skill["name"],)
+            ).fetchone()
+            if existing:
+                continue
+
+            state.skills.register_skill(
+                name=skill["name"],
+                description=skill["description"],
+                category=skill["category"],
+                steps=skill["steps"],
+                domain=skill.get("domain"),
+                tools_used=skill.get("tools_used"),
+            )
+            count += 1
+        except Exception as e:
+            logger.warning(f"Failed to register skill {skill['name']}: {e}")
+
+    logger.info(f"Registered {count} initial skills")
+    return count
+
+
 def initialize_workspace(workspace_dir: Optional[Path] = None) -> Path:
     """
     Initialize GAIA Code workspace.
@@ -270,9 +411,13 @@ def initialize_workspace(workspace_dir: Optional[Path] = None) -> Path:
     # Register specialists
     specialists_count = register_specialists(state)
 
+    # Register initial skills
+    skills_count = register_initial_skills(state)
+
     logger.info(f"Workspace initialized at {workspace_dir}")
     logger.info(f"  - {tools_count} tools registered")
     logger.info(f"  - {specialists_count} specialists registered")
+    logger.info(f"  - {skills_count} skills registered")
 
     return workspace_dir
 

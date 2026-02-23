@@ -20,6 +20,7 @@ This is the complete M0-M3 implementation:
 
 import json
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -415,6 +416,13 @@ class GaiaCodeAgent(
                 {"elapsed_seconds": elapsed, "success": result["success"]},
             )
 
+            # Auto-register a skill pattern for successful tasks
+            if result.get("success"):
+                try:
+                    self._auto_register_skill(query, result)
+                except Exception:
+                    pass
+
             # Complete TUI (guard against double-complete is inside each TUI class)
             if self.tui:
                 message = result.get("result") or "Task completed"
@@ -697,6 +705,137 @@ class GaiaCodeAgent(
         }
 
     # _log_audit, get_audit_log, get_progress are inherited from base Agent
+
+    def _execute_tool(self, tool_name: str, tool_args: Dict[str, Any]) -> Any:
+        """
+        Override base _execute_tool to track usage in memory.db and tools.db.
+
+        Every tool call is recorded as a session-level memory entry (tool_results).
+        File reads are also cached in file_cache for fast repeated access.
+        Tool usage statistics are accumulated in tools.db (record_usage).
+        """
+        start_ms = int(time.time() * 1000)
+
+        result = super()._execute_tool(tool_name, tool_args)
+
+        # Only track if shared state is available
+        if not self.shared_state:
+            return result
+
+        duration_ms = int(time.time() * 1000) - start_ms
+        success = not (isinstance(result, dict) and result.get("status") == "error")
+        error_msg = result.get("error") if isinstance(result, dict) else None
+
+        # --- memory.db: store_tool_result ---
+        try:
+            result_preview = (
+                result if isinstance(result, str) else json.dumps(result, default=str)
+            )
+            self.shared_state.memory.store_tool_result(
+                tool_name=tool_name,
+                args=tool_args,
+                result=result_preview[:4000],  # cap size
+            )
+        except Exception:
+            pass
+
+        # --- memory.db: cache_file on read_file calls ---
+        if tool_name in ("read_file", "read") and success:
+            file_path = (
+                tool_args.get("file_path")
+                or tool_args.get("path")
+                or tool_args.get("filename", "")
+            )
+            if file_path:
+                content = result if isinstance(result, str) else str(result)
+                try:
+                    self.shared_state.memory.cache_file(file_path, content[:50000])
+                except Exception:
+                    pass
+
+        # --- tools.db: record_usage ---
+        try:
+            self.shared_state.tools.record_usage(
+                tool_name=tool_name,
+                success=success,
+                duration_ms=duration_ms,
+                context=None,
+                error=error_msg,
+            )
+        except Exception:
+            pass
+
+        return result
+
+    def _auto_register_skill(self, task: str, result: Dict[str, Any]) -> None:
+        """
+        Automatically register a skill pattern from a successfully completed task.
+
+        Extracts a concise skill name and category from the task description,
+        then upserts it into skills.db so the dashboard shows learned patterns.
+        Uses OR IGNORE so re-running the same task won't create duplicates.
+        """
+        if not self.shared_state:
+            return
+
+        # Derive a short skill name (first sentence / 80 chars)
+        name = task.split(".")[0].split("\n")[0].strip()[:80]
+        if not name:
+            return
+
+        # Infer category from task keywords
+        task_lower = task.lower()
+        if any(w in task_lower for w in ["test", "pytest", "coverage", "jest"]):
+            category = "testing"
+        elif any(w in task_lower for w in ["fix", "debug", "error", "bug", "traceback"]):
+            category = "debugging"
+        elif any(w in task_lower for w in ["refactor", "clean", "improve", "simplif"]):
+            category = "refactoring"
+        elif any(w in task_lower for w in ["document", "readme", "docstring", "comment"]):
+            category = "documentation"
+        elif any(w in task_lower for w in ["security", "vuln", "injection", "auth"]):
+            category = "security"
+        elif any(w in task_lower for w in ["git", "commit", "branch", "pull request", "pr"]):
+            category = "git"
+        elif any(w in task_lower for w in ["search", "find", "index", "analyse", "analyze"]):
+            category = "analysis"
+        else:
+            category = "coding"
+
+        steps = [
+            {"step": 1, "action": "execute", "description": name},
+        ]
+
+        try:
+            # Check if skill with this name already exists to avoid duplicates
+            with self.shared_state.skills.lock:
+                existing = self.shared_state.skills.conn.execute(
+                    "SELECT id FROM skills WHERE name = ?", (name,)
+                ).fetchone()
+                if existing:
+                    # Update success_count on the existing skill
+                    self.shared_state.skills.conn.execute(
+                        "UPDATE skills SET success_count = success_count + 1, "
+                        "last_used = CURRENT_TIMESTAMP WHERE name = ?",
+                        (name,),
+                    )
+                    self.shared_state.skills.conn.commit()
+                    logger.debug("[GaiaCodeAgent] updated existing skill: %s", name)
+                else:
+                    from uuid import uuid4
+                    skill_id = str(uuid4())
+                    self.shared_state.skills.conn.execute(
+                        """
+                        INSERT INTO skills
+                            (id, name, description, category, steps, success_count, confidence)
+                        VALUES (?, ?, ?, ?, ?, 1, 1.0)
+                        """,
+                        (skill_id, name, task[:500], category, json.dumps(steps)),
+                    )
+                    self.shared_state.skills.conn.commit()
+                    logger.debug("[GaiaCodeAgent] auto-registered skill: %s (%s)", name, category)
+        except Exception as e:
+            logger.debug("[GaiaCodeAgent] skill auto-register skipped: %s", e)
 
     def checkpoint(self) -> Dict[str, Any]:
         """
