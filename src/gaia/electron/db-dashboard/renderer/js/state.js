@@ -51,7 +51,7 @@ const AppState = {
   // Auto-refresh settings
   autoRefresh: {
     enabled: true,
-    interval: 2000,       // milliseconds
+    interval: 5000,       // milliseconds (5s default to reduce flashing)
     timerId: null,        // setInterval ID
     lastUpdate: null,     // Date object of last update
     lastUpdateDisplay: null, // setInterval for display updates
