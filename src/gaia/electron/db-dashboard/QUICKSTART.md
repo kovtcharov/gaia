@@ -4,10 +4,18 @@
 
 ---
 
+## Prerequisites
+
+Install build tools (required for better-sqlite3):
+
+```bash
+sudo apt-get update && sudo apt-get install -y build-essential
+```
+
 ## Installation (One-Time)
 
 ```bash
-cd /mnt/c/Users/14255/Work/gaia/src/gaia/electron/db-dashboard
+cd src/gaia/electron/db-dashboard
 npm install
 ```
 

@@ -8,12 +8,28 @@ Monitor agent execution, track context usage, debug errors, and edit knowledge -
 
 ## Quick Start
 
+### Prerequisites
+
+Install build tools (required for better-sqlite3 native compilation):
+
 ```bash
-# 1. Install (one-time)
+# Ubuntu/Debian
+sudo apt-get update && sudo apt-get install -y build-essential
+
+# macOS
+xcode-select --install
+```
+
+### Installation
+
+```bash
+# 1. Navigate to dashboard
 cd src/gaia/electron/db-dashboard
+
+# 2. Install dependencies
 npm install
 
-# 2. Run
+# 3. Run
 npm start
 ```
 
