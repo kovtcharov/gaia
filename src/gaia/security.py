@@ -29,12 +29,13 @@ class PathValidator:
         """
         self.allowed_paths: Set[Path] = set()
 
-        # Add default allowed paths
+        # Always allow CWD
+        self.allowed_paths.add(Path.cwd().resolve())
+
+        # Add user-specified allowed paths
         if allowed_paths:
             for p in allowed_paths:
                 self.allowed_paths.add(Path(p).resolve())
-        else:
-            self.allowed_paths.add(Path.cwd().resolve())
 
         # Always allow common safe directories for agent-created temp files
         for safe_dir in ["/tmp", Path.home() / ".gaia"]:
@@ -160,32 +161,37 @@ class PathValidator:
     def _prompt_user_for_access(self, path: Path) -> bool:
         """Prompt user to allow access to a path."""
         print(
-            "\n⚠️  SECURITY WARNING: Agent is attempting to access a path outside allowed directories."
+            "\n\u26a0\ufe0f  SECURITY WARNING: Agent is attempting to access a path outside allowed directories."
         )
         print(f"   Path: {path}")
         print(f"   Allowed: {[str(p) for p in self.allowed_paths]}")
 
-        while True:
-            response = (
-                input("Allow this access? [y]es / [n]o / [a]lways: ").lower().strip()
-            )
+        try:
+            while True:
+                response = (
+                    input("Allow this access? [y]es / [n]o / [a]lways: ").lower().strip()
+                )
 
-            if response in ["y", "yes"]:
-                # Allow for this session only (add to memory but don't persist)
-                # We add the specific file or directory to allowed paths
-                self.allowed_paths.add(path)
-                logger.info(f"User temporarily allowed access to: {path}")
-                return True
+                if response in ["y", "yes"]:
+                    # Allow for this session only (add to memory but don't persist)
+                    # We add the specific file or directory to allowed paths
+                    self.allowed_paths.add(path)
+                    logger.info(f"User temporarily allowed access to: {path}")
+                    return True
 
-            elif response in ["a", "always"]:
-                # Allow and persist
-                self.allowed_paths.add(path)
-                self._save_persisted_path(path)
-                logger.info(f"User permanently allowed access to: {path}")
-                return True
+                elif response in ["a", "always"]:
+                    # Allow and persist
+                    self.allowed_paths.add(path)
+                    self._save_persisted_path(path)
+                    logger.info(f"User permanently allowed access to: {path}")
+                    return True
 
-            elif response in ["n", "no"]:
-                logger.warning(f"User denied access to: {path}")
-                return False
+                elif response in ["n", "no"]:
+                    logger.warning(f"User denied access to: {path}")
+                    return False
 
-            print("Please answer 'y', 'n', or 'a'.")
+                print("Please answer 'y', 'n', or 'a'.")
+        except EOFError:
+            # Non-interactive mode: deny access silently
+            logger.warning(f"Non-interactive mode: denied access to {path}")
+            return False

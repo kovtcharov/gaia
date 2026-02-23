@@ -34,7 +34,7 @@ class ChatConfig:
     use_local_llm: bool = (
         True  # Use local LLM (computed as not use_claude and not use_chatgpt if not explicitly set)
     )
-    claude_model: str = "claude-sonnet-4-20250514"  # Claude model when use_claude=True
+    claude_model: str = "claude-opus-4-6"  # Claude model when use_claude=True
     base_url: str = "http://localhost:8000/api/v1"  # Lemonade server base URL
     assistant_name: str = "gaia"  # Name to use for the assistant in conversations
 
@@ -215,12 +215,13 @@ class ChatSDK:
                 f"System prompt used: {effective_system_prompt[:100] if effective_system_prompt else 'None'}..."
             )
 
-            # Set appropriate stop tokens based on model
-            model_lower = self.config.model.lower() if self.config.model else ""
-            if "qwen" in model_lower:
-                kwargs.setdefault("stop", ["<|im_end|>", "<|im_start|>"])
-            elif "llama" in model_lower:
-                kwargs.setdefault("stop", ["<|eot_id|>", "<|start_header_id|>"])
+            # Set appropriate stop tokens based on model (skip for cloud providers)
+            if not (self.config.use_claude or self.config.use_chatgpt):
+                model_lower = self.config.model.lower() if self.config.model else ""
+                if "qwen" in model_lower:
+                    kwargs.setdefault("stop", ["<|im_end|>", "<|im_start|>"])
+                elif "llama" in model_lower:
+                    kwargs.setdefault("stop", ["<|eot_id|>", "<|start_header_id|>"])
 
             # Use generate with formatted prompt
             if "temperature" not in kwargs and self.config.temperature is not None:
@@ -230,9 +231,15 @@ class ChatSDK:
             if "max_tokens" not in kwargs and self.config.max_tokens:
                 kwargs["max_tokens"] = self.config.max_tokens
 
+            # Use claude_model when using Claude, otherwise use config.model
+            effective_model = (
+                self.config.claude_model
+                if self.config.use_claude
+                else self.config.model
+            )
             response = self.llm_client.generate(
                 prompt=formatted_prompt,
-                model=self.config.model,
+                model=effective_model,
                 stream=False,
                 **kwargs,
             )
@@ -305,19 +312,27 @@ class ChatSDK:
                 f"System prompt used: {effective_system_prompt[:100] if effective_system_prompt else 'None'}..."
             )
 
-            # Set appropriate stop tokens based on model
-            model_lower = self.config.model.lower() if self.config.model else ""
-            if "qwen" in model_lower:
-                kwargs.setdefault("stop", ["<|im_end|>", "<|im_start|>"])
-            elif "llama" in model_lower:
-                kwargs.setdefault("stop", ["<|eot_id|>", "<|start_header_id|>"])
+            # Set appropriate stop tokens based on model (skip for cloud providers)
+            if not (self.config.use_claude or self.config.use_chatgpt):
+                model_lower = self.config.model.lower() if self.config.model else ""
+                if "qwen" in model_lower:
+                    kwargs.setdefault("stop", ["<|im_end|>", "<|im_start|>"])
+                elif "llama" in model_lower:
+                    kwargs.setdefault("stop", ["<|eot_id|>", "<|start_header_id|>"])
 
             # Use generate with formatted prompt for streaming
             if "temperature" not in kwargs and self.config.temperature is not None:
                 kwargs["temperature"] = self.config.temperature
+
+            # Use claude_model when using Claude, otherwise use config.model
+            effective_model = (
+                self.config.claude_model
+                if self.config.use_claude
+                else self.config.model
+            )
             full_response = ""
             for chunk in self.llm_client.generate(
-                prompt=formatted_prompt, model=self.config.model, stream=True, **kwargs
+                prompt=formatted_prompt, model=effective_model, stream=True, **kwargs
             ):
                 full_response += chunk
                 yield ChatResponse(text=chunk, is_complete=False)
@@ -393,9 +408,15 @@ class ChatSDK:
                 generate_kwargs["temperature"] = self.config.temperature
 
             # Note: Retry logic is now handled at the LLM client level
+            # Use claude_model when using Claude, otherwise use config.model
+            effective_model = (
+                self.config.claude_model
+                if self.config.use_claude
+                else self.config.model
+            )
             response = self.llm_client.generate(
                 full_prompt,
-                model=self.config.model,
+                model=effective_model,
                 **generate_kwargs,
             )
 
@@ -466,9 +487,15 @@ class ChatSDK:
             ):
                 generate_kwargs["temperature"] = self.config.temperature
 
+            # Use claude_model when using Claude, otherwise use config.model
+            effective_model = (
+                self.config.claude_model
+                if self.config.use_claude
+                else self.config.model
+            )
             full_response = ""
             for chunk in self.llm_client.generate(
-                full_prompt, model=self.config.model, stream=True, **generate_kwargs
+                full_prompt, model=effective_model, stream=True, **generate_kwargs
             ):
                 full_response += chunk
                 yield ChatResponse(text=chunk, is_complete=False)

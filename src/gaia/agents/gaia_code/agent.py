@@ -129,6 +129,7 @@ class GaiaCodeAgent(
         enable_continuous_execution: bool = True,
         tui_mode: str = "simple",
         persona: str = "pike",  # Default to Pike (simplicity advocate)
+        allowed_paths: Optional[List[str]] = None,
         **kwargs,
     ):
         """
@@ -140,8 +141,10 @@ class GaiaCodeAgent(
             enable_continuous_execution: Remove step limits (default: True)
             tui_mode: TUI mode - "full", "simple", "minimal", "off" (default: "simple")
             persona: Personality profile - "direct", "collaborative", "socratic", "mentor", "pragmatic", "friendly" (default: "collaborative")
+            allowed_paths: Additional paths the agent is allowed to read/write
             **kwargs: Agent initialization parameters
         """
+        self._extra_allowed_paths = allowed_paths or []
         # Set defaults for GAIA Code
         if "max_steps" not in kwargs:
             # Continuous execution: high limit (quality-driven, not step-driven)
@@ -237,7 +240,11 @@ class GaiaCodeAgent(
         from gaia.security import PathValidator
         from gaia.agents.code.validators import SyntaxValidator, ASTAnalyzer, AntipatternChecker, RequirementsValidator
 
-        self.path_validator = PathValidator(None)
+        # Build allowed paths: include workspace dir + any user-specified paths
+        all_allowed = list(self._extra_allowed_paths)
+        if hasattr(self, 'shared_state') and self.shared_state and self.shared_state.workspace_dir:
+            all_allowed.append(str(self.shared_state.workspace_dir))
+        self.path_validator = PathValidator(all_allowed if all_allowed else None)
         self.syntax_validator = SyntaxValidator()
         self.ast_analyzer = ASTAnalyzer()
         self.antipattern_checker = AntipatternChecker()
@@ -366,6 +373,9 @@ class GaiaCodeAgent(
         self.task_start = datetime.now()
         self._log_audit("TASK_START", {"query": query})
 
+        # Auto-detect output directories from the query and add to PathValidator
+        self._auto_add_query_paths(query)
+
         # Start TUI if available
         if self.tui:
             self.tui.start(query)
@@ -423,6 +433,28 @@ class GaiaCodeAgent(
                 self.tui.complete(success=False, message=f"Error: {str(e)}")
 
             raise
+
+    def _auto_add_query_paths(self, query: str) -> None:
+        """Auto-detect absolute paths in the query and add them to PathValidator."""
+        import re
+        # Match absolute paths: /mnt/... or C:\... or C:/...
+        path_patterns = [
+            r'(/mnt/[^\s"\']+)',           # WSL paths
+            r'(/[a-z]/[^\s"\']+)',          # Short WSL paths like /c/Users/...
+            r'([A-Z]:\\[^\s"\']+)',         # Windows backslash paths
+            r'([A-Z]:/[^\s"\']+)',          # Windows forward-slash paths
+        ]
+        for pattern in path_patterns:
+            for match in re.finditer(pattern, query):
+                path_str = match.group(1)
+                try:
+                    p = Path(path_str)
+                    # Add the directory (or parent of file) to allowed paths
+                    target = p if p.suffix == '' else p.parent
+                    self.path_validator.add_allowed_path(str(target))
+                    logger.debug(f"Auto-added allowed path from query: {target}")
+                except Exception:
+                    pass
 
     def _execute_with_quality_gates(
         self, query: str, root_task: Optional[Any]

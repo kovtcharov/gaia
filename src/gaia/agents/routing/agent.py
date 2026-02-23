@@ -199,19 +199,32 @@ Conversation:
 
 {ROUTING_ANALYSIS_PROMPT.split('User Request: "{query}"')[1]}"""
 
-        # Wrap in Qwen chat format
-        prompt = (
-            f"<|im_start|>user\n{analysis_prompt}<|im_end|>\n<|im_start|>assistant\n"
+        # Use appropriate formatting based on provider
+        is_cloud = self.agent_kwargs.get("use_claude") or self.agent_kwargs.get(
+            "use_chatgpt"
         )
+        if is_cloud:
+            # Cloud providers use plain text (no Qwen chat tokens)
+            prompt = analysis_prompt
+        else:
+            # Local Lemonade: wrap in Qwen chat format
+            prompt = f"<|im_start|>user\n{analysis_prompt}<|im_end|>\n<|im_start|>assistant\n"
 
         try:
-            response = self.llm_client.generate(
-                prompt=prompt,
-                model=self.routing_model,
-                max_tokens=500,
-                stop=["<|im_end|>", "<|im_start|>"],
-                stream=False,
-            )
+            generate_kwargs = {
+                "prompt": prompt,
+                "max_tokens": 500,
+                "stream": False,
+            }
+            if is_cloud:
+                # Cloud providers use their default model (no Qwen model name)
+                pass
+            else:
+                # Local Lemonade: specify model and stop tokens
+                generate_kwargs["model"] = self.routing_model
+                generate_kwargs["stop"] = ["<|im_end|>", "<|im_start|>"]
+
+            response = self.llm_client.generate(**generate_kwargs)
 
             # Extract JSON from response
             response_text = response.strip()
@@ -277,13 +290,23 @@ Conversation:
         # Python indicators
         py_keywords = ["django", "flask", "fastapi", "pandas", "numpy", "python"]
 
+        # C/C++ indicators
+        cpp_keywords = [
+            "c++", "cpp", "c++17", "c++20", "cmake", "makefile",
+            "gtest", "boost", "qt", "opencv", "nlohmann",
+        ]
+
         # Detect language
         has_ts = any(kw in query_lower for kw in ts_keywords)
         has_py = any(kw in query_lower for kw in py_keywords)
+        has_cpp = any(kw in query_lower for kw in cpp_keywords)
 
         if has_ts:
             language = "typescript"
             reasoning = f"Detected TypeScript keywords: {[kw for kw in ts_keywords if kw in query_lower]}"
+        elif has_cpp:
+            language = "cpp"
+            reasoning = f"Detected C++ keywords: {[kw for kw in cpp_keywords if kw in query_lower]}"
         elif has_py:
             language = "python"
             reasoning = f"Detected Python keywords: {[kw for kw in py_keywords if kw in query_lower]}"
@@ -299,6 +322,9 @@ Conversation:
             else:
                 # Default to fullstack for any web-related TypeScript project
                 project_type = "fullstack"
+        elif language == "cpp":
+            # C++ projects default to script (library/app)
+            project_type = "script"
         elif language == "python":
             # Python project types
             if any(
@@ -435,22 +461,21 @@ Conversation:
     def _enforce_typescript_only(
         self, language: str, project_type: str, console
     ) -> tuple[str, str]:
-        """Warn and normalize when routing to unsupported languages."""
+        """Warn when routing to non-TypeScript languages (no longer blocks)."""
         is_nextjs = language == "typescript" and project_type == "fullstack"
 
         if not is_nextjs:
-            console.print_error(
-                "Only TypeScript (Next.js) is currently supported. "
-                "Please try a Next.js/TypeScript request."
+            logger.info(
+                f"Non-TypeScript request: language={language}, project_type={project_type}. "
+                "Proceeding with CodeAgent (TypeScript-only restriction removed)."
             )
-            raise SystemExit(1)
 
         return language, project_type
 
     def _default_unknown_language_to_typescript(
         self, analysis: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Default unknown language/project type to TypeScript/Next.js."""
+        """Default unknown language to Python (general-purpose agent)."""
         params = analysis.get("parameters", {})
         language = params.get("language")
 
@@ -459,12 +484,12 @@ Conversation:
 
         console = self._get_console()
         console.print_info(
-            "Defaulting to TypeScript (Next.js) because the language could not be determined."
+            "Language could not be determined. Defaulting to Python."
         )
 
-        params["language"] = "typescript"
+        params["language"] = "python"
         if params.get("project_type") == "unknown":
-            params["project_type"] = "fullstack"
+            params["project_type"] = "script"
 
         analysis["parameters"] = params
         analysis["confidence"] = 1.0

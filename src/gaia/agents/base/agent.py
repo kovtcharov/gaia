@@ -65,7 +65,7 @@ class Agent(abc.ABC):
         self,
         use_claude: bool = False,
         use_chatgpt: bool = False,
-        claude_model: str = "claude-sonnet-4-20250514",
+        claude_model: str = "claude-opus-4-6",
         base_url: Optional[str] = None,
         model_id: str = None,
         max_steps: int = 20,
@@ -216,8 +216,8 @@ You must respond ONLY in valid JSON. No text before { or after }.
             claude_model=claude_model,
             base_url=base_url,
             show_stats=True,  # Always collect stats for token tracking
-            max_history_length=20,  # Keep more history for agent conversations
-            max_tokens=4096,  # Increased for complex code generation
+            max_history_length=60,  # Large for multi-file code generation tasks
+            max_tokens=16384,  # High limit for code generation with tool calls
         )
         self.chat = ChatSDK(chat_config)
         self.model_id = model_id

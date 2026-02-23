@@ -521,6 +521,10 @@ class FileIOToolsMixin:
                         path = base / path
                 path = path.resolve()
 
+                # Security: validate path is in allowed directories
+                if hasattr(self, "path_validator") and not self.path_validator.is_path_allowed(str(path)):
+                    return {"status": "error", "error": f"Access denied: {path} is not in allowed paths"}
+
                 # Create parent directories if requested
                 if create_dirs and not path.parent.exists():
                     path.parent.mkdir(parents=True, exist_ok=True)
@@ -578,6 +582,10 @@ class FileIOToolsMixin:
                     if not path.is_absolute():
                         path = base / path
                 path = path.resolve()
+
+                # Security: validate path is in allowed directories
+                if hasattr(self, "path_validator") and not self.path_validator.is_path_allowed(str(path)):
+                    return {"status": "error", "error": f"Access denied: {path} is not in allowed paths"}
 
                 if not path.exists():
                     return {"status": "error", "error": f"File not found: {file_path}"}

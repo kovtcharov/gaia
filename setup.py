@@ -193,7 +193,7 @@ setup(
             "gaia-cli = gaia.cli:main",
             "gaia-mcp = gaia.mcp.mcp_bridge:main",
             "gaia-emr = gaia.agents.emr.cli:main",
-            "gaia-code = gaia.agents.code.cli:main",
+            "gaia-code = gaia.agents.gaia_code.cli:main",
         ]
     },
     python_requires=">=3.10",

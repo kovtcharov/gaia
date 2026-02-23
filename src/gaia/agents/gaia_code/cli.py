@@ -79,6 +79,7 @@ def cmd_execute(args):
 
     # Build kwargs - only pass use_claude/use_chatgpt if explicitly requested
     # This lets the agent's default (Claude Opus) take effect when neither is specified
+    allowed_paths = getattr(args, 'allowed_paths', None)
     agent_kwargs = dict(
         workspace_dir=workspace_dir,
         enable_quality_gates=not args.no_quality_gates,
@@ -87,11 +88,15 @@ def cmd_execute(args):
         persona=persona,
         silent_mode=args.silent,
         debug=args.debug,
+        allowed_paths=allowed_paths.split(",") if allowed_paths else None,
     )
     if args.claude:
         agent_kwargs["use_claude"] = True
     if args.chatgpt:
         agent_kwargs["use_chatgpt"] = True
+    model = getattr(args, 'model', None)
+    if model:
+        agent_kwargs["claude_model"] = model
 
     # Create agent
     agent = GaiaCodeAgent(**agent_kwargs)
@@ -327,6 +332,12 @@ def add_gaia_code_parser(subparsers):
         help="Use ChatGPT/OpenAI API instead of local LLM",
     )
 
+    parser.add_argument(
+        "--model",
+        type=str,
+        help="Claude model to use (e.g., claude-sonnet-4-6, claude-opus-4-6)",
+    )
+
     # Debug flags
     parser.add_argument(
         "--silent",
@@ -347,6 +358,13 @@ def add_gaia_code_parser(subparsers):
         choices=["full", "simple", "minimal", "off"],
         default="simple",
         help="TUI mode: full (detailed), simple (default, clean), minimal (one line), off (verbose logs)",
+    )
+
+    # Path configuration
+    parser.add_argument(
+        "--allowed-paths",
+        type=str,
+        help="Comma-separated list of additional allowed paths for file I/O",
     )
 
     parser.set_defaults(func=cmd_gaia_code)
@@ -385,11 +403,14 @@ Examples:
     parser.add_argument("--no-plan", action="store_true", help="Disable plan creation")
     parser.add_argument("--claude", action="store_true", help="Use Claude API")
     parser.add_argument("--chatgpt", action="store_true", help="Use ChatGPT/OpenAI API")
+    parser.add_argument("--model", type=str, help="Claude model (e.g., claude-sonnet-4-6)")
     parser.add_argument("--silent", action="store_true", help="Silent mode")
     parser.add_argument("--debug", action="store_true", help="Enable debug output")
     parser.add_argument("--tui", type=str, default="simple",
                         choices=["full", "simple", "minimal", "off"],
                         help="TUI mode (default: simple)")
+    parser.add_argument("--allowed-paths", type=str,
+                        help="Comma-separated list of additional allowed paths for file I/O")
 
     args = parser.parse_args()
     sys.exit(cmd_gaia_code(args))

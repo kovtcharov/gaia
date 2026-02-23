@@ -18,7 +18,7 @@ class ClaudeProvider(LLMClient):
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "claude-3-5-sonnet-20241022",
+        model: str = "claude-opus-4-6",
         system_prompt: Optional[str] = None,
         **_kwargs,
     ):
@@ -43,12 +43,29 @@ class ClaudeProvider(LLMClient):
         stream: bool = False,
         **kwargs,
     ) -> Union[str, Iterator[str]]:
+        # If caller passed explicit 'messages', use those instead of prompt
+        messages = kwargs.pop("messages", None)
+        if messages is None:
+            messages = [{"role": "user", "content": prompt}]
+        # Extract system messages from the messages list (Claude uses separate system param)
+        system_msgs = [m for m in messages if m.get("role") == "system"]
+        chat_msgs = [m for m in messages if m.get("role") != "system"]
+        if system_msgs:
+            # Combine system messages and set as system prompt for this call
+            kwargs["system"] = "\n".join(m["content"] for m in system_msgs)
         return self.chat(
-            [{"role": "user", "content": prompt}],
+            chat_msgs,
             model=model,
             stream=stream,
             **kwargs,
         )
+
+    # Parameters supported by Claude Messages API
+    _ALLOWED_PARAMS = {
+        "model", "messages", "max_tokens", "stream", "system",
+        "temperature", "top_p", "top_k", "stop_sequences", "metadata",
+        "tools", "tool_choice",
+    }
 
     def chat(
         self,
@@ -57,12 +74,23 @@ class ClaudeProvider(LLMClient):
         stream: bool = False,
         **kwargs,
     ) -> Union[str, Iterator[str]]:
+        # Filter out unsupported parameters (e.g. OpenAI-style 'stop')
+        # and remap where possible
+        if "stop" in kwargs:
+            # Remap OpenAI 'stop' to Claude 'stop_sequences'
+            kwargs.setdefault("stop_sequences", kwargs.pop("stop"))
+        filtered = {k: v for k, v in kwargs.items() if k in self._ALLOWED_PARAMS}
+
+        # Ensure max_tokens is set (required by Claude API)
+        if "max_tokens" not in filtered:
+            filtered["max_tokens"] = 16384
+
         # Build parameters for Anthropic messages.create
         params = {
             "model": model or self._model,
             "messages": messages,
             "stream": stream,
-            **kwargs,
+            **filtered,
         }
         # Claude API requires system prompt as separate parameter, not in messages
         if self._system_prompt:

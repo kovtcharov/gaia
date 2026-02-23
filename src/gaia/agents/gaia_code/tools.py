@@ -95,8 +95,24 @@ class GaiaCodeTools:
 
         @tool
         def search_codebase(query: str, root_path: str = ".", top_k: int = 10) -> Dict[str, Any]:
-            """Semantic search across codebase."""
+            """Semantic search across codebase using hybrid FAISS + FTS5 retrieval."""
             return self.tool_search_codebase(query, root_path, top_k)
+
+        @tool
+        def search_code_structure(
+            symbol_pattern: Optional[str] = None,
+            chunk_type: Optional[str] = None,
+            module_pattern: Optional[str] = None,
+            root_path: str = ".",
+            top_k: int = 50,
+        ) -> Dict[str, Any]:
+            """Structural search across codebase using LIKE/GLOB patterns on symbols, types, and modules."""
+            return self.tool_search_code_structure(symbol_pattern, chunk_type, module_pattern, root_path, top_k)
+
+        @tool
+        def impact_analysis(file_path: str, symbol_name: Optional[str] = None, root_path: str = ".") -> Dict[str, Any]:
+            """Analyze what breaks if you change a file or symbol. Returns direct dependents, symbol references, transitive impact, and risk level."""
+            return self.tool_impact_analysis(file_path, symbol_name, root_path)
 
         # Execution and Observation Tools
         @tool
@@ -357,16 +373,62 @@ class GaiaCodeTools:
         }
 
     # ========================================================================
-    # M7: Codebase Analysis Tools
+    # M7: Codebase Analysis Tools (using CodeRetrievalPipeline)
     # ========================================================================
+
+    # Cached pipeline instance per root_path
+    _retrieval_pipelines: Dict[str, Any] = {}
+
+    def _get_retrieval_pipeline(self, root_path: str = ".") -> "CodeRetrievalPipeline":
+        """
+        Get or create a cached CodeRetrievalPipeline for the given root path.
+
+        The pipeline is cached on the class so all tool calls share the same
+        indexed state, avoiding re-indexing on every call.
+        """
+        from .code_retrieval import CodeRetrievalPipeline
+
+        resolved_root = str(Path(root_path).resolve())
+
+        if resolved_root not in GaiaCodeTools._retrieval_pipelines:
+            # Determine LLM client for annotations
+            llm_client = None
+            llm_provider = "cloud"  # Default to cloud (matches gaia-code agent)
+
+            # Try to get the agent's LLM client
+            if hasattr(self, "llm_client") and self.llm_client:
+                llm_client = self.llm_client
+            elif hasattr(self, "client") and self.client:
+                llm_client = self.client
+
+            if llm_client is None:
+                llm_provider = "none"  # No LLM available, use AST-only
+
+            workspace_dir = None
+            if hasattr(self, "shared_state") and self.shared_state:
+                workspace_dir = self.shared_state.workspace_dir
+
+            pipeline = CodeRetrievalPipeline(
+                root_path=resolved_root,
+                workspace_dir=workspace_dir,
+                llm_provider=llm_provider,
+                llm_client=llm_client,
+                enable_watcher=True,
+            )
+
+            GaiaCodeTools._retrieval_pipelines[resolved_root] = pipeline
+            logger.info(f"[CodeRetrieval] Created pipeline for {resolved_root} (llm={llm_provider})")
+
+        return GaiaCodeTools._retrieval_pipelines[resolved_root]
 
     def tool_index_codebase(
         self, root_path: str = ".", include_tests: bool = True
     ) -> Dict[str, Any]:
         """
-        Index a codebase for fast navigation and analysis.
+        Index a codebase using the CodeRetrievalPipeline.
 
-        Extracts symbols, builds dependency graph, detects issues.
+        Incrementally indexes files, builds dependency graph, creates
+        semantic annotations, and builds FAISS + FTS5 search indices.
 
         Args:
             root_path: Root directory of codebase (default: current dir)
@@ -375,19 +437,21 @@ class GaiaCodeTools:
         Returns:
             Dict with index statistics
         """
-        from .codebase_index import CodebaseIndex
-
         try:
-            index = CodebaseIndex(root_path, self.shared_state.workspace_dir)
-            stats = index.index_repository(include_tests=include_tests)
+            pipeline = self._get_retrieval_pipeline(root_path)
+            stats = pipeline.index_repository(include_tests=include_tests)
 
-            # Store the index object for future queries
-            # (in a real implementation, would cache this)
+            # Also generate summaries
+            pipeline.generate_summaries()
 
             return {
                 "success": True,
                 "stats": stats,
-                "message": f"Indexed {stats['files_indexed']} files with {stats['symbols_found']} symbols",
+                "message": (
+                    f"Indexed {stats['files_indexed']} files "
+                    f"({stats['chunks_created']} chunks) in {stats['index_time_seconds']}s. "
+                    f"Total: {stats['total_files']} files, {stats['total_chunks']} chunks."
+                ),
             }
 
         except Exception as e:
@@ -400,7 +464,10 @@ class GaiaCodeTools:
         self, root_path: str = ".", scope: str = "full"
     ) -> Dict[str, Any]:
         """
-        Analyze codebase architecture.
+        Analyze codebase architecture using the retrieval pipeline.
+
+        Uses cached index for fast analysis. Also uses legacy CodebaseIndex
+        for reports that the pipeline doesn't generate.
 
         Args:
             root_path: Root directory of codebase
@@ -409,31 +476,42 @@ class GaiaCodeTools:
         Returns:
             Dict with architecture analysis
         """
-        from .codebase_index import CodebaseIndex
-
         try:
-            # Create index
-            index = CodebaseIndex(root_path, self.shared_state.workspace_dir)
-            index.index_repository()
+            pipeline = self._get_retrieval_pipeline(root_path)
 
-            # Generate reports based on scope
+            # Ensure index is up to date (incremental)
+            stats = pipeline.index_repository()
+
+            if scope in ("full", "summary"):
+                # Use pipeline summaries
+                summary_result = pipeline.query("architecture overview")
+                report = summary_result.get("context", "")
+
             if scope == "full":
+                # Also run legacy index for detailed reports
+                from .codebase_index import CodebaseIndex
+                index = CodebaseIndex(root_path, self.shared_state.workspace_dir)
+                index.index_repository()
                 report = "\n\n".join([
-                    index.get_architecture_summary(),
+                    report or index.get_architecture_summary(),
                     index.get_dependency_report(),
                     index.get_issues_report(),
                 ])
             elif scope == "dependencies":
+                from .codebase_index import CodebaseIndex
+                index = CodebaseIndex(root_path, self.shared_state.workspace_dir)
+                index.index_repository()
                 report = index.get_dependency_report()
             elif scope == "issues":
+                from .codebase_index import CodebaseIndex
+                index = CodebaseIndex(root_path, self.shared_state.workspace_dir)
+                index.index_repository()
                 report = index.get_issues_report()
-            else:  # summary
-                report = index.get_architecture_summary()
 
             return {
                 "success": True,
                 "report": report,
-                "stats": index.stats,
+                "stats": stats,
             }
 
         except Exception as e:
@@ -444,7 +522,9 @@ class GaiaCodeTools:
 
     def tool_find_symbol(self, name: str, root_path: str = ".") -> Dict[str, Any]:
         """
-        Find where a symbol is defined.
+        Find where a symbol is defined using the retrieval pipeline.
+
+        Uses the structural search on the code_index.db for fast lookup.
 
         Args:
             name: Symbol name (class, function, variable)
@@ -453,15 +533,26 @@ class GaiaCodeTools:
         Returns:
             Dict with symbol locations
         """
-        from .codebase_index import CodebaseIndex
-
         try:
-            index = CodebaseIndex(root_path, self.shared_state.workspace_dir)
-            index.index_repository()
+            pipeline = self._get_retrieval_pipeline(root_path)
 
-            symbols = index.find_symbol(name)
+            # Ensure index is fresh
+            pipeline.index_repository()
 
-            if not symbols:
+            # Structural search for exact symbol name
+            results = pipeline.search_structure(
+                symbol_pattern=name,
+                top_k=50,
+            )
+
+            if not results:
+                # Try fuzzy match with LIKE
+                results = pipeline.search_structure(
+                    symbol_pattern=f"%{name}%",
+                    top_k=20,
+                )
+
+            if not results:
                 return {
                     "success": False,
                     "message": f"Symbol '{name}' not found in codebase",
@@ -472,14 +563,15 @@ class GaiaCodeTools:
                 "symbol_name": name,
                 "locations": [
                     {
-                        "file": s.file_path,
-                        "line": s.line_number,
-                        "type": s.type,
-                        "module": s.module_path,
+                        "file": r.file_path,
+                        "line": r.start_line,
+                        "type": r.chunk_type,
+                        "module": r.module_path,
+                        "summary": r.summary,
                     }
-                    for s in symbols
+                    for r in results
                 ],
-                "count": len(symbols),
+                "count": len(results),
             }
 
         except Exception as e:
@@ -492,7 +584,9 @@ class GaiaCodeTools:
         self, file_path: str, root_path: str = "."
     ) -> Dict[str, Any]:
         """
-        Find files that depend on a given file.
+        Find files that depend on a given file using the retrieval pipeline.
+
+        Uses impact analysis for comprehensive dependency information.
 
         Args:
             file_path: Path to file
@@ -501,22 +595,21 @@ class GaiaCodeTools:
         Returns:
             Dict with dependent files
         """
-        from .codebase_index import CodebaseIndex
-
         try:
-            index = CodebaseIndex(root_path, self.shared_state.workspace_dir)
-            index.index_repository()
+            pipeline = self._get_retrieval_pipeline(root_path)
+            pipeline.index_repository()
 
-            # Resolve file path
-            full_path = str((Path(root_path) / file_path).resolve())
-            dependents = index.get_dependents(full_path)
+            impact = pipeline.impact_analysis(file_path)
 
             return {
                 "success": True,
                 "file": file_path,
-                "dependents": list(dependents),
-                "count": len(dependents),
-                "message": f"Found {len(dependents)} files that depend on {file_path}",
+                "dependents": [d["file"] for d in impact.direct_dependents],
+                "transitive_dependents": impact.transitive_impact,
+                "count": len(impact.direct_dependents),
+                "risk_level": impact.risk_level,
+                "message": f"Found {len(impact.direct_dependents)} direct dependents "
+                           f"({len(impact.transitive_impact)} transitive) for {file_path}",
             }
 
         except Exception as e:
@@ -531,12 +624,8 @@ class GaiaCodeTools:
         """
         Detect code issues and antipatterns.
 
-        Detects:
-        - Circular dependencies
-        - Large files (>500 lines)
-        - Missing docstrings
-        - High complexity functions
-        - Missing tests
+        Uses the legacy CodebaseIndex for issue detection, but ensures
+        the retrieval pipeline is also indexed for other queries.
 
         Args:
             root_path: Root directory of codebase
@@ -548,12 +637,16 @@ class GaiaCodeTools:
         from .codebase_index import CodebaseIndex
 
         try:
+            # Ensure pipeline is indexed
+            pipeline = self._get_retrieval_pipeline(root_path)
+            pipeline.index_repository()
+
+            # Use legacy index for issue detection
             index = CodebaseIndex(root_path, self.shared_state.workspace_dir)
             index.index_repository()
 
             issues = index.issues
 
-            # Filter by severity if requested
             if severity:
                 issues = [i for i in issues if i["severity"] == severity]
 
@@ -574,9 +667,11 @@ class GaiaCodeTools:
         self, query: str, root_path: str = ".", top_k: int = 10
     ) -> Dict[str, Any]:
         """
-        Semantic search across codebase.
+        Semantic search across codebase using hybrid FAISS + FTS5 retrieval.
 
-        Uses vector similarity to find code related to a concept.
+        Combines vector similarity (FAISS) with keyword matching (FTS5)
+        for comprehensive code search. Automatically classifies queries
+        and assembles context within a token budget.
 
         Args:
             query: Natural language query (e.g., "authentication logic")
@@ -584,39 +679,125 @@ class GaiaCodeTools:
             top_k: Number of results to return
 
         Returns:
-            Dict with relevant files and symbols
+            Dict with relevant code chunks, context, and metadata
         """
-        from .codebase_index import CodebaseIndex
-
         try:
-            index = CodebaseIndex(root_path, self.shared_state.workspace_dir)
-            index.index_repository()
+            pipeline = self._get_retrieval_pipeline(root_path)
 
-            # Search symbols by docstring similarity
-            results = []
+            # Ensure index is fresh (incremental — fast if nothing changed)
+            pipeline.index_repository()
 
-            for symbol_name, symbol_list in index.symbols.items():
-                for symbol in symbol_list:
-                    if symbol.docstring:
-                        # Simple keyword matching for now
-                        # In full implementation, would use vector similarity
-                        if any(word in symbol.docstring.lower() for word in query.lower().split()):
-                            results.append({
-                                "name": symbol.name,
-                                "type": symbol.type,
-                                "file": symbol.file_path,
-                                "line": symbol.line_number,
-                                "docstring": symbol.docstring[:200],
-                            })
-
-            # Sort by relevance and limit
-            results = results[:top_k]
+            # Use the full query pipeline (classification + hybrid search + context assembly)
+            result = pipeline.query(query, top_k=top_k)
 
             return {
                 "success": True,
                 "query": query,
-                "results": results,
+                "query_type": result.get("query_type", "semantic"),
+                "results": result.get("results", []),
+                "context": result.get("context", ""),
+                "count": result.get("result_count", 0),
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def tool_search_code_structure(
+        self,
+        symbol_pattern: Optional[str] = None,
+        chunk_type: Optional[str] = None,
+        module_pattern: Optional[str] = None,
+        root_path: str = ".",
+        top_k: int = 50,
+    ) -> Dict[str, Any]:
+        """
+        Structural search across codebase using LIKE/GLOB patterns.
+
+        Searches directly on the code index database for exact or
+        pattern-matched results on symbol names, chunk types, and module paths.
+
+        Args:
+            symbol_pattern: Pattern to match symbol names (SQL LIKE syntax, e.g., "%Agent%")
+            chunk_type: Filter by chunk type (class, function, method, etc.)
+            module_pattern: Pattern to match module paths (e.g., "gaia.agents.%")
+            root_path: Root directory of codebase
+            top_k: Max results
+
+        Returns:
+            Dict with matched code structures
+        """
+        try:
+            pipeline = self._get_retrieval_pipeline(root_path)
+            pipeline.index_repository()
+
+            results = pipeline.search_structure(
+                symbol_pattern=symbol_pattern,
+                chunk_type=chunk_type,
+                module_pattern=module_pattern,
+                top_k=top_k,
+            )
+
+            return {
+                "success": True,
+                "results": [
+                    {
+                        "name": r.symbol_name,
+                        "type": r.chunk_type,
+                        "file": r.relative_path,
+                        "line": r.start_line,
+                        "module": r.module_path,
+                        "summary": r.summary,
+                    }
+                    for r in results
+                ],
                 "count": len(results),
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def tool_impact_analysis(
+        self,
+        file_path: str,
+        symbol_name: Optional[str] = None,
+        root_path: str = ".",
+    ) -> Dict[str, Any]:
+        """
+        Analyze what breaks if you change a file or symbol.
+
+        Performs BFS transitive dependency traversal to find all
+        direct dependents, symbol references, and transitive impact.
+
+        Args:
+            file_path: Path to file to analyze
+            symbol_name: Specific symbol to analyze (optional)
+            root_path: Root directory of codebase
+
+        Returns:
+            Dict with impact analysis including risk level
+        """
+        try:
+            pipeline = self._get_retrieval_pipeline(root_path)
+            pipeline.index_repository()
+
+            impact = pipeline.impact_analysis(file_path, symbol_name)
+
+            return {
+                "success": True,
+                "target_file": impact.target_file,
+                "target_symbol": impact.target_symbol,
+                "risk_level": impact.risk_level,
+                "direct_dependents": impact.direct_dependents,
+                "symbol_references": impact.symbol_references,
+                "transitive_impact": impact.transitive_impact,
+                "total_impact": len(impact.direct_dependents) + len(impact.transitive_impact),
+                "context": pipeline._format_impact_context(impact),
             }
 
         except Exception as e:
