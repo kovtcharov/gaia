@@ -14,8 +14,9 @@ import {
   Line,
   CartesianGrid,
 } from 'recharts';
-import { HardDrive, Table2, Rows3, Clock, Wrench } from 'lucide-react';
-import type { DashboardData, DbStats } from '../../types/database';
+import { HardDrive, Table2, Rows3, Clock, Wrench, Users, Zap, BrainCircuit, BookOpen, AlertTriangle, Trash2 } from 'lucide-react';
+import type { DashboardData, DbStats, AgentEntry, SkillEntry, MemoryToolEntry, KnowledgeInsightEntry } from '../../types/database';
+import Badge from '../shared/Badge';
 import StatsCards from './StatsCards';
 import DonutChart from './DonutChart';
 import ActivityHeatmap from './ActivityHeatmap';
@@ -24,6 +25,7 @@ import RecentActivity from './RecentActivity';
 interface OverviewProps {
   data: DashboardData;
   workspacePath: string;
+  onClearAll?: () => Promise<void>;
 }
 
 function formatBytes(bytes: number): string {
@@ -64,7 +66,7 @@ function ContextTooltip({ active, payload }: { active?: boolean; payload?: Array
   );
 }
 
-export default function Overview({ data, workspacePath }: OverviewProps) {
+export default function Overview({ data, workspacePath, onClearAll }: OverviewProps) {
   const totalRows = data.dbStats.reduce((s, d) => s + d.totalRows, 0);
 
   const toolBarData = data.topTools.map((t) => ({
@@ -93,7 +95,7 @@ export default function Overview({ data, workspacePath }: OverviewProps) {
         {data.dbStats.length > 0 && (
           <DonutChart dbStats={data.dbStats} totalSize={data.totalSize} />
         )}
-        <ActivityHeatmap data={data.activityHeatmap} />
+        <ActivityHeatmap data={data.activityHeatmap} minuteData={data.minuteActivity} />
       </div>
 
       {/* Top Tools Bar Chart + Context Usage Line */}
@@ -187,6 +189,14 @@ export default function Overview({ data, workspacePath }: OverviewProps) {
         </motion.div>
       </div>
 
+      {/* Resource Usage (Agents, Skills, Memory, Knowledge) */}
+      <ResourceUsage
+        agents={data.topAgents}
+        skills={data.topSkills}
+        memoryTools={data.topMemoryTools}
+        knowledge={data.topKnowledge}
+      />
+
       {/* Recent Activity (Errors, Tasks, Insights) */}
       <RecentActivity
         errors={data.recentErrors}
@@ -238,6 +248,226 @@ export default function Overview({ data, workspacePath }: OverviewProps) {
           </div>
         </motion.div>
       )}
+
+      {/* Danger Zone */}
+      {onClearAll && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.3 }}
+          className="card p-4 border-gh-danger-emphasis/30"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={14} className="text-gh-danger-fg" />
+              <div>
+                <h3 className="text-xs font-semibold text-gh-danger-fg">Danger Zone</h3>
+                <p className="text-2xs text-gh-fg-muted mt-0.5">
+                  Permanently delete all data from all GAIA databases. The databases themselves are preserved.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={async () => {
+                const totalRows = data.dbStats.reduce((s, d) => s + d.totalRows, 0);
+                if (!confirm(`Delete ALL data from ALL ${data.dbCount} databases (${totalRows.toLocaleString()} total rows)? This cannot be undone.`)) return;
+                await onClearAll();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gh-danger-emphasis/50 text-gh-danger-fg hover:bg-gh-danger-emphasis/10 transition-colors shrink-0 ml-4"
+            >
+              <Trash2 size={12} />
+              Clear All Databases
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Resource Usage Section
+// ============================================================================
+
+function truncate(text: string, max: number): string {
+  if (!text) return '';
+  if (text.length <= max) return text;
+  return text.slice(0, max) + '...';
+}
+
+interface ResourceUsageProps {
+  agents: AgentEntry[];
+  skills: SkillEntry[];
+  memoryTools: MemoryToolEntry[];
+  knowledge: KnowledgeInsightEntry[];
+}
+
+function ResourceUsage({ agents, skills, memoryTools, knowledge }: ResourceUsageProps) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      {/* Top Agents */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.25 }}
+        className="card card-hover p-4"
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <Users size={14} className="text-gh-accent-fg" />
+          <h3 className="text-xs font-semibold text-gh-fg-muted uppercase tracking-wider">
+            Top Agents
+          </h3>
+          <Badge variant="info">{agents.length}</Badge>
+        </div>
+        <div className="space-y-1 max-h-64 overflow-y-auto">
+          {agents.length === 0 ? (
+            <div className="py-6 text-center text-xs text-gh-fg-subtle">No data</div>
+          ) : (
+            agents.map((agent, i) => (
+              <motion.div
+                key={agent.name}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.2, delay: i * 0.03 }}
+                className="flex items-center justify-between p-2 rounded-md hover:bg-gh-canvas-subtle/50 transition-colors"
+              >
+                <span className="text-xs text-gh-fg-default truncate">
+                  {truncate(agent.name, 25)}
+                </span>
+                <span className="text-xs font-mono text-gh-fg-muted ml-2 shrink-0">
+                  {agent.usage_count}
+                </span>
+              </motion.div>
+            ))
+          )}
+        </div>
+      </motion.div>
+
+      {/* Top Skills */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.3 }}
+        className="card card-hover p-4"
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <Zap size={14} className="text-gh-attention-fg" />
+          <h3 className="text-xs font-semibold text-gh-fg-muted uppercase tracking-wider">
+            Top Skills
+          </h3>
+          <Badge variant="warning">{skills.length}</Badge>
+        </div>
+        <div className="space-y-1 max-h-64 overflow-y-auto">
+          {skills.length === 0 ? (
+            <div className="py-6 text-center text-xs text-gh-fg-subtle">No data</div>
+          ) : (
+            skills.map((skill, i) => (
+              <motion.div
+                key={skill.name}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.2, delay: i * 0.03 }}
+                className="flex items-center justify-between p-2 rounded-md hover:bg-gh-canvas-subtle/50 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs text-gh-fg-default truncate block">
+                    {truncate(skill.name, 25)}
+                  </span>
+                  {skill.category && (
+                    <span className="text-2xs text-gh-fg-subtle">{skill.category}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 ml-2 shrink-0">
+                  <span className="text-xs font-mono text-gh-success-fg">{skill.success_count}</span>
+                  <span className="text-2xs text-gh-fg-subtle">/</span>
+                  <span className="text-xs font-mono text-gh-danger-fg">{skill.failure_count}</span>
+                </div>
+              </motion.div>
+            ))
+          )}
+        </div>
+      </motion.div>
+
+      {/* Memory Accesses */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.35 }}
+        className="card card-hover p-4"
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <BrainCircuit size={14} className="text-gh-fg-muted" />
+          <h3 className="text-xs font-semibold text-gh-fg-muted uppercase tracking-wider">
+            Memory Accesses
+          </h3>
+          <Badge variant="neutral">{memoryTools.length}</Badge>
+        </div>
+        <div className="space-y-1 max-h-64 overflow-y-auto">
+          {memoryTools.length === 0 ? (
+            <div className="py-6 text-center text-xs text-gh-fg-subtle">No data</div>
+          ) : (
+            memoryTools.map((mt, i) => (
+              <motion.div
+                key={mt.tool_name}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.2, delay: i * 0.03 }}
+                className="flex items-center justify-between p-2 rounded-md hover:bg-gh-canvas-subtle/50 transition-colors"
+              >
+                <span className="text-xs text-gh-fg-default truncate">
+                  {truncate(mt.tool_name, 25)}
+                </span>
+                <span className="text-xs font-mono text-gh-fg-muted ml-2 shrink-0">
+                  {mt.call_count}
+                </span>
+              </motion.div>
+            ))
+          )}
+        </div>
+      </motion.div>
+
+      {/* Knowledge Used */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.4 }}
+        className="card card-hover p-4"
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <BookOpen size={14} className="text-gh-success-fg" />
+          <h3 className="text-xs font-semibold text-gh-fg-muted uppercase tracking-wider">
+            Knowledge Used
+          </h3>
+          <Badge variant="success">{knowledge.length}</Badge>
+        </div>
+        <div className="space-y-1 max-h-64 overflow-y-auto">
+          {knowledge.length === 0 ? (
+            <div className="py-6 text-center text-xs text-gh-fg-subtle">No data</div>
+          ) : (
+            knowledge.map((k, i) => (
+              <motion.div
+                key={k.id}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.2, delay: i * 0.03 }}
+                className="flex items-center justify-between p-2 rounded-md hover:bg-gh-canvas-subtle/50 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs text-gh-fg-default truncate block">
+                    {truncate(k.content, 25)}
+                  </span>
+                  {k.category && (
+                    <span className="text-2xs text-gh-fg-subtle">{k.category}</span>
+                  )}
+                </div>
+                <span className="text-xs font-mono text-gh-fg-muted ml-2 shrink-0">
+                  {k.use_count}
+                </span>
+              </motion.div>
+            ))
+          )}
+        </div>
+      </motion.div>
     </div>
   );
 }

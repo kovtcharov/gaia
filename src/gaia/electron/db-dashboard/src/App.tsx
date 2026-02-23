@@ -9,7 +9,7 @@
  * Header, Tabs, Sidebar, and the active content panel (Dashboard or DatabaseView).
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Database as DbIcon, FolderSearch } from 'lucide-react';
@@ -32,7 +32,7 @@ import {
 import { useAutoRefresh } from './hooks/useAutoRefresh';
 
 import Header from './components/Layout/Header';
-import Tabs from './components/Layout/Tabs';
+import LeftNav from './components/Layout/LeftNav';
 import Sidebar from './components/Layout/Sidebar';
 import Overview from './components/Dashboard/Overview';
 import DataGrid from './components/DatabaseView/DataGrid';
@@ -70,6 +70,7 @@ export default function App() {
   // ---- Mode ----
   const [readOnly, setReadOnly] = useState(true);
   const [schemaModalOpen, setSchemaModalOpen] = useState(false);
+  const [navCollapsed, setNavCollapsed] = useState(false);
 
   // ---- Auto-Refresh ----
   const autoRefresh = useAutoRefresh(5000);
@@ -121,6 +122,52 @@ export default function App() {
       autoRefresh.markUpdated();
     }
   }, [dashboardData, tableData]);
+
+  // ---- Auto-populate database tabs when databases are discovered ----
+  const prevWorkspaceRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!databases || databases.length === 0) return;
+
+    const workspaceChanged = prevWorkspaceRef.current !== null && prevWorkspaceRef.current !== workspacePath;
+    prevWorkspaceRef.current = workspacePath;
+
+    if (workspaceChanged) {
+      // Workspace changed: clear all db tabs and re-add from scratch
+      const newTabs: AppTab[] = [DASHBOARD_TAB];
+      for (const db of databases.filter((d) => d.exists)) {
+        newTabs.push({
+          id: `db-${db.name}`,
+          type: 'database',
+          dbPath: db.path,
+          dbName: db.name,
+          label: db.label || db.name.replace('.db', ''),
+        });
+      }
+      setTabs(newTabs);
+      setActiveTabId('dashboard');
+      setSelectedTable(null);
+    } else {
+      // Same workspace: only add new tabs that aren't already present
+      setTabs((prev) => {
+        const existingIds = new Set(prev.map((t) => t.id));
+        const newDbTabs: AppTab[] = [];
+        for (const db of databases.filter((d) => d.exists)) {
+          const tabId = `db-${db.name}`;
+          if (!existingIds.has(tabId)) {
+            newDbTabs.push({
+              id: tabId,
+              type: 'database',
+              dbPath: db.path,
+              dbName: db.name,
+              label: db.label || db.name.replace('.db', ''),
+            });
+          }
+        }
+        if (newDbTabs.length === 0) return prev;
+        return [...prev, ...newDbTabs];
+      });
+    }
+  }, [databases, workspacePath]);
 
   // ---- Handlers ----
 
@@ -212,6 +259,21 @@ export default function App() {
     await window.dbAPI.backup(currentDbPath);
   }, [currentDbPath]);
 
+  const handleClearAllDatabases = useCallback(async () => {
+    if (!databases) return;
+    for (const db of databases.filter((d) => d.exists)) {
+      try {
+        const tablesResult = await window.dbAPI.getTables(db.path);
+        if (tablesResult.success) {
+          for (const table of tablesResult.tables.filter((t) => !t.isFts)) {
+            await window.dbAPI.clearTable(db.path, table.name);
+          }
+        }
+      } catch { /* skip databases that fail */ }
+    }
+    queryClient.invalidateQueries();
+  }, [databases, queryClient]);
+
   // ---- Render ----
 
   const isDashboard = activeTab.type === 'dashboard';
@@ -233,15 +295,17 @@ export default function App() {
         lastUpdateText={autoRefresh.relativeTime}
       />
 
-      <Tabs
-        tabs={tabs}
-        activeTabId={activeTabId}
-        onSelectTab={setActiveTabId}
-        onCloseTab={handleCloseTab}
-      />
-
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar - only visible in database view */}
+        {/* Left navigation sidebar — always visible */}
+        <LeftNav
+          databases={databases || []}
+          activeTabId={activeTabId}
+          onSelectTab={setActiveTabId}
+          isCollapsed={navCollapsed}
+          onToggleCollapsed={() => setNavCollapsed((c) => !c)}
+        />
+
+        {/* Table sidebar — only visible in database view */}
         {!isDashboard && (
           <Sidebar
             tables={tables || []}
@@ -285,7 +349,7 @@ export default function App() {
                     }
                   />
                 ) : (
-                  <Overview data={dashboardData} workspacePath={workspacePath} />
+                  <Overview data={dashboardData} workspacePath={workspacePath} onClearAll={handleClearAllDatabases} />
                 )}
               </motion.div>
             ) : (

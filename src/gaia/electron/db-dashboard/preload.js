@@ -56,6 +56,10 @@ contextBridge.exposeInMainWorld('dbAPI', {
   deleteRow: (dbPath, tableName, primaryKey) =>
     ipcRenderer.invoke('db:deleteRow', dbPath, tableName, primaryKey),
 
+  /** Delete ALL rows from a table */
+  clearTable: (dbPath, tableName) =>
+    ipcRenderer.invoke('db:clearTable', dbPath, tableName),
+
   /** Insert a new row */
   insertRow: (dbPath, tableName, data) =>
     ipcRenderer.invoke('db:insertRow', dbPath, tableName, data),

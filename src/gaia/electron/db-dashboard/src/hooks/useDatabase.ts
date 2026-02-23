@@ -216,6 +216,22 @@ export function useDeleteRow() {
   });
 }
 
+export function useClearTable() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ dbPath, tableName }: { dbPath: string; tableName: string }) => {
+      const result = await api().clearTable(dbPath, tableName);
+      if (!result.success) throw new Error(result.error);
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tableData'] });
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+    },
+  });
+}
+
 // ============================================================================
 // Dashboard Data (aggregate)
 // ============================================================================
@@ -248,8 +264,13 @@ export function useDashboardData(
         recentInsights: [],
         topTools: [],
         activityHeatmap: [],
+        minuteActivity: [],
         contextUsage: [],
         trendStats: null,
+        topAgents: [],
+        topSkills: [],
+        topMemoryTools: [],
+        topKnowledge: [],
       };
 
       // Gather per-database stats
@@ -289,11 +310,22 @@ export function useDashboardData(
         try {
           const heatmapResult = await api().executeSQL(
             logsDb.path,
-            `SELECT DATE(timestamp) as date, COUNT(*) as count FROM runtime_logs WHERE timestamp >= DATE('now', '-52 weeks') GROUP BY DATE(timestamp) ORDER BY date ASC`,
+            `SELECT STRFTIME('%H:00', timestamp) as hour_label, COUNT(*) as count FROM runtime_logs WHERE timestamp >= DATETIME('now', '-24 hours') GROUP BY STRFTIME('%Y-%m-%d %H', timestamp) ORDER BY timestamp ASC`,
             true,
           );
           if (heatmapResult.success && 'rows' in heatmapResult) {
             data.activityHeatmap = heatmapResult.rows as DashboardData['activityHeatmap'];
+          }
+        } catch { /* ignore */ }
+
+        try {
+          const minuteResult = await api().executeSQL(
+            logsDb.path,
+            `SELECT STRFTIME('%H:%M', DATETIME((CAST(STRFTIME('%s', timestamp) AS INTEGER) / 300) * 300, 'unixepoch')) as bucket_label, COUNT(*) as count FROM runtime_logs WHERE timestamp >= DATETIME('now', '-60 minutes') GROUP BY CAST(STRFTIME('%s', timestamp) AS INTEGER) / 300 ORDER BY bucket_label ASC`,
+            true,
+          );
+          if (minuteResult.success && 'rows' in minuteResult) {
+            data.minuteActivity = minuteResult.rows as DashboardData['minuteActivity'];
           }
         } catch { /* ignore */ }
 
@@ -317,7 +349,7 @@ export function useDashboardData(
           try {
             const totalToolResult = await api().executeSQL(
               toolsDb.path,
-              `SELECT COALESCE(SUM(usage_count), 0) as total FROM tools`,
+              `SELECT COUNT(*) as total FROM tool_usage`,
               true,
             );
             if (totalToolResult.success && 'rows' in totalToolResult && totalToolResult.rows.length > 0) {
@@ -363,11 +395,70 @@ export function useDashboardData(
         try {
           const toolResult = await api().executeSQL(
             toolsDb.path,
-            `SELECT name, usage_count, success_count, avg_duration_ms FROM tools ORDER BY usage_count DESC LIMIT 10`,
+            `SELECT t.name, COUNT(tu.id) as usage_count, SUM(CASE WHEN tu.success THEN 1 ELSE 0 END) as success_count, AVG(tu.duration_ms) as avg_duration_ms FROM tools t LEFT JOIN tool_usage tu ON t.id = tu.tool_id GROUP BY t.id ORDER BY usage_count DESC, t.name ASC LIMIT 10`,
             true,
           );
           if (toolResult.success && 'rows' in toolResult) {
             data.topTools = toolResult.rows as DashboardData['topTools'];
+          }
+        } catch { /* ignore */ }
+      }
+
+      // Query agents.db
+      const agentsDb = existingDbs.find((d) => d.name === 'agents.db');
+      if (agentsDb) {
+        try {
+          const agentResult = await api().executeSQL(
+            agentsDb.path,
+            `SELECT a.name, a.description, COUNT(au.id) as usage_count, a.last_used FROM agents a LEFT JOIN agent_usage au ON a.id = au.agent_id GROUP BY a.id ORDER BY usage_count DESC LIMIT 10`,
+            true,
+          );
+          if (agentResult.success && 'rows' in agentResult) {
+            data.topAgents = agentResult.rows as DashboardData['topAgents'];
+          }
+        } catch { /* ignore */ }
+      }
+
+      // Query skills.db
+      const skillsDb = existingDbs.find((d) => d.name === 'skills.db');
+      if (skillsDb) {
+        try {
+          const skillResult = await api().executeSQL(
+            skillsDb.path,
+            `SELECT name, description, category, success_count, failure_count FROM skills ORDER BY (success_count + failure_count) DESC LIMIT 10`,
+            true,
+          );
+          if (skillResult.success && 'rows' in skillResult) {
+            data.topSkills = skillResult.rows as DashboardData['topSkills'];
+          }
+        } catch { /* ignore */ }
+      }
+
+      // Query memory.db - tool_results
+      const memoryDb = existingDbs.find((d) => d.name === 'memory.db');
+      if (memoryDb) {
+        try {
+          const memoryResult = await api().executeSQL(
+            memoryDb.path,
+            `SELECT tool_name, COUNT(*) as call_count FROM tool_results GROUP BY tool_name ORDER BY call_count DESC LIMIT 10`,
+            true,
+          );
+          if (memoryResult.success && 'rows' in memoryResult) {
+            data.topMemoryTools = memoryResult.rows as DashboardData['topMemoryTools'];
+          }
+        } catch { /* ignore */ }
+      }
+
+      // Query knowledge.db - top insights by use_count
+      if (knowledgeDb) {
+        try {
+          const knowledgeResult = await api().executeSQL(
+            knowledgeDb.path,
+            `SELECT id, content, category, confidence, use_count, last_used FROM insights ORDER BY use_count DESC LIMIT 10`,
+            true,
+          );
+          if (knowledgeResult.success && 'rows' in knowledgeResult) {
+            data.topKnowledge = knowledgeResult.rows as DashboardData['topKnowledge'];
           }
         } catch { /* ignore */ }
       }

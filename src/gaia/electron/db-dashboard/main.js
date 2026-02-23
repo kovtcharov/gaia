@@ -14,6 +14,14 @@ const fs = require('fs');
 const os = require('os');
 const { execSync } = require('child_process');
 
+// Disable GPU acceleration in WSL2 to prevent GPU init errors (falls back to software rendering)
+try {
+  const proc = fs.readFileSync('/proc/version', 'utf-8');
+  if (proc.toLowerCase().includes('microsoft') || proc.toLowerCase().includes('wsl')) {
+    app.disableHardwareAcceleration();
+  }
+} catch { /* not WSL */ }
+
 // ============================================================================
 // Configuration & Path Detection
 // ============================================================================
@@ -419,6 +427,16 @@ function setupIpcHandlers() {
       const db = dbManager.getConnection(dbPath, false);
       const sql = `DELETE FROM "${tableName}" WHERE "${primaryKey.column}" = ?`;
       const info = db.prepare(sql).run(primaryKey.value);
+      return { success: true, changes: info.changes };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('db:clearTable', async (event, dbPath, tableName) => {
+    try {
+      const db = dbManager.getConnection(dbPath, false);
+      const info = db.prepare(`DELETE FROM "${tableName}"`).run();
       return { success: true, changes: info.changes };
     } catch (err) {
       return { success: false, error: err.message };

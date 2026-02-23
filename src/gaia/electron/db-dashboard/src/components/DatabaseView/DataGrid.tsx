@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 
 import type { Row, ColumnInfo, PaginationInfo, QueryOptions } from '../../types/database';
-import { useDeleteRow, useUpdateRow, useInsertRow } from '../../hooks/useDatabase';
+import { useDeleteRow, useUpdateRow, useInsertRow, useClearTable } from '../../hooks/useDatabase';
 import Button from '../shared/Button';
 import Modal from '../shared/Modal';
 
@@ -78,6 +78,7 @@ export default function DataGrid({
   const deleteRow = useDeleteRow();
   const updateRow = useUpdateRow();
   const insertRow = useInsertRow();
+  const clearTable = useClearTable();
 
   // ---- Resize observer ----
   useEffect(() => {
@@ -205,6 +206,12 @@ export default function DataGrid({
     setInsertModalOpen(false);
     setInsertValues({});
   }, [insertValues, colNames, dbPath, tableName, insertRow]);
+
+  const handleClearTable = useCallback(async () => {
+    if (readOnly) return;
+    if (!confirm(`Delete ALL ${pagination.totalRows} rows from "${tableName}"? This cannot be undone.`)) return;
+    await clearTable.mutateAsync({ dbPath, tableName });
+  }, [readOnly, pagination.totalRows, tableName, dbPath, clearTable]);
 
   const handleCopyCell = useCallback((value: string, key: string) => {
     navigator.clipboard?.writeText(value);
@@ -379,6 +386,19 @@ export default function DataGrid({
               }}
             >
               Insert
+            </Button>
+          )}
+
+          {/* Clear table */}
+          {!readOnly && pagination.totalRows > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<Trash2 size={12} />}
+              onClick={handleClearTable}
+              disabled={clearTable.isPending}
+            >
+              Clear All
             </Button>
           )}
         </div>

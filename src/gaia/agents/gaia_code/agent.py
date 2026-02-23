@@ -201,6 +201,14 @@ class GaiaCodeAgent(
         # Initialize base agent (with RAC: shared_state, audit_log, time tracking)
         super().__init__(**kwargs)
 
+        # Initialize workspace: register core tools and specialist agents into DBs.
+        # Runs on every startup to keep databases current across sessions.
+        from .integration import initialize_workspace
+        _ws = Path(self.shared_state.workspace_dir) if (
+            hasattr(self, 'shared_state') and self.shared_state and self.shared_state.workspace_dir
+        ) else None
+        initialize_workspace(_ws)
+
         # Suppress noisy warnings from base framework unless debug mode
         # Must be AFTER super().__init__() since Agent.__init__ calls basicConfig
         if not kwargs.get("debug"):

@@ -6,9 +6,7 @@ import { motion } from 'framer-motion';
 import {
   Table2,
   Search,
-  Eye,
   FileCode2,
-  Download,
   Save,
 } from 'lucide-react';
 import type { TableInfo, DatabaseInfo } from '../../types/database';
@@ -49,36 +47,7 @@ export default function Sidebar({
   const ftsTables = tables.filter((t) => t.isFts);
 
   return (
-    <aside className="flex flex-col w-60 bg-gh-canvas-subtle border-r border-gh-border shrink-0 overflow-hidden">
-      {/* Database picker */}
-      <div className="px-3 py-3 border-b border-gh-border">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-gh-fg-muted uppercase tracking-wider">
-            Databases
-          </span>
-          <Badge variant="info">{existingDbs.length}</Badge>
-        </div>
-        <div className="space-y-0.5 max-h-40 overflow-y-auto">
-          {existingDbs.map((db) => (
-            <button
-              key={db.path}
-              onClick={() => onSelectDatabase(db)}
-              className={`
-                w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors
-                ${
-                  db.path === currentDbPath
-                    ? 'bg-gh-accent-emphasis/15 text-gh-accent-fg'
-                    : 'text-gh-fg-muted hover:bg-gh-border-muted hover:text-gh-fg-default'
-                }
-              `}
-            >
-              <Search size={12} className="shrink-0 opacity-60" />
-              <span className="truncate">{db.label || db.name.replace('.db', '')}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
+    <aside className="flex flex-col w-52 bg-gh-canvas-subtle border-r border-gh-border shrink-0 overflow-hidden">
       {/* Table list */}
       <div className="flex-1 overflow-y-auto px-3 py-3">
         <div className="flex items-center justify-between mb-2">

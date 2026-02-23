@@ -174,6 +174,7 @@ export interface DatabaseAPI {
   executeSQL(dbPath: string, sql: string, readOnly?: boolean): Promise<ExecuteSQLResponse>;
   updateRow(dbPath: string, tableName: string, primaryKey: PrimaryKey, updates: Record<string, unknown>): Promise<MutationResponse>;
   deleteRow(dbPath: string, tableName: string, primaryKey: PrimaryKey): Promise<MutationResponse>;
+  clearTable(dbPath: string, tableName: string): Promise<MutationResponse>;
   insertRow(dbPath: string, tableName: string, data: Record<string, unknown>): Promise<MutationResponse>;
   getSchema(dbPath: string): Promise<GetSchemaResponse>;
   searchFTS5(dbPath: string, ftsTable: string, query: string, options?: { limit?: number }): Promise<FTS5SearchResponse>;
@@ -235,6 +236,17 @@ export interface ToolEntry {
   avg_duration_ms: number | null;
 }
 
+export interface HourlyActivityEntry {
+  hour_label: string; // 'HH:00' e.g. '14:00'
+  count: number;
+}
+
+export interface MinuteActivityEntry {
+  bucket_label: string; // 'HH:MM' e.g. '14:35'
+  count: number;
+}
+
+/** @deprecated Use HourlyActivityEntry */
 export interface HeatmapEntry {
   date: string;
   count: number;
@@ -247,6 +259,35 @@ export interface ContextUsageEntry {
   timestamp: string;
 }
 
+export interface AgentEntry {
+  name: string;
+  description: string;
+  usage_count: number;
+  last_used: string | null;
+}
+
+export interface SkillEntry {
+  name: string;
+  description: string;
+  category: string;
+  success_count: number;
+  failure_count: number;
+}
+
+export interface MemoryToolEntry {
+  tool_name: string;
+  call_count: number;
+}
+
+export interface KnowledgeInsightEntry {
+  id: string;
+  content: string;
+  category: string | null;
+  confidence: number | null;
+  use_count: number;
+  last_used: string | null;
+}
+
 export interface DashboardData {
   totalSize: number;
   dbCount: number;
@@ -256,9 +297,14 @@ export interface DashboardData {
   activeTasks: TaskEntry[];
   recentInsights: InsightEntry[];
   topTools: ToolEntry[];
-  activityHeatmap: HeatmapEntry[];
+  activityHeatmap: HourlyActivityEntry[];
+  minuteActivity: MinuteActivityEntry[];
   contextUsage: ContextUsageEntry[];
   trendStats: TrendStats | null;
+  topAgents: AgentEntry[];
+  topSkills: SkillEntry[];
+  topMemoryTools: MemoryToolEntry[];
+  topKnowledge: KnowledgeInsightEntry[];
 }
 
 // ============================================================================
