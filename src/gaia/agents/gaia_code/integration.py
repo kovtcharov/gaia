@@ -215,24 +215,21 @@ def register_specialists(state) -> int:
         try:
             metadata = specialist.get_metadata()
 
-            # Register in agents.db
-            state.agents.conn.execute(
-                """
-                INSERT OR REPLACE INTO agents (id, name, description, capabilities,
-                                              system_prompt, tool_packs, confidence)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    metadata["name"],
-                    metadata["name"],
-                    metadata["description"],
-                    ",".join(metadata["capabilities"]),
-                    specialist.get_system_prompt(),
-                    ",".join(metadata["tool_packs"]),
-                    1.0,  # Initial confidence
-                ),
+            # Skip if already registered (idempotent on repeated startups)
+            existing = state.agents.conn.execute(
+                "SELECT id FROM agents WHERE name = ?", (metadata["name"],)
+            ).fetchone()
+            if existing:
+                continue
+
+            # Use register_agent() so capabilities/tool_packs are stored as JSON
+            state.agents.register_agent(
+                name=metadata["name"],
+                description=metadata["description"],
+                capabilities=metadata["capabilities"],
+                system_prompt=specialist.get_system_prompt(),
+                tool_packs=metadata["tool_packs"],
             )
-            state.agents.conn.commit()
             count += 1
 
             logger.info(f"Registered specialist: {metadata['name']}")
