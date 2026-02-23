@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional
 
 # Import Rich with fallback
 try:
+    from rich import box as rich_box
     from rich.align import Align
     from rich.console import Console, Group
     from rich.layout import Layout
@@ -331,7 +332,7 @@ class GaiaCodeTUI:
         return Panel(
             Align.center(header_text),
             style="cyan",
-            box=None,
+            box=rich_box.SIMPLE,
         )
 
     def _render_main(self) -> Panel:
@@ -429,7 +430,7 @@ class GaiaCodeTUI:
         return Panel(
             Align.center(help_text),
             style="dim",
-            box=None,
+            box=rich_box.SIMPLE,
         )
 
     def _create_task_table(self) -> Table:

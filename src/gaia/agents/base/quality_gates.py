@@ -15,11 +15,15 @@ Features:
 
 import ast
 import importlib.util
+import logging
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -60,6 +64,7 @@ class SyntaxGate(QualityGate):
         """Check syntax of all code files in context."""
         files = context.get("files", [])
         if not files:
+            logger.debug("[SyntaxGate] no files to check")
             return GateResult(
                 gate_name="Syntax",
                 passed=True,
@@ -75,12 +80,16 @@ class SyntaxGate(QualityGate):
                 with open(file_path, "r") as f:
                     code = f.read()
                 ast.parse(code)
+                logger.debug("[SyntaxGate] %s syntax valid", file_path)
             except SyntaxError as e:
+                logger.debug("[SyntaxGate] %s:%s: %s", file_path, e.lineno, e.msg)
                 errors.append(f"{file_path}:{e.lineno}: {e.msg}")
             except Exception as e:
+                logger.debug("[SyntaxGate] %s: %s", file_path, e)
                 errors.append(f"{file_path}: {str(e)}")
 
         if errors:
+            logger.warning("[SyntaxGate] failed errors=%d", len(errors))
             return GateResult(
                 gate_name="Syntax",
                 passed=False,
@@ -88,6 +97,7 @@ class SyntaxGate(QualityGate):
                 errors=errors,
             )
 
+        logger.info("[SyntaxGate] passed files=%d", len(files))
         return GateResult(
             gate_name="Syntax",
             passed=True,
@@ -106,6 +116,7 @@ class ImportGate(QualityGate):
         """Check imports in all code files."""
         files = context.get("files", [])
         if not files:
+            logger.debug("[ImportGate] no files to check")
             return GateResult(
                 gate_name="Imports",
                 passed=True,
@@ -134,6 +145,7 @@ class ImportGate(QualityGate):
                 errors.append(f"{file_path}: {str(e)}")
 
         if errors:
+            logger.warning("[ImportGate] failed errors=%d", len(errors))
             return GateResult(
                 gate_name="Imports",
                 passed=False,
@@ -141,6 +153,7 @@ class ImportGate(QualityGate):
                 errors=errors,
             )
 
+        logger.info("[ImportGate] passed files=%d", len(files))
         return GateResult(
             gate_name="Imports",
             passed=True,
@@ -153,8 +166,12 @@ class ImportGate(QualityGate):
             # Try to find the module spec
             spec = importlib.util.find_spec(module_name)
             if spec is None:
+                logger.debug("[ImportGate] %s: cannot import %s", file_path, module_name)
                 errors.append(f"{file_path}: Cannot import '{module_name}'")
+            else:
+                logger.debug("[ImportGate] %s: import %s OK", file_path, module_name)
         except (ImportError, ModuleNotFoundError, ValueError):
+            logger.debug("[ImportGate] %s: cannot import %s", file_path, module_name)
             errors.append(f"{file_path}: Cannot import '{module_name}'")
 
 
@@ -167,12 +184,24 @@ class TestGate(QualityGate):
 
     def check(self, context: Dict) -> GateResult:
         """Run tests in the project."""
-        project_dir = context.get("project_dir", ".")
+        project_dir = context.get("project_dir")
+
+        # Infer project_dir from files if not provided
+        if not project_dir:
+            files = context.get("files", [])
+            if files:
+                # Use the common parent directory of all files
+                parents = [str(Path(f).parent) for f in files]
+                project_dir = os.path.commonpath(parents) if parents else "."
+                logger.debug("[TestGate] project_dir inferred: %s", project_dir)
+            else:
+                project_dir = "."
 
         # Try to find test files
         test_files = self._find_test_files(project_dir)
 
         if not test_files:
+            logger.debug("[TestGate] no test files in %s", project_dir)
             return GateResult(
                 gate_name="Tests",
                 passed=True,
@@ -185,6 +214,7 @@ class TestGate(QualityGate):
         elif self._has_jest(project_dir):
             return self._run_jest(project_dir)
         else:
+            logger.debug("[TestGate] no test framework detected in %s", project_dir)
             return GateResult(
                 gate_name="Tests",
                 passed=True,
@@ -204,6 +234,7 @@ class TestGate(QualityGate):
         for pattern in ["*.test.js", "*.spec.js", "*.test.ts", "*.spec.ts"]:
             test_files.extend([str(p) for p in project_path.rglob(pattern)])
 
+        logger.debug("[TestGate] found %d test files in %s", len(test_files), project_dir)
         return test_files
 
     def _has_pytest(self, test_files: List[str]) -> bool:
@@ -227,6 +258,7 @@ class TestGate(QualityGate):
             )
 
             if result.returncode == 0:
+                logger.info("[TestGate] passed test_files=%d", len(test_files))
                 return GateResult(
                     gate_name="Tests",
                     passed=True,
@@ -235,6 +267,7 @@ class TestGate(QualityGate):
                 )
             else:
                 errors = self._parse_pytest_errors(result.stdout)
+                logger.warning("[TestGate] failed errors=%d", len(errors))
                 return GateResult(
                     gate_name="Tests",
                     passed=False,
@@ -244,12 +277,14 @@ class TestGate(QualityGate):
                 )
 
         except subprocess.TimeoutExpired:
+            logger.warning("[TestGate] timed out after 60s")
             return GateResult(
                 gate_name="Tests",
                 passed=False,
                 message="Tests timed out (>60s)",
             )
         except Exception as e:
+            logger.error("[TestGate] exception: %s", e)
             return GateResult(
                 gate_name="Tests",
                 passed=False,
@@ -268,6 +303,7 @@ class TestGate(QualityGate):
             )
 
             if result.returncode == 0:
+                logger.info("[TestGate] jest passed")
                 return GateResult(
                     gate_name="Tests",
                     passed=True,
@@ -275,6 +311,7 @@ class TestGate(QualityGate):
                     details=result.stdout,
                 )
             else:
+                logger.warning("[TestGate] jest failed")
                 return GateResult(
                     gate_name="Tests",
                     passed=False,
@@ -283,12 +320,14 @@ class TestGate(QualityGate):
                 )
 
         except subprocess.TimeoutExpired:
+            logger.warning("[TestGate] jest timed out after 60s")
             return GateResult(
                 gate_name="Tests",
                 passed=False,
                 message="Tests timed out (>60s)",
             )
         except Exception as e:
+            logger.error("[TestGate] jest exception: %s", e)
             return GateResult(
                 gate_name="Tests",
                 passed=False,
@@ -334,13 +373,18 @@ class QualityGateRunner:
         # Build context dict that gates expect
         context = {"files": paths, **kwargs}
 
+        enabled_count = sum(1 for g in self.gates.values() if g.enabled)
+        logger.info("[QualityGates] running %d gates on %d files", enabled_count, len(paths))
+
         for gate_name, gate in self.gates.items():
             if not gate.enabled:
+                logger.debug("[QualityGates] %s disabled, skipping", gate_name)
                 continue
 
             try:
                 result = gate.check(context)
             except Exception as e:
+                logger.error("[QualityGates] %s threw exception: %s", gate_name, e)
                 result = GateResult(
                     gate_name=gate_name.capitalize(),
                     passed=True,
@@ -348,6 +392,8 @@ class QualityGateRunner:
                 )
             results[gate_name] = result
 
+        passed_count = sum(1 for r in results.values() if r.passed)
+        logger.info("[QualityGates] complete: %d/%d passed", passed_count, len(results))
         return results
 
     def all_passed(self, results: Dict[str, "GateResult"]) -> bool:
@@ -366,11 +412,13 @@ class QualityGateRunner:
         """Enable a quality gate."""
         if gate_name in self.gates:
             self.gates[gate_name].enabled = True
+            logger.info("[QualityGates] enabled: %s", gate_name)
 
     def disable_gate(self, gate_name: str):
         """Disable a quality gate."""
         if gate_name in self.gates:
             self.gates[gate_name].enabled = False
+            logger.info("[QualityGates] disabled: %s", gate_name)
 
     def format_results(self, results: List[GateResult]) -> str:
         """Format gate results for display."""
@@ -420,22 +468,32 @@ class EscalationLadder:
     def increment(self):
         """Increment retry count."""
         self.retry_count += 1
+        logger.info("[Escalation] retry %d/%d", self.retry_count, self.max_retries)
 
     def escalate(self):
         """Escalate to next level in the ladder."""
         self.retry_count += 1
+        logger.info("[Escalation] escalated count=%d action=%s", self.retry_count, self.get_action())
 
     def reset(self):
         """Reset retry count."""
+        old_count = self.retry_count
         self.retry_count = 0
+        logger.info("[Escalation] reset (was count=%d)", old_count)
 
     def get_action(self) -> str:
-        """Get the current escalation action."""
-        if self.should_retry():
-            return "retry"
-        elif self.should_decompose():
-            return "decompose"
+        """Get the current escalation action.
+
+        Checks in reverse order (most escalated first) so the elif
+        chain correctly progresses: retry → decompose → alternative → ask_user.
+        """
+        if self.should_ask_user():
+            action = "ask_user"
         elif self.should_escalate_to_cloud():
-            return "cloud"
+            action = "alternative"
+        elif self.should_decompose():
+            action = "decompose"
         else:
-            return "ask_user"
+            action = "retry"
+        logger.debug("[Escalation] action=%s retry_count=%d", action, self.retry_count)
+        return action

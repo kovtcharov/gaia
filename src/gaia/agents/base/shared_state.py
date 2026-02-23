@@ -26,6 +26,7 @@ Plus:
 """
 
 import json
+import logging
 import sqlite3
 import threading
 from collections import deque
@@ -34,6 +35,38 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
+import re
+
+logger = logging.getLogger(__name__)
+
+
+def _sanitize_fts5_query(query: str) -> Optional[str]:
+    """Sanitize a query string for FTS5 MATCH.
+
+    FTS5 treats characters like . : - @ as special syntax.
+    Replace them with spaces so the query works as plain word search.
+    Uses OR semantics so partial matches still return results.
+
+    Returns None if query is empty or contains no searchable words.
+    """
+    if not query or not query.strip():
+        logger.debug("[FTS5] query empty/invalid, returning None")
+        return None
+    # Replace FTS5 special chars with spaces, keep alphanumeric and underscores
+    sanitized = re.sub(r'[^\w\s]', ' ', query)
+    # Collapse multiple spaces
+    sanitized = re.sub(r'\s+', ' ', sanitized).strip()
+    if not sanitized:
+        logger.debug("[FTS5] query empty/invalid, returning None")
+        return None
+    # Join words with OR for fuzzy matching (AND is too strict for recall)
+    words = sanitized.split()
+    if len(words) > 1:
+        result = ' OR '.join(words)
+        logger.debug("[FTS5] sanitized %r -> %r", query, result)
+        return result
+    logger.debug("[FTS5] sanitized %r -> %r", query, sanitized)
+    return sanitized
 
 
 # ============================================================================
@@ -188,6 +221,7 @@ class MemoryDB:
                 (path, content),
             )
             self.conn.commit()
+        logger.debug("[MemoryDB] cached path=%s size=%d", path, len(content))
 
     def get_file(self, path: str) -> Optional[str]:
         """Get cached file contents."""
@@ -196,7 +230,12 @@ class MemoryDB:
                 "SELECT content FROM file_cache WHERE path = ?", (path,)
             )
             row = cursor.fetchone()
-            return row[0] if row else None
+            content = row[0] if row else None
+        if content is not None:
+            logger.debug("[MemoryDB] cache hit path=%s", path)
+        else:
+            logger.debug("[MemoryDB] cache miss path=%s", path)
+        return content
 
     def store_tool_result(self, tool_name: str, args: Dict, result: str):
         """Store a tool call result."""
@@ -209,6 +248,7 @@ class MemoryDB:
                 (tool_name, json.dumps(args), result),
             )
             self.conn.commit()
+        logger.debug("[MemoryDB] tool result stored tool=%s", tool_name)
 
 
 class KnowledgeDB:
@@ -291,13 +331,42 @@ class KnowledgeDB:
             )
 
             # FTS5 virtual table for full-text search
-            self.conn.execute(
-                """
-                CREATE VIRTUAL TABLE IF NOT EXISTS insights_fts USING fts5(
-                    id, content, triggers
-                )
-            """
+            # Check if FTS5 table exists with old schema (missing domain/category)
+            cursor = self.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='insights_fts'"
             )
+            if cursor.fetchone():
+                # Check column count to detect old schema
+                try:
+                    test = self.conn.execute("SELECT id, content, triggers, domain, category FROM insights_fts LIMIT 0")
+                except sqlite3.OperationalError:
+                    # Old schema without domain/category - migrate
+                    logger.info("[KnowledgeDB] FTS5 schema migrated (added domain/category)")
+                    self.conn.execute("DROP TABLE insights_fts")
+                    self.conn.execute(
+                        """
+                        CREATE VIRTUAL TABLE insights_fts USING fts5(
+                            id, content, triggers, domain, category
+                        )
+                    """
+                    )
+                    # Re-populate FTS index from insights table
+                    rows = self.conn.execute(
+                        "SELECT id, content, triggers, domain, category FROM insights"
+                    ).fetchall()
+                    for row in rows:
+                        self.conn.execute(
+                            "INSERT INTO insights_fts (id, content, triggers, domain, category) VALUES (?, ?, ?, ?, ?)",
+                            (row[0], row[1], row[2] or "", row[3] or "", row[4] or ""),
+                        )
+            else:
+                self.conn.execute(
+                    """
+                    CREATE VIRTUAL TABLE insights_fts USING fts5(
+                        id, content, triggers, domain, category
+                    )
+                """
+                )
 
             self.conn.commit()
 
@@ -321,36 +390,26 @@ class KnowledgeDB:
                 (insight_id, category, domain, content, triggers_json),
             )
 
-            # Add to FTS index
+            # Add to FTS index (includes domain and category for better recall)
             self.conn.execute(
                 """
-                INSERT INTO insights_fts (id, content, triggers)
-                VALUES (?, ?, ?)
+                INSERT INTO insights_fts (id, content, triggers, domain, category)
+                VALUES (?, ?, ?, ?, ?)
             """,
-                (insight_id, content, triggers_json or ""),
+                (insight_id, content, triggers_json or "", domain or "", category or ""),
             )
 
             self.conn.commit()
 
+        logger.info("[KnowledgeDB] insight stored id=%s category=%s domain=%s", insight_id, category, domain)
         return insight_id
-
-    @staticmethod
-    def _sanitize_fts5_query(query: str) -> str:
-        """Sanitize a query string for FTS5 MATCH.
-
-        FTS5 treats characters like . : - @ as special syntax.
-        Replace them with spaces so the query works as plain word search.
-        """
-        import re
-        # Replace FTS5 special chars with spaces, keep alphanumeric and underscores
-        sanitized = re.sub(r'[^\w\s]', ' ', query)
-        # Collapse multiple spaces
-        sanitized = re.sub(r'\s+', ' ', sanitized).strip()
-        return sanitized if sanitized else query
 
     def recall(self, query: str, top_k: int = 5) -> List[Dict]:
         """Search insights using FTS5 full-text search."""
-        safe_query = self._sanitize_fts5_query(query)
+        safe_query = _sanitize_fts5_query(query)
+        if safe_query is None:
+            logger.debug("[KnowledgeDB] recall skipped, empty/invalid query")
+            return []  # Empty/invalid query returns no results
         with self.lock:
             cursor = self.conn.execute(
                 """
@@ -375,8 +434,9 @@ class KnowledgeDB:
                         "confidence": row[4],
                     }
                 )
-
-            return results
+            result_count = len(results)
+        logger.debug("[KnowledgeDB] recall query=%r sanitized=%r results=%d", query, safe_query, result_count)
+        return results
 
     def store_preference(self, key: str, value: str, description: Optional[str] = None):
         """Store a user preference."""
@@ -389,6 +449,7 @@ class KnowledgeDB:
                 (key, value, description),
             )
             self.conn.commit()
+        logger.info("[KnowledgeDB] preference stored key=%s", key)
 
     def get_preference(self, key: str) -> Optional[str]:
         """Get a user preference."""
@@ -397,7 +458,12 @@ class KnowledgeDB:
                 "SELECT value FROM preferences WHERE key = ?", (key,)
             )
             row = cursor.fetchone()
-            return row[0] if row else None
+            value = row[0] if row else None
+        if value is not None:
+            logger.debug("[KnowledgeDB] preference hit key=%s", key)
+        else:
+            logger.debug("[KnowledgeDB] preference miss key=%s", key)
+        return value
 
 
 class ToolsDB:
@@ -506,11 +572,15 @@ class ToolsDB:
 
             self.conn.commit()
 
+        logger.info("[ToolsDB] registered name=%s category=%s", name, category)
         return tool_id
 
     def find_tools(self, query: str, top_k: int = 10) -> List[Dict]:
         """Find tools using FTS5 search."""
-        safe_query = self._sanitize_fts5_query(query)
+        safe_query = _sanitize_fts5_query(query)
+        if safe_query is None:
+            logger.debug("[ToolsDB] find skipped, empty/invalid query")
+            return []  # Empty/invalid query returns no results
         with self.lock:
             cursor = self.conn.execute(
                 """
@@ -534,8 +604,91 @@ class ToolsDB:
                         "description": row[3],
                     }
                 )
+            result_count = len(results)
+        logger.debug("[ToolsDB] find query=%r results=%d", query, result_count)
+        return results
 
-            return results
+    def get_tool(self, name: str) -> Optional[Dict]:
+        """Get a tool by name."""
+        with self.lock:
+            cursor = self.conn.execute(
+                "SELECT id, name, category, source, description, parameters, enabled FROM tools WHERE name = ?",
+                (name,),
+            )
+            row = cursor.fetchone()
+            if row:
+                result = {
+                    "id": row[0],
+                    "name": row[1],
+                    "category": row[2],
+                    "source": row[3],
+                    "description": row[4],
+                    "parameters": json.loads(row[5]) if row[5] else None,
+                    "enabled": bool(row[6]),
+                }
+            else:
+                result = None
+        logger.debug("[ToolsDB] get_tool name=%s found=%s", name, result is not None)
+        return result
+
+    def record_usage(
+        self,
+        tool_name: str,
+        success: bool,
+        duration_ms: int = 0,
+        context: Optional[str] = None,
+        error: Optional[str] = None,
+    ):
+        """Record a tool usage event."""
+        with self.lock:
+            # Look up tool_id from name
+            cursor = self.conn.execute(
+                "SELECT id FROM tools WHERE name = ?", (tool_name,)
+            )
+            row = cursor.fetchone()
+            tool_id = row[0] if row else None
+
+            self.conn.execute(
+                """
+                INSERT INTO tool_usage (tool_id, success, duration_ms, context, error)
+                VALUES (?, ?, ?, ?, ?)
+            """,
+                (tool_id, success, duration_ms, context, error),
+            )
+            self.conn.commit()
+        logger.debug("[ToolsDB] usage tool=%s success=%s duration=%dms", tool_name, success, duration_ms)
+
+    def get_tool_stats(self, tool_name: str) -> Dict:
+        """Get usage statistics for a tool."""
+        with self.lock:
+            cursor = self.conn.execute(
+                "SELECT id FROM tools WHERE name = ?", (tool_name,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return {"total": 0, "successes": 0, "failures": 0, "avg_duration_ms": 0}
+
+            tool_id = row[0]
+            cursor = self.conn.execute(
+                """
+                SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes,
+                    SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failures,
+                    COALESCE(AVG(duration_ms), 0) as avg_duration
+                FROM tool_usage WHERE tool_id = ?
+            """,
+                (tool_id,),
+            )
+            row = cursor.fetchone()
+            stats = {
+                "total": row[0],
+                "successes": row[1],
+                "failures": row[2],
+                "avg_duration_ms": round(row[3]),
+            }
+        logger.debug("[ToolsDB] stats tool=%s total=%d successes=%d", tool_name, stats["total"], stats["successes"])
+        return stats
 
 
 class SkillsDB:
@@ -593,6 +746,95 @@ class SkillsDB:
 
             self.conn.commit()
 
+    def register_skill(
+        self,
+        name: str,
+        description: str,
+        category: str,
+        steps: List[Dict],
+        domain: Optional[str] = None,
+        tools_used: Optional[List[str]] = None,
+    ) -> str:
+        """Register a new skill (learned workflow pattern)."""
+        skill_id = str(uuid4())
+        with self.lock:
+            self.conn.execute(
+                """
+                INSERT INTO skills (id, name, description, category, domain, steps, tools_used)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    skill_id,
+                    name,
+                    description,
+                    category,
+                    domain,
+                    json.dumps(steps),
+                    json.dumps(tools_used) if tools_used else None,
+                ),
+            )
+            self.conn.commit()
+        logger.info("[SkillsDB] registered name=%s category=%s steps=%d", name, category, len(steps))
+        return skill_id
+
+    def find_skills(self, category: Optional[str] = None, domain: Optional[str] = None) -> List[Dict]:
+        """Find skills by category and/or domain."""
+        with self.lock:
+            query = "SELECT id, name, description, category, domain, steps, confidence FROM skills WHERE 1=1"
+            params = []
+            if category:
+                query += " AND category = ?"
+                params.append(category)
+            if domain:
+                query += " AND domain = ?"
+                params.append(domain)
+            query += " ORDER BY confidence DESC"
+
+            cursor = self.conn.execute(query, params)
+            results = []
+            for row in cursor.fetchall():
+                results.append({
+                    "id": row[0],
+                    "name": row[1],
+                    "description": row[2],
+                    "category": row[3],
+                    "domain": row[4],
+                    "steps": json.loads(row[5]),
+                    "confidence": row[6],
+                })
+            result_count = len(results)
+        logger.debug("[SkillsDB] find category=%s domain=%s results=%d", category, domain, result_count)
+        return results
+
+    def record_usage(self, skill_name: str, success: bool, task_description: Optional[str] = None, feedback: Optional[str] = None):
+        """Record skill usage and update confidence."""
+        with self.lock:
+            cursor = self.conn.execute("SELECT id, success_count, failure_count FROM skills WHERE name = ?", (skill_name,))
+            row = cursor.fetchone()
+            if not row:
+                return
+            skill_id, successes, failures = row[0], row[1], row[2]
+
+            self.conn.execute(
+                "INSERT INTO skill_usage (skill_id, success, task_description, feedback) VALUES (?, ?, ?, ?)",
+                (skill_id, success, task_description, feedback),
+            )
+
+            # Update counts and confidence
+            if success:
+                successes += 1
+            else:
+                failures += 1
+            total = successes + failures
+            confidence = successes / total if total > 0 else 0.5
+
+            self.conn.execute(
+                "UPDATE skills SET success_count = ?, failure_count = ?, confidence = ?, last_used = CURRENT_TIMESTAMP WHERE id = ?",
+                (successes, failures, confidence, skill_id),
+            )
+            self.conn.commit()
+        logger.debug("[SkillsDB] usage skill=%s success=%s confidence=%.2f", skill_name, success, confidence)
+
 
 class AgentsDB:
     """
@@ -646,6 +888,110 @@ class AgentsDB:
 
             self.conn.commit()
 
+    def register_agent(
+        self,
+        name: str,
+        description: str,
+        capabilities: Optional[List[str]] = None,
+        system_prompt: Optional[str] = None,
+        tool_packs: Optional[List[str]] = None,
+    ) -> str:
+        """Register a specialist agent."""
+        agent_id = str(uuid4())
+        with self.lock:
+            self.conn.execute(
+                """
+                INSERT OR REPLACE INTO agents (id, name, description, capabilities, system_prompt, tool_packs)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    agent_id,
+                    name,
+                    description,
+                    json.dumps(capabilities) if capabilities else None,
+                    system_prompt,
+                    json.dumps(tool_packs) if tool_packs else None,
+                ),
+            )
+            self.conn.commit()
+        logger.info("[AgentsDB] registered name=%s", name)
+        return agent_id
+
+    def find_agent(self, name: str) -> Optional[Dict]:
+        """Find an agent by name."""
+        with self.lock:
+            cursor = self.conn.execute(
+                "SELECT id, name, description, capabilities, system_prompt, tool_packs, confidence FROM agents WHERE name = ?",
+                (name,),
+            )
+            row = cursor.fetchone()
+            if row:
+                result = {
+                    "id": row[0],
+                    "name": row[1],
+                    "description": row[2],
+                    "capabilities": json.loads(row[3]) if row[3] else None,
+                    "system_prompt": row[4],
+                    "tool_packs": json.loads(row[5]) if row[5] else None,
+                    "confidence": row[6],
+                }
+            else:
+                result = None
+        logger.debug("[AgentsDB] find_agent name=%s found=%s", name, result is not None)
+        return result
+
+    def list_agents(self) -> List[Dict]:
+        """List all registered agents."""
+        with self.lock:
+            cursor = self.conn.execute(
+                "SELECT id, name, description, capabilities, confidence FROM agents ORDER BY confidence DESC"
+            )
+            results = []
+            for row in cursor.fetchall():
+                results.append({
+                    "id": row[0],
+                    "name": row[1],
+                    "description": row[2],
+                    "capabilities": json.loads(row[3]) if row[3] else None,
+                    "confidence": row[4],
+                })
+            result_count = len(results)
+        logger.debug("[AgentsDB] list_agents count=%d", result_count)
+        return results
+
+    def record_usage(self, agent_name: str, success: bool, task_type: Optional[str] = None, duration_ms: int = 0):
+        """Record agent usage and update confidence."""
+        with self.lock:
+            cursor = self.conn.execute("SELECT id FROM agents WHERE name = ?", (agent_name,))
+            row = cursor.fetchone()
+            if not row:
+                return
+            agent_id = row[0]
+
+            self.conn.execute(
+                "INSERT INTO agent_usage (agent_id, success, task_type, duration_ms) VALUES (?, ?, ?, ?)",
+                (agent_id, success, task_type, duration_ms),
+            )
+
+            # Update confidence based on usage history
+            cursor = self.conn.execute(
+                """
+                SELECT COUNT(*) as total,
+                       SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes
+                FROM agent_usage WHERE agent_id = ?
+            """,
+                (agent_id,),
+            )
+            stats = cursor.fetchone()
+            confidence = stats[1] / stats[0] if stats[0] > 0 else 0.5
+
+            self.conn.execute(
+                "UPDATE agents SET confidence = ?, last_used = CURRENT_TIMESTAMP WHERE id = ?",
+                (confidence, agent_id),
+            )
+            self.conn.commit()
+        logger.debug("[AgentsDB] usage agent=%s success=%s confidence=%.2f", agent_name, success, confidence)
+
 
 # ============================================================================
 # MasterPlan: Hierarchical Task Tree
@@ -666,7 +1012,7 @@ class MasterPlan:
     def __init__(self, db_path: Path):
         self.db_path = db_path
         self.conn = sqlite3.connect(str(db_path), check_same_thread=False)
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()  # Re-entrant: create_task calls get_task/update_task while holding lock
         self._create_tables()
 
     def _create_tables(self):
@@ -715,6 +1061,7 @@ class MasterPlan:
 
             self.conn.commit()
 
+        logger.info("[MasterPlan] task created id=%s parent=%s desc=%.80s", task.id, parent_id, description)
         return task
 
     def get_task(self, task_id: str) -> Optional[TaskNode]:
@@ -725,8 +1072,11 @@ class MasterPlan:
             if row:
                 columns = [desc[0] for desc in cursor.description]
                 data = dict(zip(columns, row))
-                return TaskNode.from_dict(data)
-            return None
+                task = TaskNode.from_dict(data)
+            else:
+                task = None
+        logger.debug("[MasterPlan] get_task id=%s found=%s", task_id, task is not None)
+        return task
 
     def update_task_status(
         self,
@@ -740,6 +1090,7 @@ class MasterPlan:
         if not task:
             return
 
+        old_status = task.status
         task.status = status
         if result:
             task.result = result
@@ -752,6 +1103,7 @@ class MasterPlan:
             task.completed_at = datetime.now()
 
         self._update_task(task)
+        logger.info("[MasterPlan] task %s: %s -> %s", task_id, old_status, status)
 
     def _update_task(self, task: TaskNode):
         """Update task in database."""
@@ -776,13 +1128,16 @@ class MasterPlan:
             for row in cursor.fetchall():
                 data = dict(zip(columns, row))
                 tasks.append(TaskNode.from_dict(data))
-            return tasks
+            task_count = len(tasks)
+        logger.debug("[MasterPlan] get_all_tasks count=%d", task_count)
+        return tasks
 
     def clear_all_tasks(self):
         """Clear all tasks from the plan. Use at session start to avoid stale tasks."""
         with self.lock:
             self.conn.execute("DELETE FROM tasks")
             self.conn.commit()
+        logger.info("[MasterPlan] all tasks cleared")
 
 
 # ============================================================================
@@ -813,6 +1168,7 @@ class AgentCallStack:
             depth = len(self.stack)
 
             if depth >= self.max_depth:
+                logger.warning("[CallStack] max depth %d reached, push rejected", self.max_depth)
                 return None  # Max recursion depth reached
 
             parent_id = self.stack[-1].agent_id if self.stack else None
@@ -825,7 +1181,8 @@ class AgentCallStack:
             )
 
             self.stack.append(frame)
-            return frame
+        logger.info("[CallStack] push depth=%d task=%.80s specialist=%s", depth, task, specialist)
+        return frame
 
     def pop(self) -> Optional[AgentCallFrame]:
         """Pop the top agent call frame."""
@@ -834,13 +1191,23 @@ class AgentCallStack:
                 frame = self.stack.pop()
                 frame.completed_at = datetime.now()
                 frame.status = "completed"
-                return frame
-            return None
+                depth = frame.depth
+            else:
+                frame = None
+                depth = -1
+        if frame:
+            logger.info("[CallStack] pop depth=%d status=%s", depth, frame.status)
+        return frame
 
     def current(self) -> Optional[AgentCallFrame]:
         """Get the current (top) call frame."""
         with self.lock:
-            return self.stack[-1] if self.stack else None
+            frame = self.stack[-1] if self.stack else None
+        if frame:
+            logger.debug("[CallStack] current depth=%d task=%.80s", frame.depth, frame.task)
+        else:
+            logger.debug("[CallStack] current: stack empty")
+        return frame
 
 
 # ============================================================================
@@ -881,6 +1248,7 @@ class MessageQueue:
         with self.lock:
             self.messages.append(msg)
 
+        logger.info("[MessageQueue] sent id=%s priority=%s %s -> %s", msg.id, priority, sender, recipient)
         return msg.id
 
     def receive(
@@ -894,7 +1262,9 @@ class MessageQueue:
                     if priority is None or msg.priority == priority:
                         msg.read = True
                         msgs.append(msg)
-            return msgs
+            msg_count = len(msgs)
+        logger.debug("[MessageQueue] receive recipient=%s messages=%d", recipient, msg_count)
+        return msgs
 
     def respond(self, message_id: str, response: str):
         """Respond to a message."""
@@ -903,6 +1273,7 @@ class MessageQueue:
                 if msg.id == message_id:
                     msg.response = response
                     break
+        logger.info("[MessageQueue] response to id=%s", message_id)
 
 
 # ============================================================================
@@ -933,7 +1304,8 @@ class ProjectManifest:
     def add_file(self, path: str, content: str):
         """Register a file in the manifest."""
         with self.lock:
-            if path in self.files:
+            is_update = path in self.files
+            if is_update:
                 self.files[path]["modified"] = datetime.now()
                 self.files[path]["content"] = content
             else:
@@ -942,6 +1314,10 @@ class ProjectManifest:
                     "created": datetime.now(),
                     "modified": datetime.now(),
                 }
+        if is_update:
+            logger.debug("[Manifest] file updated path=%s", path)
+        else:
+            logger.info("[Manifest] file added path=%s", path)
 
     def add_api(self, endpoint: str, method: str, params: Dict, response: Dict):
         """Register an API endpoint."""
@@ -952,6 +1328,7 @@ class ProjectManifest:
                 "response": response,
                 "created": datetime.now(),
             }
+        logger.info("[Manifest] api added %s %s", method, endpoint)
 
     def add_decision(self, decision: str, rationale: str):
         """Record an architecture decision."""
@@ -963,16 +1340,21 @@ class ProjectManifest:
                     "timestamp": datetime.now(),
                 }
             )
+        logger.info("[Manifest] decision: %.80s", decision)
 
     def get_file(self, path: str) -> Optional[Dict]:
         """Get file info from manifest."""
         with self.lock:
-            return self.files.get(path)
+            result = self.files.get(path)
+        logger.debug("[Manifest] get_file path=%s found=%s", path, result is not None)
+        return result
 
     def list_files(self) -> List[str]:
         """List all files in manifest."""
         with self.lock:
-            return list(self.files.keys())
+            files = list(self.files.keys())
+        logger.debug("[Manifest] list_files count=%d", len(files))
+        return files
 
 
 # ============================================================================
@@ -999,12 +1381,16 @@ class SharedAgentState:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
+                    logger.info("[SharedState] creating singleton instance")
+        else:
+            logger.debug("[SharedState] returning existing singleton")
         return cls._instance
 
     def __init__(self, workspace_dir: Optional[Path] = None):
         """Initialize SharedAgentState (only runs once due to singleton)."""
         # Avoid re-initialization
         if hasattr(self, "_initialized"):
+            logger.debug("[SharedState] already initialized, skipping")
             return
 
         # Set up workspace directory
@@ -1030,6 +1416,7 @@ class SharedAgentState:
 
         # Mark as initialized
         self._initialized = True
+        logger.info("[SharedState] initialized workspace=%s", workspace_dir)
 
     def reset_session(self):
         """Reset session-scoped state (memory cache) while keeping knowledge."""
@@ -1046,6 +1433,7 @@ class SharedAgentState:
 
         # Keep knowledge, tools, skills, agents, plan, and manifest
         # (these persist across sessions)
+        logger.info("[SharedState] session reset")
 
 
 def get_shared_state(workspace_dir: Optional[Path] = None) -> SharedAgentState:
