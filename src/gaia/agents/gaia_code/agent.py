@@ -382,6 +382,23 @@ class GaiaCodeAgent(
         self.task_start = datetime.now()
         self._log_audit("TASK_START", {"query": query})
 
+        # Inject current working memories into the task context
+        # This makes the agent aware of what it stored in previous calls
+        if self.shared_state:
+            try:
+                memories = self.shared_state.memory.recall_memories(limit=20)
+                if memories:
+                    mem_lines = "\n".join(
+                        f"  [{m['key']}] {m['value']}"
+                        for m in memories
+                    )
+                    memory_block = f"\n\n## Working Memory (from this session)\n{mem_lines}"
+                    # Prepend to the query so the agent sees its own context
+                    query = f"{query}{memory_block}"
+                    logger.debug("[GaiaCode] injected %d memories into task", len(memories))
+            except Exception:
+                pass
+
         # Auto-detect output directories from the query and add to PathValidator
         self._auto_add_query_paths(query)
 
@@ -708,13 +725,43 @@ class GaiaCodeAgent(
 
     def _execute_tool(self, tool_name: str, tool_args: Dict[str, Any]) -> Any:
         """
-        Override base _execute_tool to track usage in memory.db and tools.db.
+        Override base _execute_tool to integrate with memory.db and tools.db.
 
-        Every tool call is recorded as a session-level memory entry (tool_results).
-        File reads are also cached in file_cache for fast repeated access.
-        Tool usage statistics are accumulated in tools.db (record_usage).
+        Before executing:
+        - For read_file: check file_cache first (context-lean — skip I/O if cached)
+
+        After executing:
+        - Store result in tool_results (session memory)
+        - Cache file content on read_file calls
+        - Record tool usage duration+success in tools.db
         """
         start_ms = int(time.time() * 1000)
+
+        # --- Pre-execution: serve read_file from file cache if available ---
+        if self.shared_state and tool_name in ("read_file", "read"):
+            file_path = (
+                tool_args.get("file_path")
+                or tool_args.get("path")
+                or tool_args.get("filename", "")
+            )
+            if file_path:
+                try:
+                    cached = self.shared_state.memory.get_file(file_path)
+                    if cached is not None:
+                        logger.debug("[GaiaCode] file cache hit: %s", file_path)
+                        # Record as a zero-duration cache hit, skip actual I/O
+                        try:
+                            self.shared_state.tools.record_usage(
+                                tool_name=tool_name,
+                                success=True,
+                                duration_ms=0,
+                                context="cache_hit",
+                            )
+                        except Exception:
+                            pass
+                        return cached
+                except Exception:
+                    pass  # Fall through to actual tool execution
 
         result = super()._execute_tool(tool_name, tool_args)
 
@@ -726,7 +773,7 @@ class GaiaCodeAgent(
         success = not (isinstance(result, dict) and result.get("status") == "error")
         error_msg = result.get("error") if isinstance(result, dict) else None
 
-        # --- memory.db: store_tool_result ---
+        # --- memory.db: store_tool_result (session history) ---
         try:
             result_preview = (
                 result if isinstance(result, str) else json.dumps(result, default=str)
@@ -734,12 +781,12 @@ class GaiaCodeAgent(
             self.shared_state.memory.store_tool_result(
                 tool_name=tool_name,
                 args=tool_args,
-                result=result_preview[:4000],  # cap size
+                result=result_preview[:4000],
             )
         except Exception:
             pass
 
-        # --- memory.db: cache_file on read_file calls ---
+        # --- memory.db: cache file content for future cache-hits ---
         if tool_name in ("read_file", "read") and success:
             file_path = (
                 tool_args.get("file_path")

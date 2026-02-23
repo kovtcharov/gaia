@@ -83,6 +83,79 @@ class GaiaCodeTools:
             return self.tool_store_insight(category, content, domain, triggers)
 
         @tool
+        def remember(key: str, value: str, tags: Optional[List[str]] = None) -> Dict[str, Any]:
+            """
+            Store an important fact or context value in working memory (memory.db).
+
+            Use this to persist any piece of context you'll need later in this session
+            or that a sub-agent should be able to retrieve. Memory survives across
+            tool calls and recursive agent_query() calls.
+
+            **EXAMPLES — store anything important:**
+
+            # Project context
+            remember(key="project_root", value="/mnt/c/Users/14255/Work/gaia")
+            remember(key="active_branch", value="gaia-v2")
+
+            # Architecture decisions
+            remember(key="auth_approach", value="JWT with RS256 signed tokens", tags=["architecture"])
+            remember(key="db_schema", value="users(id, email, hashed_pw), sessions(token, user_id)")
+
+            # Current task state
+            remember(key="files_created", value="agent.py, test_agent.py, types.ts")
+            remember(key="next_step", value="run pytest and fix any failures")
+
+            # Error patterns learned this session
+            remember(key="error_sqlite_lock", value="Use check_same_thread=False in connect()")
+
+            Args:
+                key: Unique identifier for this memory (use descriptive names)
+                value: The content to store (facts, decisions, paths, code snippets, etc.)
+                tags: Optional category tags for easier recall (e.g., ["architecture", "error"])
+            """
+            return self.tool_remember(key, value, tags)
+
+        @tool
+        def recall_memory(query: Optional[str] = None, key: Optional[str] = None, limit: int = 10) -> Dict[str, Any]:
+            """
+            Retrieve stored memories from working memory (memory.db).
+
+            Use this at the START of tasks to orient yourself, or any time you need
+            to recall context stored earlier in the session.
+
+            **EXAMPLES:**
+
+            # Recall everything (orient at task start)
+            recall_memory()
+
+            # Search by keyword
+            recall_memory(query="auth")
+            recall_memory(query="error")
+
+            # Get a specific memory by key
+            recall_memory(key="project_root")
+            recall_memory(key="auth_approach")
+
+            Args:
+                query: Keyword to search for in keys and values (optional)
+                key: Exact key to retrieve (optional, takes priority over query)
+                limit: Maximum number of results (default: 10)
+            """
+            return self.tool_recall_memory(query, key, limit)
+
+        @tool
+        def forget_memory(key: str) -> Dict[str, Any]:
+            """
+            Remove an entry from working memory.
+
+            Use when a stored fact is no longer accurate or relevant.
+
+            Args:
+                key: Exact key to remove
+            """
+            return self.tool_forget_memory(key)
+
+        @tool
         def get_plan() -> Dict[str, Any]:
             """Get the current master plan showing all tasks."""
             return self.tool_get_plan()
@@ -388,6 +461,41 @@ class GaiaCodeTools:
         #
         # For now, we'll return a placeholder
         return f"Subtask completed: {task}"
+
+    def tool_remember(self, key: str, value: str, tags: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Store a fact in working memory (memory.db active_state)."""
+        state = get_shared_state()
+        state.memory.store_memory(key=key, value=value, tags=tags)
+        return {"success": True, "key": key, "stored": True}
+
+    def tool_recall_memory(
+        self,
+        query: Optional[str] = None,
+        key: Optional[str] = None,
+        limit: int = 10,
+    ) -> Dict[str, Any]:
+        """Retrieve memories from working memory (memory.db active_state)."""
+        state = get_shared_state()
+
+        if key:
+            value = state.memory.get_memory(key)
+            if value is not None:
+                return {"success": True, "count": 1, "memories": [{"key": key, "value": value}]}
+            return {"success": True, "count": 0, "memories": [], "message": f"No memory found for key '{key}'"}
+
+        memories = state.memory.recall_memories(query=query, limit=limit)
+        return {
+            "success": True,
+            "query": query,
+            "count": len(memories),
+            "memories": memories,
+        }
+
+    def tool_forget_memory(self, key: str) -> Dict[str, Any]:
+        """Remove a memory entry from working memory."""
+        state = get_shared_state()
+        deleted = state.memory.forget_memory(key)
+        return {"success": True, "key": key, "deleted": deleted}
 
     def tool_recall(self, query: str, top_k: int = 5) -> Dict[str, Any]:
         """

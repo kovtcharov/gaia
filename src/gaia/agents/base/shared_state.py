@@ -208,6 +208,19 @@ class MemoryDB:
                 )
             """
             )
+            # Working memory: arbitrary key/value facts the agent stores explicitly.
+            # Persists for the session; cleared on reset_session().
+            self.conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS active_state (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    tags TEXT,
+                    stored_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_accessed TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """
+            )
             self.conn.commit()
 
     def cache_file(self, path: str, content: str):
@@ -249,6 +262,113 @@ class MemoryDB:
             )
             self.conn.commit()
         logger.debug("[MemoryDB] tool result stored tool=%s", tool_name)
+
+    def store_memory(self, key: str, value: str, tags: Optional[List[str]] = None):
+        """
+        Store an arbitrary fact or context value under a key.
+
+        This is the agent's working memory — used to persist important context
+        across tool calls and sub-tasks within a session. Examples:
+            store_memory("current_project", "~/Work/gaia")
+            store_memory("auth_approach", "JWT with RS256", tags=["architecture"])
+            store_memory("failing_test", "test_agent.py::test_tool_registry")
+        """
+        tags_json = json.dumps(tags) if tags else None
+        with self.lock:
+            self.conn.execute(
+                """
+                INSERT OR REPLACE INTO active_state (key, value, tags, stored_at, last_accessed)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                (key, value, tags_json),
+            )
+            self.conn.commit()
+        logger.debug("[MemoryDB] stored key=%s len=%d", key, len(value))
+
+    def recall_memories(self, query: Optional[str] = None, limit: int = 20) -> List[Dict]:
+        """
+        Recall memories from active_state.
+
+        If query is given, does a LIKE search on key and value.
+        Otherwise returns the most recently stored entries.
+        """
+        with self.lock:
+            if query:
+                pattern = f"%{query}%"
+                cursor = self.conn.execute(
+                    """
+                    SELECT key, value, tags, stored_at
+                    FROM active_state
+                    WHERE key LIKE ? OR value LIKE ?
+                    ORDER BY last_accessed DESC
+                    LIMIT ?
+                    """,
+                    (pattern, pattern, limit),
+                )
+            else:
+                cursor = self.conn.execute(
+                    """
+                    SELECT key, value, tags, stored_at
+                    FROM active_state
+                    ORDER BY last_accessed DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                )
+            rows = cursor.fetchall()
+
+        results = [
+            {
+                "key": r[0],
+                "value": r[1],
+                "tags": json.loads(r[2]) if r[2] else [],
+                "stored_at": r[3],
+            }
+            for r in rows
+        ]
+        logger.debug("[MemoryDB] recall query=%r results=%d", query, len(results))
+        return results
+
+    def get_memory(self, key: str) -> Optional[str]:
+        """Get a specific memory by exact key."""
+        with self.lock:
+            cursor = self.conn.execute(
+                "SELECT value FROM active_state WHERE key = ?", (key,)
+            )
+            row = cursor.fetchone()
+            if row:
+                self.conn.execute(
+                    "UPDATE active_state SET last_accessed = CURRENT_TIMESTAMP WHERE key = ?",
+                    (key,),
+                )
+                self.conn.commit()
+        value = row[0] if row else None
+        logger.debug("[MemoryDB] get_memory key=%s found=%s", key, value is not None)
+        return value
+
+    def forget_memory(self, key: str) -> bool:
+        """Remove a specific memory entry."""
+        with self.lock:
+            rowcount = self.conn.execute(
+                "DELETE FROM active_state WHERE key = ?", (key,)
+            ).rowcount
+            self.conn.commit()
+        logger.debug("[MemoryDB] forget key=%s deleted=%s", key, rowcount > 0)
+        return rowcount > 0
+
+    def clear_working_memory(self):
+        """
+        Clear all working/session-scoped tables while keeping the DB file.
+
+        This preserves the DB history (browsable in the dashboard) but starts
+        the agent fresh. Called by SharedAgentState.reset_session().
+        """
+        with self.lock:
+            self.conn.execute("DELETE FROM active_state")
+            self.conn.execute("DELETE FROM file_cache")
+            self.conn.execute("DELETE FROM tool_results")
+            self.conn.commit()
+        logger.info("[MemoryDB] working memory cleared (active_state, file_cache, tool_results)")
 
 
 class LogsDB:
@@ -1738,21 +1858,29 @@ class SharedAgentState:
         logger.info("[SharedState] initialized workspace=%s", workspace_dir)
 
     def reset_session(self):
-        """Reset session-scoped state (memory cache) while keeping knowledge."""
-        # Close and recreate memory DB
-        self.memory.conn.close()
-        memory_path = self.workspace_dir / "memory.db"
-        if memory_path.exists():
-            memory_path.unlink()
-        self.memory = MemoryDB(memory_path)
+        """
+        Reset working memory for a new session while keeping all persistent knowledge.
 
-        # Clear call stack and message queue
+        Clears:
+        - active_state (agent's working memory notes)
+        - file_cache (cached file contents)
+        - tool_results (tool call history)
+        - call stack and message queue
+
+        Keeps (persistent across sessions):
+        - knowledge.db  (insights, preferences, learnings)
+        - tools.db      (registry + usage history)
+        - skills.db     (learned workflows + usage history)
+        - agents.db     (specialist registry + usage history)
+        - plan.db       (task history)
+        """
+        self.memory.clear_working_memory()
+
+        # Clear in-process state
         self.call_stack = AgentCallStack()
         self.message_queue = MessageQueue()
 
-        # Keep knowledge, tools, skills, agents, plan, and manifest
-        # (these persist across sessions)
-        logger.info("[SharedState] session reset")
+        logger.info("[SharedState] session reset — working memory cleared, knowledge retained")
 
 
 def get_shared_state(workspace_dir: Optional[Path] = None) -> SharedAgentState:
