@@ -1487,6 +1487,24 @@ select {
   color: var(--text-muted);
 }
 
+.level-badge.ok-badge {
+  background: rgba(76, 175, 106, 0.2);
+  color: var(--accent-success);
+}
+
+/* Agent tag — compact inline specialist name */
+.dash-agent-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(88, 184, 216, 0.15);
+  color: var(--accent-info);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* Status badges for plan.db tasks */
 .status-badge {
   display: inline-block;

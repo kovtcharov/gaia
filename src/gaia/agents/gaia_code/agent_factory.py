@@ -52,8 +52,8 @@ class AgentFactory:
         """
         Detect recurring task patterns from history.
 
-        Analyzes completed tasks to find patterns that occur 3+ times
-        with >80% similarity.
+        Queries plan_tasks across ALL past plans (not just the active plan) so
+        patterns accumulate across sessions.
 
         Args:
             min_occurrences: Minimum number of similar tasks (default: 3)
@@ -62,16 +62,24 @@ class AgentFactory:
         Returns:
             List of pattern dicts
         """
-        # Get all completed tasks
-        tasks = self.state.plan.get_all_tasks()
-        completed = [t for t in tasks if t.status == "completed"]
+        # Query ALL completed tasks across all plans from the DB
+        try:
+            from types import SimpleNamespace
+            rows = self.state.memory.conn.execute(
+                "SELECT id, title FROM plan_tasks WHERE status='completed'"
+            ).fetchall()
+            completed = [
+                SimpleNamespace(id=r[0], description=r[1] or "")
+                for r in rows if r[1]
+            ]
+        except Exception:
+            return []
 
         if len(completed) < min_occurrences:
             logger.info(f"Not enough completed tasks ({len(completed)}) to detect patterns")
             return []
 
-        # Simple keyword-based clustering for now
-        # In full implementation, would use semantic similarity
+        # Keyword-based clustering across all sessions
         patterns = self._cluster_similar_tasks(completed, min_occurrences, min_similarity)
 
         logger.info(f"Detected {len(patterns)} patterns from {len(completed)} tasks")
@@ -510,3 +518,46 @@ Your goal is to execute it efficiently and reliably.
         except Exception as e:
             logger.error(f"Failed to remove specialist {specialist_name}: {e}")
             return False
+
+
+def maybe_create_specialist(task: str, workspace_dir=None) -> Optional[str]:
+    """
+    Create a specialist if the task matches a recurring pattern.
+
+    Scans plan_tasks history for patterns (3+ similar completed tasks).
+    If a matching pattern is found but no registered specialist handles it,
+    a new specialist is auto-generated and persisted to agents.db.
+
+    Args:
+        task: Task description to match against patterns
+        workspace_dir: Optional workspace directory
+
+    Returns:
+        Specialist name if found or created, None otherwise
+    """
+    factory = AgentFactory(workspace_dir)
+    patterns = factory.detect_pattern(min_occurrences=3)
+    task_words = set(task.lower().split())
+
+    for pattern in patterns:
+        overlap = task_words & {kw.lower() for kw in pattern["keywords"]}
+        if len(overlap) < 2:
+            continue
+
+        # Derive a stable name from the top 2 longest keywords
+        top_kw = sorted(pattern["keywords"], key=len, reverse=True)
+        name = "Auto_" + "_".join(top_kw[:2]).title().replace(" ", "")
+
+        # Already registered? Return immediately — no need to regenerate.
+        if factory.state.agents.find_agent(name):
+            logger.info("[RAC] reusing existing auto-specialist=%s", name)
+            return name
+
+        # Generate and register a new specialist
+        desc = f"Auto-generated for: {', '.join(pattern['keywords'][:5])}"
+        result = factory.generate_specialist(pattern, name, desc)
+        if result.get("success"):
+            logger.info("[RAC] created auto-specialist=%s", name)
+            return name
+
+    return None

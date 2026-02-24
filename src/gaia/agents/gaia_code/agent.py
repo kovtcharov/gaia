@@ -158,6 +158,7 @@ class GaiaCodeAgent(
         persona: str = "pike",  # Default to Pike (simplicity advocate)
         allowed_paths: Optional[List[str]] = None,
         target_dir: Optional[str] = None,
+        specialist_name: Optional[str] = None,
         **kwargs,
     ):
         """
@@ -177,6 +178,7 @@ class GaiaCodeAgent(
             **kwargs: Agent initialization parameters
         """
         self._extra_allowed_paths = allowed_paths or []
+        self._specialist_name = specialist_name
         # Set defaults for GAIA Code
         if "max_steps" not in kwargs:
             # Continuous execution: high limit (quality-driven, not step-driven)
@@ -307,6 +309,15 @@ class GaiaCodeAgent(
         # IMPORTANT: Rebuild system prompt to include tools and persona
         # Uses _format_tools_for_prompt() override which only includes essential tools
         self.rebuild_system_prompt()
+
+        # Inject specialist system prompt if this is a specialist sub-agent
+        if self._specialist_name:
+            from .integration import get_specialist_system_prompt
+            spec_prompt = get_specialist_system_prompt(self._specialist_name)
+            if spec_prompt:
+                self.system_prompt += (
+                    f"\n\n## Specialist Role ({self._specialist_name})\n{spec_prompt}"
+                )
 
         # Sync all _TOOL_REGISTRY tools → tools.db so find_tool() can discover them
         # Must be AFTER rebuild_system_prompt() (which triggers _register_tools())
@@ -933,22 +944,29 @@ class GaiaCodeAgent(
         if not failed_gates:
             return {"success": True, "result": "No failed gates to decompose"}
 
-        # Create subtasks for each failed gate
+        # Map gate failures to specialist agents
+        gate_to_specialist = {
+            "syntax":  "DebuggerAgent",
+            "imports": "DebuggerAgent",
+            "tests":   "TestingAgent",
+        }
+
+        # Create subtasks for each failed gate, with specialist routing
         subtasks = []
         for gate in failed_gates:
             gate_name = getattr(gate, 'gate_name', getattr(gate, 'name', 'unknown'))
-
+            specialist = gate_to_specialist.get(gate_name)
             if gate_name == "syntax":
-                subtasks.append("Fix all syntax errors")
+                subtasks.append(("Fix all syntax errors in the files you just created", specialist))
             elif gate_name == "imports":
-                subtasks.append("Fix all import errors")
+                subtasks.append(("Fix all import errors in the files you just created", specialist))
             elif gate_name == "tests":
-                subtasks.append("Fix all failing tests")
+                subtasks.append(("Fix all failing tests", specialist))
 
         # Execute each subtask via agent_query()
         results = []
-        for subtask in subtasks:
-            subtask_result = self.tool_agent_query(task=subtask)
+        for subtask, specialist in subtasks:
+            subtask_result = self.tool_agent_query(task=subtask, specialist=specialist)
             results.append(subtask_result)
 
         # Check if all subtasks succeeded

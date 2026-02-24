@@ -11,7 +11,9 @@ Uses GaiaCodeAgent (the autonomous coding agent) which:
 - Works with any language (not web-stack locked)
 """
 
+import argparse
 import json
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -38,16 +40,59 @@ BENCHMARK_QUERY = (
 )
 
 
+def clear_workspace(output_dir: Path):
+    """
+    Reset the agent workspace for a fresh benchmark run.
+
+    Clears:
+    - Output directory (generated C++ files from previous runs)
+    - Agent working memory (active_state, file_cache, tool_results, call stack)
+    - Plan task history in memory.db (so the plan panel starts blank)
+
+    Keeps:
+    - knowledge.db (insights), tools.db, agents.db, skills.db
+    """
+    # Wipe output directory so generated files don't accumulate across runs
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+        print(f"  Cleared output dir: {output_dir}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Reset agent shared state (working memory + plan history)
+    from gaia.agents.base.shared_state import get_shared_state
+    state = get_shared_state()
+    state.reset_session()           # clears active_state, file_cache, tool_results, call stack
+    state.plan.clear_all_tasks()    # clears plan_tasks / plans in memory.db
+    print("  Agent workspace reset (working memory + plan history cleared)")
+
+
 def main():
+    parser = argparse.ArgumentParser(description="GAIA Code Benchmark: C++ Port")
+    parser.add_argument(
+        "--no-fresh",
+        action="store_true",
+        help="Skip workspace reset and reuse state from the previous run",
+    )
+    args = parser.parse_args()
+    fresh = not args.no_fresh
+
     print("=" * 70)
     print("GAIA Code Benchmark: C++ Port of Core Agent Framework")
     print("=" * 70)
     print(f"Output:  {OUTPUT_DIR}")
     print(f"Query:   {BENCHMARK_QUERY[:100]}...")
+    print(f"Fresh:   {fresh} (use --no-fresh to reuse previous state)")
     print("=" * 70)
 
+    out = Path(OUTPUT_DIR)
+
+    if fresh:
+        print("\nClearing workspace for fresh run...")
+        clear_workspace(out)
+        print()
+
     # Ensure output directory exists (agent will create C++ files inside it)
-    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)
 
     from gaia.agents.gaia_code.agent import GaiaCodeAgent
 
@@ -74,7 +119,6 @@ def main():
     print("=" * 70)
 
     # List generated source files (exclude any .db files)
-    out = Path(OUTPUT_DIR)
     files = sorted(out.rglob("*") if out.exists() else [])
     cpp_files = [f for f in files if f.is_file() and f.suffix != ".db"]
     print(f"\nFiles created: {len(cpp_files)}")

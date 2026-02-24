@@ -53,6 +53,8 @@ const Dashboard = {
         contextUsage: [],
         activityHeatmap: [],
         trendStats: null,
+        agentSpecialists: [],
+        recentAgentCalls: [],
       };
 
       // Gather row counts per database
@@ -143,13 +145,13 @@ const Dashboard = {
         } catch (e) { /* ignore */ }
       }
 
-      // Query plan.db for active tasks
-      const planDb = existingDbs.find(d => d.name === 'plan.db');
-      if (planDb) {
+      // Query memory.db for active plan tasks (plan_tasks table lives in memory.db)
+      const memoryDb = existingDbs.find(d => d.name === 'memory.db');
+      if (memoryDb) {
         try {
           const taskResult = await window.dbAPI.executeSQL(
-            planDb.path,
-            `SELECT id, description, status, priority FROM tasks ORDER BY CASE status WHEN 'in_progress' THEN 0 WHEN 'pending' THEN 1 WHEN 'completed' THEN 2 WHEN 'failed' THEN 3 ELSE 4 END, id DESC LIMIT 10`,
+            memoryDb.path,
+            `SELECT id, title, status, owner FROM plan_tasks ORDER BY CASE status WHEN 'in_progress' THEN 0 WHEN 'pending' THEN 1 WHEN 'completed' THEN 2 WHEN 'failed' THEN 3 ELSE 4 END, id DESC LIMIT 10`,
             true
           );
           if (taskResult.success && taskResult.rows) {
@@ -200,6 +202,32 @@ const Dashboard = {
             }
           } catch (e) { /* ignore */ }
         }
+      }
+
+      // Query agents.db for specialist registry and invocation history
+      const agentsDb = existingDbs.find(d => d.name === 'agents.db');
+      if (agentsDb) {
+        try {
+          const specResult = await window.dbAPI.executeSQL(
+            agentsDb.path,
+            `SELECT name, description, confidence, use_count, success_count, failure_count, created_at, last_used FROM agents ORDER BY use_count DESC`,
+            true
+          );
+          if (specResult.success && specResult.rows) {
+            dashData.agentSpecialists = specResult.rows;
+          }
+        } catch (e) { /* ignore */ }
+
+        try {
+          const callResult = await window.dbAPI.executeSQL(
+            agentsDb.path,
+            `SELECT a.name, au.timestamp, au.success, au.task_type, au.duration_ms FROM agent_usage au JOIN agents a ON au.agent_id = a.id ORDER BY au.timestamp DESC LIMIT 20`,
+            true
+          );
+          if (callResult.success && callResult.rows) {
+            dashData.recentAgentCalls = callResult.rows;
+          }
+        } catch (e) { /* ignore */ }
       }
 
       AppState.dashboardData = dashData;
@@ -454,8 +482,8 @@ const Dashboard = {
         const statusIcon = this._getStatusIcon(task.status);
         taskHtml += `<div class="dash-list-item">
           <span class="status-badge ${escapeHtml(task.status || '')}">${statusIcon} ${escapeHtml(task.status || 'unknown')}</span>
-          <span class="dash-list-msg">${escapeHtml(truncate(task.description, 80))}</span>
-          ${task.priority ? `<span class="dash-list-meta">P${escapeHtml(String(task.priority))}</span>` : ''}
+          <span class="dash-list-msg">${escapeHtml(truncate(task.title, 80))}</span>
+          ${task.owner ? `<span class="dash-list-meta dash-agent-tag">${escapeHtml(task.owner)}</span>` : ''}
         </div>`;
       }
       taskHtml += '</div>';
@@ -514,6 +542,67 @@ const Dashboard = {
     }
     summaryRow2.appendChild(toolSection);
     container.appendChild(summaryRow2);
+
+    // === Agent Dispatch ===
+    if (data.agentSpecialists.length > 0 || data.recentAgentCalls.length > 0) {
+      const agentRow = document.createElement('div');
+      agentRow.className = 'dash-two-col';
+
+      // --- Registered Specialists ---
+      const { section: specSection, body: specBody } = this._createSection('Registered Specialists', 'agents-registry');
+      if (data.agentSpecialists.length > 0) {
+        const maxUse = Math.max(...data.agentSpecialists.map(a => a.use_count || 0), 1);
+        let specHtml = '<div class="dash-list">';
+        for (const agent of data.agentSpecialists) {
+          const confidence = agent.confidence != null ? Math.round(agent.confidence * 100) : 0;
+          const pct = Math.round(((agent.use_count || 0) / maxUse) * 100);
+          const successRate = (agent.use_count || 0) > 0 && agent.success_count != null
+            ? Math.round((agent.success_count / agent.use_count) * 100) + '%'
+            : '--';
+          const lastUsed = agent.last_used ? formatRelativeTime(agent.last_used) : 'never';
+          specHtml += `<div class="dash-list-item dash-tool-item">
+            <span class="dash-tool-name">${escapeHtml(agent.name)}</span>
+            <div class="dash-tool-bar-container" title="Usage: ${agent.use_count || 0} calls">
+              <div class="dash-tool-bar" style="width: ${pct}%"></div>
+            </div>
+            <span class="dash-tool-count">${(agent.use_count || 0)} calls</span>
+            <span class="dash-tool-success">${successRate} ok</span>
+            <span class="dash-list-meta">${confidence}% conf · ${escapeHtml(lastUsed)}</span>
+          </div>`;
+        }
+        specHtml += '</div>';
+        specBody.innerHTML = specHtml;
+      } else {
+        specBody.innerHTML = '<div class="dash-empty">No specialists registered</div>';
+      }
+      agentRow.appendChild(specSection);
+
+      // --- Recent Agent Invocations ---
+      const { section: callSection, body: callBody } = this._createSection('Recent Agent Invocations', 'agents-calls');
+      if (data.recentAgentCalls.length > 0) {
+        let callHtml = '<div class="dash-list">';
+        for (const call of data.recentAgentCalls) {
+          const ok = call.success === 1 || call.success === true;
+          const badge = ok
+            ? '<span class="level-badge ok-badge">OK</span>'
+            : '<span class="level-badge ERROR">FAIL</span>';
+          const dur = call.duration_ms != null ? `${call.duration_ms}ms` : '';
+          callHtml += `<div class="dash-list-item">
+            ${badge}
+            <span class="dash-agent-tag">${escapeHtml(call.name || '?')}</span>
+            <span class="dash-list-msg">${escapeHtml(truncate(call.task_type || '', 70))}</span>
+            <span class="dash-list-meta">${escapeHtml(dur)} ${call.timestamp ? formatRelativeTime(call.timestamp) : ''}</span>
+          </div>`;
+        }
+        callHtml += '</div>';
+        callBody.innerHTML = callHtml;
+      } else {
+        callBody.innerHTML = '<div class="dash-empty">No agent invocations yet</div>';
+      }
+      agentRow.appendChild(callSection);
+
+      container.appendChild(agentRow);
+    }
 
     // === Context Usage Sparkline ===
     if (data.contextUsage.length > 0) {

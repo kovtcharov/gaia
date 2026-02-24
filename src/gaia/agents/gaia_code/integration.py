@@ -878,7 +878,11 @@ def initialize_workspace(workspace_dir: Optional[Path] = None) -> Path:
 
 def find_specialist_for_task(task: str) -> Optional[str]:
     """
-    Find the best specialist for a task using semantic search.
+    Find the best specialist for a task by scoring agents.db capabilities.
+
+    The capabilities column is stored as a JSON list (e.g. ["debugging", "error_fix"]).
+    Each agent is scored by how many capabilities appear in the task string; the highest
+    scorer with score >= 1 is returned.
 
     Args:
         task: Task description
@@ -886,38 +890,30 @@ def find_specialist_for_task(task: str) -> Optional[str]:
     Returns:
         Specialist name or None if no good match
     """
-    state = get_shared_state()
+    import json
 
-    # Simple keyword matching for now
-    # In full implementation, would use FAISS semantic search
+    state = get_shared_state()
     task_lower = task.lower()
 
-    keywords_to_specialist = {
-        "debug": "DebuggerAgent",
-        "error": "DebuggerAgent",
-        "fix": "DebuggerAgent",
-        "security": "SecurityAgent",
-        "vulnerability": "SecurityAgent",
-        "injection": "SecurityAgent",
-        "refactor": "RefactoringAgent",
-        "cleanup": "RefactoringAgent",
-        "test": "TestingAgent",
-        "coverage": "TestingAgent",
-        "documentation": "DocumentationAgent",
-        "docstring": "DocumentationAgent",
-        "readme": "DocumentationAgent",
-        "performance": "PerformanceAgent",
-        "optimize": "PerformanceAgent",
-        "slow": "PerformanceAgent",
-        "architecture": "ArchitectureAgent",
-        "design": "ArchitectureAgent",
-        "pattern": "ArchitectureAgent",
-    }
+    try:
+        rows = state.agents.conn.execute(
+            "SELECT name, capabilities FROM agents ORDER BY confidence DESC"
+        ).fetchall()
+    except Exception:
+        return None
 
-    for keyword, specialist in keywords_to_specialist.items():
-        if keyword in task_lower:
-            logger.info(f"Auto-selected specialist: {specialist} (keyword: {keyword})")
-            return specialist
+    best_name, best_score = None, 0
+    for name, caps_json in rows:
+        if not caps_json:
+            continue
+        caps = json.loads(caps_json) if isinstance(caps_json, str) else (caps_json or [])
+        score = sum(1 for cap in caps if cap.lower() in task_lower)
+        if score > best_score:
+            best_score, best_name = score, name
+
+    if best_name and best_score >= 1:
+        logger.info("[RAC] auto-selected specialist=%s score=%d", best_name, best_score)
+        return best_name
 
     return None
 

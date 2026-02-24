@@ -513,21 +513,39 @@ def validate_header_guard(path: str) -> dict:
         - Runs quality gates on its output
         - Returns verified result
 
+        Auto-selection pipeline (if specialist not specified):
+        1. Query agents.db for best capability match
+        2. If no match, check if recurring pattern warrants new specialist creation
+
         Args:
             task: The subtask to delegate (be specific and complete)
             specialist: Optional specialist agent type (debugger, security, refactoring, etc.)
-            max_depth: Optional max recursion depth for this call
+            max_depth: Optional max recursion depth for this call (default: 3)
 
         Returns:
             Dict with 'success', 'result', 'errors' keys
         """
         state = get_shared_state()
 
+        # 1. Auto-select specialist from agents.db if not provided
+        if not specialist:
+            from gaia.agents.gaia_code.integration import find_specialist_for_task
+            specialist = find_specialist_for_task(task)
+
+        # 2. Auto-create specialist if recurring pattern has no handler
+        if not specialist:
+            try:
+                from gaia.agents.gaia_code.agent_factory import maybe_create_specialist
+                ws = Path(state.workspace_dir) if state.workspace_dir else None
+                specialist = maybe_create_specialist(task, ws)
+            except Exception:
+                pass
+
         # Check recursion depth
         current_frame = state.call_stack.current()
         current_depth = current_frame.depth if current_frame else 0
 
-        max_allowed_depth = max_depth if max_depth is not None else 10
+        max_allowed_depth = max_depth if max_depth is not None else 3
         if current_depth >= max_allowed_depth:
             return {
                 "success": False,
@@ -545,15 +563,13 @@ def validate_header_guard(path: str) -> dict:
             }
 
         try:
-            # Create sub-agent (inherit context from shared state)
-            # In a real implementation, this would instantiate a new agent
-            # For now, we'll simulate it
             result = self._execute_subtask(task, specialist)
 
             # Pop call frame
             state.call_stack.pop()
 
-            return {"success": True, "result": result, "errors": []}
+            success = not result.startswith("[FAILED]")
+            return {"success": success, "result": result, "errors": []}
 
         except Exception as e:
             state.call_stack.pop()
@@ -564,15 +580,66 @@ def validate_header_guard(path: str) -> dict:
             }
 
     def _execute_subtask(self, task: str, specialist: Optional[str]) -> str:
-        """Execute a subtask (placeholder for actual sub-agent execution)."""
-        # In the full implementation, this would:
-        # 1. Create a new GaiaCodeAgent instance (or specialist)
-        # 2. Pass it the task
-        # 3. Run quality gates on its output
-        # 4. Return verified result
-        #
-        # For now, we'll return a placeholder
-        return f"Subtask completed: {task}"
+        """
+        Execute a subtask by spawning a fresh GaiaCodeAgent sub-agent.
+
+        The sub-agent:
+        - Gets its own fresh context window
+        - Optionally runs with a specialist system prompt overlay
+        - Shares the same SharedAgentState singleton (DBs, call stack, plan)
+        - Runs with create_plan=False (operates within parent's scope)
+
+        Args:
+            task: The subtask to execute
+            specialist: Optional specialist name for system prompt injection
+
+        Returns:
+            Result string, prefixed with "[FAILED] " on failure
+        """
+        import time
+
+        state = get_shared_state()
+        start_ms = int(time.time() * 1000)
+
+        try:
+            # Lazy import to avoid circular: tools.py is imported by agent.py
+            from gaia.agents.gaia_code.agent import GaiaCodeAgent
+
+            workspace_dir = Path(state.workspace_dir) if state.workspace_dir else None
+            sub_agent = GaiaCodeAgent(
+                workspace_dir=workspace_dir,
+                specialist_name=specialist,
+                silent_mode=True,
+                tui_mode="off",
+            )
+            # Inherit project_dir from parent so paths stay consistent
+            project_dir = getattr(self, "project_dir", None)
+            if project_dir:
+                sub_agent.project_dir = project_dir
+
+            result = sub_agent.process_query(task, create_plan=False)
+            success = result.get("success", False)
+            output = result.get("result") or ""
+
+        except Exception as e:
+            success = False
+            output = f"Sub-agent error: {e}"
+            logger.error("[RAC] _execute_subtask failed specialist=%s err=%s", specialist, e)
+
+        # Record usage in agents.db
+        if specialist:
+            try:
+                duration_ms = int(time.time() * 1000) - start_ms
+                state.agents.record_usage(
+                    specialist,
+                    success=success,
+                    task_type=task[:100],
+                    duration_ms=duration_ms,
+                )
+            except Exception:
+                pass
+
+        return output if success else f"[FAILED] {output}"
 
     def tool_remember(self, key: str, value: str, tags: Optional[List[str]] = None) -> Dict[str, Any]:
         """Store a fact in working memory (memory.db active_state)."""
