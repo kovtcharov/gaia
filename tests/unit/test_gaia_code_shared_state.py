@@ -126,62 +126,71 @@ class TestKnowledgeDB:
 
 
 class TestMasterPlan:
-    """Test MasterPlan (hierarchical task tree)."""
+    """Test MasterPlan (hierarchical task tree, stored in memory.db)."""
+
+    def _make_plan(self, tmpdir):
+        """Helper: create MemoryDB + MasterPlan for a test."""
+        from gaia.agents.base.shared_state import MemoryDB
+        db_path = Path(tmpdir) / "memory.db"
+        memory_db = MemoryDB(db_path)
+        plan = MasterPlan(memory_db)
+        return plan
 
     def test_create_task(self):
-        """Test task creation."""
+        """Test task and plan creation."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "plan.db"
-            plan = MasterPlan(db_path)
+            plan = self._make_plan(tmpdir)
 
-            # Create root task
-            root = plan.create_task("Build REST API")
-            assert root.id is not None
-            assert root.description == "Build REST API"
-            assert root.status == "pending"
+            # Create a plan first
+            plan_id = plan.create_plan("Build REST API")
+            assert plan_id is not None
+
+            # Create root milestone
+            root_id = plan.create_task(plan_id, "Build REST API")
+            assert root_id is not None
+            root = plan.get_task(root_id)
+            assert root["title"] == "Build REST API"
+            assert root["status"] == "pending"
+            assert root["depth"] == 0
 
             # Create child task
-            child = plan.create_task("Create auth endpoints", parent_id=root.id)
-            assert child.parent_id == root.id
-
-            # Verify parent knows about child
-            root_updated = plan.get_task(root.id)
-            assert child.id in root_updated.children
+            child_id = plan.create_task(plan_id, "Create auth endpoints", parent_id=root_id)
+            child = plan.get_task(child_id)
+            assert child["parent_id"] == root_id
+            assert child["depth"] == 1
 
     def test_update_task_status(self):
         """Test task status updates."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "plan.db"
-            plan = MasterPlan(db_path)
+            plan = self._make_plan(tmpdir)
 
-            # Create task
-            task = plan.create_task("Write tests")
+            plan_id = plan.create_plan("Test")
+            task_id = plan.create_task(plan_id, "Write tests")
 
             # Start task
-            plan.update_task_status(task.id, "in_progress")
-            task_updated = plan.get_task(task.id)
-            assert task_updated.status == "in_progress"
-            assert task_updated.started_at is not None
+            plan.update_task_status(task_id, "in_progress")
+            task = plan.get_task(task_id)
+            assert task["status"] == "in_progress"
+            assert task["started_at"] is not None
 
             # Complete task
-            plan.update_task_status(task.id, "completed", result="All tests passing")
-            task_updated = plan.get_task(task.id)
-            assert task_updated.status == "completed"
-            assert task_updated.result == "All tests passing"
-            assert task_updated.completed_at is not None
+            plan.update_task_status(task_id, "completed", result="All tests passing")
+            task = plan.get_task(task_id)
+            assert task["status"] == "completed"
+            assert task["result"] == "All tests passing"
+            assert task["completed_at"] is not None
 
     def test_get_all_tasks(self):
-        """Test getting all tasks."""
+        """Test getting all tasks via backward-compat get_all_tasks()."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "plan.db"
-            plan = MasterPlan(db_path)
+            plan = self._make_plan(tmpdir)
 
-            # Create multiple tasks
-            plan.create_task("Task 1")
-            plan.create_task("Task 2")
-            plan.create_task("Task 3")
+            plan_id = plan.create_plan("Test")
+            plan.create_task(plan_id, "Task 1")
+            plan.create_task(plan_id, "Task 2")
+            plan.create_task(plan_id, "Task 3")
 
-            # Get all tasks
+            # get_all_tasks() returns TaskNode objects for backward compat
             tasks = plan.get_all_tasks()
             assert len(tasks) == 3
 

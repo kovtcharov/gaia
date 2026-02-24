@@ -16,6 +16,9 @@ import type {
   DashboardData,
   TrendStats,
   ExecuteSQLResponse,
+  WorkingMemoryEntry,
+  PlanTask,
+  PlanHistoryEntry,
 } from '../types/database';
 
 const api = () => window.dbAPI;
@@ -273,6 +276,9 @@ export function useDashboardData(
         topKnowledge: [],
         learnedTools: [],
         learnedToolsCount: 0,
+        workingMemory: [],
+        activePlan: null,
+        planHistory: [],
       };
 
       // Gather per-database stats
@@ -295,8 +301,11 @@ export function useDashboardData(
         }
       }
 
-      // Query logs.db
+      // Declare DB refs early so they're available throughout
       const logsDb = existingDbs.find((d) => d.name === 'logs.db');
+      const memoryDb = existingDbs.find((d) => d.name === 'memory.db');
+
+      // Query logs.db
       if (logsDb) {
         try {
           const errResult = await api().executeSQL(
@@ -361,17 +370,104 @@ export function useDashboardData(
         }
       }
 
-      // Query plan.db
-      const planDb = existingDbs.find((d) => d.name === 'plan.db');
-      if (planDb) {
+      // Query memory.db — active plan + full task tree (plans/plan_tasks live here)
+      // Note: plan data was consolidated from plan.db into memory.db so all agent
+      // working state is co-located in one file.
+      if (memoryDb) {
         try {
+          // Active tasks summary for the activeTasks widget (legacy widget)
           const taskResult = await api().executeSQL(
-            planDb.path,
-            `SELECT id, description, status, priority FROM tasks ORDER BY CASE status WHEN 'in_progress' THEN 0 WHEN 'pending' THEN 1 WHEN 'completed' THEN 2 WHEN 'failed' THEN 3 ELSE 4 END, id DESC LIMIT 10`,
+            memoryDb.path,
+            `SELECT id, title as description, status, priority FROM plan_tasks
+             ORDER BY CASE status WHEN 'in_progress' THEN 0 WHEN 'pending' THEN 1
+               WHEN 'completed' THEN 2 WHEN 'failed' THEN 3 ELSE 4 END,
+             created_at DESC LIMIT 10`,
             true,
           );
           if (taskResult.success && 'rows' in taskResult) {
             data.activeTasks = taskResult.rows as DashboardData['activeTasks'];
+          }
+        } catch { /* ignore */ }
+
+        // Full plan tree for PlanView
+        try {
+          const planResult = await api().executeSQL(
+            memoryDb.path,
+            `SELECT id, title, status, project_dir, target_dir, created_at, completed_at
+             FROM plans ORDER BY created_at DESC LIMIT 1`,
+            true,
+          );
+          if (planResult.success && 'rows' in planResult && planResult.rows.length > 0) {
+            const plan = planResult.rows[0] as Record<string, string>;
+
+            const tasksResult = await api().executeSQL(
+              memoryDb.path,
+              `SELECT id, plan_id, parent_id, title, description, status, priority, depth,
+                      owner, created_by, result, error, dependencies, order_index,
+                      created_at, updated_at, started_at, completed_at
+               FROM plan_tasks
+               WHERE plan_id = (SELECT id FROM plans ORDER BY created_at DESC LIMIT 1)
+               ORDER BY depth ASC, order_index ASC, created_at ASC`,
+              true,
+            );
+
+            const flatTasks: PlanTask[] = tasksResult.success && 'rows' in tasksResult
+              ? (tasksResult.rows as Record<string, unknown>[]).map(r => ({ ...r, children: [] } as unknown as PlanTask))
+              : [];
+
+            // Build tree client-side via parent_id links
+            const taskMap = new Map<string, PlanTask>();
+            flatTasks.forEach(t => taskMap.set(t.id, t));
+            const roots: PlanTask[] = [];
+            flatTasks.forEach(t => {
+              if (t.parent_id && taskMap.has(t.parent_id)) {
+                taskMap.get(t.parent_id)!.children.push(t);
+              } else {
+                roots.push(t);
+              }
+            });
+
+            // Compute progress counts
+            const progress = {
+              total: flatTasks.length,
+              completed: flatTasks.filter(t => t.status === 'completed').length,
+              in_progress: flatTasks.filter(t => t.status === 'in_progress').length,
+              pending: flatTasks.filter(t => t.status === 'pending').length,
+              failed: flatTasks.filter(t => t.status === 'failed').length,
+              blocked: flatTasks.filter(t => t.status === 'blocked').length,
+            };
+
+            data.activePlan = {
+              id: plan.id,
+              title: plan.title,
+              status: plan.status,
+              project_dir: plan.project_dir || null,
+              target_dir: plan.target_dir || null,
+              created_at: plan.created_at,
+              completed_at: plan.completed_at || null,
+              tasks: roots,
+              progress,
+            };
+          }
+        } catch { /* ignore */ }
+
+        // Plan history: all plans with stats (no full task trees needed)
+        try {
+          const historyResult = await api().executeSQL(
+            memoryDb.path,
+            `SELECT p.id, p.title, p.status, p.project_dir, p.created_at, p.completed_at,
+                    COUNT(pt.id) as task_count,
+                    SUM(CASE WHEN pt.status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
+                    SUM(CASE WHEN pt.status = 'failed' THEN 1 ELSE 0 END) as failed_tasks
+             FROM plans p
+             LEFT JOIN plan_tasks pt ON p.id = pt.plan_id
+             GROUP BY p.id
+             ORDER BY p.created_at DESC, p.rowid DESC
+             LIMIT 20`,
+            true,
+          );
+          if (historyResult.success && 'rows' in historyResult) {
+            data.planHistory = historyResult.rows as PlanHistoryEntry[];
           }
         } catch { /* ignore */ }
       }
@@ -459,8 +555,7 @@ export function useDashboardData(
         } catch { /* ignore */ }
       }
 
-      // Query memory.db - tool_results
-      const memoryDb = existingDbs.find((d) => d.name === 'memory.db');
+      // Query memory.db - tool_results, active_state (and plan data via plan_tasks)
       if (memoryDb) {
         try {
           const memoryResult = await api().executeSQL(
@@ -470,6 +565,18 @@ export function useDashboardData(
           );
           if (memoryResult.success && 'rows' in memoryResult) {
             data.topMemoryTools = memoryResult.rows as DashboardData['topMemoryTools'];
+          }
+        } catch { /* ignore */ }
+
+        // Working memory (active_state) — facts injected into every LLM prompt
+        try {
+          const activeStateResult = await api().executeSQL(
+            memoryDb.path,
+            `SELECT key, value, tags, stored_at, last_accessed FROM active_state ORDER BY stored_at DESC`,
+            true,
+          );
+          if (activeStateResult.success && 'rows' in activeStateResult) {
+            data.workingMemory = activeStateResult.rows as WorkingMemoryEntry[];
           }
         } catch { /* ignore */ }
       }

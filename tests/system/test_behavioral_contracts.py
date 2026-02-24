@@ -16,6 +16,12 @@ Contracts tested:
   6. Quality gates run when files are tracked in the manifest
   7. Quality gate failure triggers escalation increment
   8. Audit log captures TASK_START and TASK_COMPLETE
+  9. Plan is created in memory.db on every process_query() call
+  10. Plan title matches the query
+  11. plan_id is set on agent after process_query()
+  12. Plan is retrievable via get_active_plan()
+  13. Multiple queries produce separate plans; most recent is active
+  14. create_plan=False skips plan creation
 """
 
 import ast
@@ -293,4 +299,162 @@ def test_audit_log_records_task_start_and_complete(agent_workspace, harness):
     )
     assert "TASK_COMPLETE" in action_types, (
         f"TASK_COMPLETE must appear in audit log.  Got: {action_types}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Contract 9: Plan created in memory.db on every process_query()
+# ---------------------------------------------------------------------------
+
+
+def test_plan_created_in_memory_db(agent_workspace, harness):
+    """process_query() must create a row in the plans table of memory.db."""
+    agent, ws = agent_workspace
+    state = agent.shared_state
+
+    with harness.patch(agent, [harness.answer("done")]):
+        agent.process_query("create hello.py")
+
+    count = state.memory.conn.execute(
+        "SELECT COUNT(*) FROM plans"
+    ).fetchone()[0]
+    assert count == 1, f"Exactly 1 plan must exist in memory.db after process_query(), got {count}"
+
+
+# ---------------------------------------------------------------------------
+# Contract 10: Plan title matches the query
+# ---------------------------------------------------------------------------
+
+
+def test_plan_title_matches_query(agent_workspace, harness):
+    """The plan's title must be a (possibly truncated) copy of the query text."""
+    agent, ws = agent_workspace
+    state = agent.shared_state
+    query = "build a fibonacci calculator"
+
+    with harness.patch(agent, [harness.answer("done")]):
+        agent.process_query(query)
+
+    row = state.memory.conn.execute(
+        "SELECT title FROM plans ORDER BY rowid DESC LIMIT 1"
+    ).fetchone()
+    assert row is not None, "No plan row found in memory.db"
+    assert query in row[0], (
+        f"Plan title must contain the query text.\n"
+        f"Query: {query!r}\nTitle: {row[0]!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Contract 11: agent._current_plan_id is set after process_query()
+# ---------------------------------------------------------------------------
+
+
+def test_current_plan_id_set_on_agent(agent_workspace, harness):
+    """agent._current_plan_id must be set after a successful process_query()."""
+    agent, ws = agent_workspace
+
+    assert agent._current_plan_id is None, (
+        "_current_plan_id should be None before any query"
+    )
+
+    with harness.patch(agent, [harness.answer("done")]):
+        agent.process_query("write a hello world script")
+
+    assert agent._current_plan_id is not None, (
+        "_current_plan_id must be set after process_query()"
+    )
+    # Must be a UUID-like string
+    assert len(agent._current_plan_id) > 8, (
+        f"_current_plan_id looks too short: {agent._current_plan_id!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Contract 12: get_active_plan() is retrievable after process_query()
+# ---------------------------------------------------------------------------
+
+
+def test_get_active_plan_returns_plan_after_query(agent_workspace, harness):
+    """get_active_plan() must return a valid plan dict after process_query()."""
+    agent, ws = agent_workspace
+    state = agent.shared_state
+    query = "create a sorting utility"
+
+    with harness.patch(agent, [harness.answer("done")]):
+        agent.process_query(query)
+
+    active = state.plan.get_active_plan()
+    assert active is not None, "get_active_plan() must not be None after process_query()"
+    assert active["id"] == agent._current_plan_id, (
+        "get_active_plan() id must match agent._current_plan_id"
+    )
+    assert "tasks" in active, "get_active_plan() must include 'tasks' key"
+    assert len(active["tasks"]) >= 1, (
+        "get_active_plan() must have at least the root task"
+    )
+    # Root task title should match the query
+    root_tasks = [t for t in active["tasks"] if t["depth"] == 0]
+    assert root_tasks, "At least one depth-0 (root) task must exist"
+    assert query[:50] in root_tasks[0]["title"], (
+        f"Root task title must start with the query text.\n"
+        f"Query: {query!r}\nTitle: {root_tasks[0]['title']!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Contract 13: Multiple queries → separate plans; most recent is active
+# ---------------------------------------------------------------------------
+
+
+def test_multiple_queries_create_separate_plans(agent_workspace, harness):
+    """Each process_query() call must create a NEW plan row;
+    get_active_plan() always returns the most recent one."""
+    agent, ws = agent_workspace
+    state = agent.shared_state
+
+    with harness.patch(agent, [harness.answer("done"), harness.answer("done")]):
+        agent.process_query("first task")
+        first_plan_id = agent._current_plan_id
+
+        agent.process_query("second task")
+        second_plan_id = agent._current_plan_id
+
+    assert first_plan_id != second_plan_id, (
+        "Each process_query() must create a distinct plan"
+    )
+
+    count = state.memory.conn.execute(
+        "SELECT COUNT(*) FROM plans"
+    ).fetchone()[0]
+    assert count == 2, f"Two plans must exist in memory.db, got {count}"
+
+    active = state.plan.get_active_plan()
+    assert active["id"] == second_plan_id, (
+        "get_active_plan() must return the most recently created plan"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Contract 14: create_plan=False skips plan creation
+# ---------------------------------------------------------------------------
+
+
+def test_create_plan_false_skips_plan_creation(agent_workspace, harness):
+    """When create_plan=False, no plan row must be created in memory.db
+    and agent._current_plan_id must remain None."""
+    agent, ws = agent_workspace
+    state = agent.shared_state
+
+    with harness.patch(agent, [harness.answer("done")]):
+        agent.process_query("quick question", create_plan=False)
+
+    count = state.memory.conn.execute(
+        "SELECT COUNT(*) FROM plans"
+    ).fetchone()[0]
+    assert count == 0, (
+        f"No plan must be created when create_plan=False, got {count}"
+    )
+    assert agent._current_plan_id is None, (
+        "_current_plan_id must remain None when create_plan=False"
     )

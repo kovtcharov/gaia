@@ -29,6 +29,32 @@ import os
 
 logger = logging.getLogger(__name__)
 
+
+def _format_memory_age(stored_at: Optional[str], now: datetime) -> str:
+    """Return a human-readable age string for a stored_at timestamp."""
+    if not stored_at:
+        return "unknown time"
+    try:
+        t = datetime.strptime(stored_at, "%Y-%m-%d %H:%M:%S")
+        delta = now - t
+        days = delta.days
+        if days == 0:
+            hours = delta.seconds // 3600
+            if hours == 0:
+                mins = delta.seconds // 60
+                return "just now" if mins < 2 else f"{mins}m ago"
+            return f"{hours}h ago"
+        if days == 1:
+            return "yesterday"
+        if days < 7:
+            return f"{days} days ago"
+        if days < 30:
+            return f"{days // 7}w ago"
+        return f"{days // 30}mo ago"
+    except Exception:
+        return stored_at[:10] if stored_at else "unknown time"
+
+
 from gaia.agents.base.agent import Agent
 from gaia.agents.base.console import AgentConsole, SilentConsole
 
@@ -131,6 +157,7 @@ class GaiaCodeAgent(
         tui_mode: str = "simple",
         persona: str = "pike",  # Default to Pike (simplicity advocate)
         allowed_paths: Optional[List[str]] = None,
+        target_dir: Optional[str] = None,
         **kwargs,
     ):
         """
@@ -143,6 +170,10 @@ class GaiaCodeAgent(
             tui_mode: TUI mode - "full", "simple", "minimal", "off" (default: "simple")
             persona: Personality profile - "direct", "collaborative", "socratic", "mentor", "pragmatic", "friendly" (default: "collaborative")
             allowed_paths: Additional paths the agent is allowed to read/write
+            target_dir: Directory to write generated/translated code to (default: project_dir).
+                        Set this when the output location differs from where gaia-code was invoked,
+                        e.g. translating Python in /src/python → C++ in /src/cpp.
+                        Distinct from workspace_dir (the ~/.gaia/workspace DB store).
             **kwargs: Agent initialization parameters
         """
         self._extra_allowed_paths = allowed_paths or []
@@ -223,8 +254,18 @@ class GaiaCodeAgent(
             except (ImportError, AttributeError):
                 pass
 
-        # Clear stale tasks from previous sessions to prevent plan accumulation
-        self.shared_state.plan.clear_all_tasks()
+        # Capture the project directory (where gaia-code was invoked from).
+        # This is used to namespace active_state facts and other per-project data
+        # so that facts from project-a don't pollute context when working in project-b.
+        self.project_dir = str(Path.cwd())
+
+        # target_dir: where generated/translated code is written.
+        # Defaults to project_dir — only differs for tasks like code translation
+        # where the output lives in a separate directory from the source.
+        self.target_dir = str(Path(target_dir).resolve()) if target_dir else self.project_dir
+
+        # Track the active plan for this session (created lazily in process_query)
+        self._current_plan_id: Optional[str] = None
 
         # Initialize persona engine (coding-specific)
         self.persona = create_persona(persona, workspace_dir)
@@ -249,10 +290,14 @@ class GaiaCodeAgent(
         from gaia.security import PathValidator
         from gaia.agents.code.validators import SyntaxValidator, ASTAnalyzer, AntipatternChecker, RequirementsValidator
 
-        # Build allowed paths: include workspace dir + any user-specified paths
+        # Build allowed paths: workspace dir + source/target dirs + user-specified paths
         all_allowed = list(self._extra_allowed_paths)
         if hasattr(self, 'shared_state') and self.shared_state and self.shared_state.workspace_dir:
             all_allowed.append(str(self.shared_state.workspace_dir))
+        # Always allow project_dir and target_dir so the agent can read source and write target
+        for d in (self.project_dir, self.target_dir):
+            if d and d not in all_allowed:
+                all_allowed.append(d)
         self.path_validator = PathValidator(all_allowed if all_allowed else None)
         self.syntax_validator = SyntaxValidator()
         self.ast_analyzer = ASTAnalyzer()
@@ -307,6 +352,7 @@ class GaiaCodeAgent(
         "glob_search", "grep_content",                    # search
         "agent_query",                                     # recursive decomposition
         "find_tool", "recall", "remember",                # memory / tool discovery
+        "search_conversations",                            # past conversation recall
     }
 
     def _format_tools_for_prompt(self) -> str:
@@ -526,6 +572,7 @@ class GaiaCodeAgent(
             Dict with result and status
         """
         self.task_start = datetime.now()
+        self._current_query = query  # made available to tools via self._agent reference
         self._log_audit("TASK_START", {"query": query})
 
         # Inject current working memories into the task context
@@ -535,14 +582,38 @@ class GaiaCodeAgent(
 
             # 1. Working memory (session key/value facts)
             try:
-                memories = self.shared_state.memory.recall_memories(limit=20)
+                memories = self.shared_state.memory.recall_memories(
+                    limit=20, source_dir=self.project_dir
+                )
                 if memories:
-                    mem_lines = "\n".join(
-                        f"  [{m['key']}] {m['value']}"
-                        for m in memories
-                    )
-                    context_blocks.append(f"## Working Memory (from this session)\n{mem_lines}")
-                    logger.debug("[GaiaCode] injected %d memories into task", len(memories))
+                    now = datetime.now()
+                    same = [m for m in memories if m["same_project"]]
+                    other = [m for m in memories if not m["same_project"]]
+
+                    def _fmt(m: dict) -> str:
+                        age = _format_memory_age(m.get("stored_at"), now)
+                        ctx = f', while: "{m["query_context"][:60]}"' if m.get("query_context") else ""
+                        return f"  [{m['key']}] {m['value']}  (stored {age}{ctx})"
+
+                    # Show target_dir only when it differs from project_dir
+                    if self.target_dir == self.project_dir:
+                        dir_header = f"project: {self.project_dir}"
+                    else:
+                        dir_header = f"project: {self.project_dir}, target: {self.target_dir}"
+                    lines = [f"## Working Memory ({dir_header}, as of {now.strftime('%Y-%m-%d %H:%M')})"]
+                    if same:
+                        lines += [_fmt(m) for m in same]
+                    if other:
+                        lines.append("  -- from other projects (may not be relevant) --")
+                        for m in other:
+                            src = m.get("source_dir") or "unknown"
+                            age = _format_memory_age(m.get("stored_at"), now)
+                            ctx = f', while: "{m["query_context"][:60]}"' if m.get("query_context") else ""
+                            lines.append(f"  [{m['key']}] {m['value']}  (from {src}, stored {age}{ctx})")
+
+                    context_blocks.append("\n".join(lines))
+                    logger.debug("[GaiaCode] injected %d memories (%d same-project, %d other) into task",
+                                 len(memories), len(same), len(other))
             except Exception:
                 pass
 
@@ -604,21 +675,23 @@ class GaiaCodeAgent(
         if self.tui:
             self.tui.start(query)
 
-        # Create root task in master plan
+        # Create plan + root milestone in master plan
         if create_plan:
-            root_task = self.shared_state.plan.create_task(query)
-            self._log_audit("PLAN_CREATE", {"task_id": root_task.id})
+            plan_id = self.shared_state.plan.create_plan(
+                query[:200],
+                project_dir=self.project_dir,
+                target_dir=self.target_dir,
+            )
+            task_id = self.shared_state.plan.create_task(plan_id, title=query[:200], depth=0)
+            self._current_plan_id = plan_id
+            self._log_audit("PLAN_CREATE", {"plan_id": plan_id, "task_id": task_id})
 
             # Show plan in TUI if available
             if self.tui and hasattr(self.tui, 'show_plan'):
-                tasks = self.shared_state.plan.get_all_tasks()
-                plan_data = [
-                    {"description": t.description, "status": t.status}
-                    for t in tasks
-                ]
+                tasks = self.shared_state.plan.get_plan_tasks(plan_id)
+                plan_data = [{"description": t["title"], "status": t["status"]} for t in tasks]
                 self.tui.show_plan(plan_data)
-        else:
-            root_task = None
+        root_task = None  # kept for API compat with _execute_with_quality_gates
 
         try:
             # Execute the task
@@ -1092,9 +1165,11 @@ class GaiaCodeAgent(
             "timestamp": datetime.now().isoformat(),
             "session_start": self.session_start.isoformat(),
             "task_start": self.task_start.isoformat() if self.task_start else None,
-            "plan_tasks": [
-                t.to_dict() for t in self.shared_state.plan.get_all_tasks()
-            ],
+            "plan_tasks": (
+                self.shared_state.plan.get_plan_tasks(self._current_plan_id)
+                if self._current_plan_id else []
+            ),
+            "plan_id": self._current_plan_id,
             "audit_log": self.audit_log,
             "escalation_ladder": {
                 "retry_count": self.escalation_ladder.retry_count,

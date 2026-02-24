@@ -24,6 +24,9 @@ Test catalogue:
   8.  Recursive algorithm            (Tower of Hanoi)
   9.  CLI tool executed via subprocess (factorial calculator)
   10. Multi-turn memory              (remember Python version, use in next query)
+  11. Plan created and retrievable   (plan stored in memory.db)
+  12. Plan summary renders correctly (non-empty, contains query keywords)
+  13. Plan walkthrough               (multi-query project, plan grows with tasks)
 """
 
 import ast
@@ -515,3 +518,149 @@ def test_multi_turn_memory_retention(real_agent_workspace):
     assert "MyApp" in content or "myapp" in content.lower(), (
         f"config.py must mention project name\n{content}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 11. Plan created and retrievable (memory.db integration)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.requires_llm
+def test_plan_created_and_stored_in_memory_db(real_agent_workspace):
+    """
+    A real coding query must create a plan row in memory.db.
+    Verifies:
+    - agent._current_plan_id is set after process_query()
+    - plans table has exactly 1 row
+    - get_active_plan() returns the plan with the correct id
+    - Root task title contains keywords from the query
+    """
+    agent, ws = real_agent_workspace
+    state = agent.shared_state
+
+    query = f"Create counter.py in {ws} with a Counter class that has increment(), decrement(), and value() methods."
+    agent.process_query(query)
+
+    # Plan ID must be set
+    assert agent._current_plan_id is not None, (
+        "_current_plan_id must be set after a real process_query()"
+    )
+
+    # Exactly one plan in DB
+    count = state.memory.conn.execute(
+        "SELECT COUNT(*) FROM plans"
+    ).fetchone()[0]
+    assert count >= 1, f"At least 1 plan must exist in memory.db after process_query(), got {count}"
+
+    # get_active_plan() round-trips correctly
+    active = state.plan.get_active_plan()
+    assert active is not None, "get_active_plan() must not return None"
+    assert active["id"] == agent._current_plan_id, (
+        "get_active_plan() id must match agent._current_plan_id"
+    )
+    assert "tasks" in active, "get_active_plan() must include tasks"
+    assert len(active["tasks"]) >= 1, "Plan must have at least 1 task"
+
+    # Root task should mention the subject
+    root_tasks = [t for t in active["tasks"] if t.get("depth", 0) == 0]
+    assert root_tasks, "At least one root-level (depth=0) task must exist"
+
+    # counter.py or Counter should appear somewhere in the plan data
+    all_titles = " ".join(t["title"].lower() for t in active["tasks"])
+    assert any(kw in all_titles for kw in ["counter", "counter.py", "class"]), (
+        f"Plan tasks must reference the coded subject.\nAll titles: {all_titles}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 12. Plan summary renders correctly
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.requires_llm
+def test_plan_summary_is_non_empty_and_structured(real_agent_workspace):
+    """
+    After a real coding task, get_summary() must return a non-empty string
+    that:
+    - Contains at least one status icon (●, ○, ✓, ✗, ⊘, !)
+    - Contains the plan title
+    - Includes progress counters
+    """
+    agent, ws = real_agent_workspace
+    state = agent.shared_state
+
+    agent.process_query(
+        f"Create primes.py in {ws} with a function is_prime(n) "
+        "that returns True if n is a prime number, False otherwise."
+    )
+
+    summary = state.plan.get_summary()
+    assert summary, "get_summary() must return a non-empty string after process_query()"
+
+    # Must contain at least one Unicode status icon
+    icons = {"●", "○", "✓", "✗", "⊘", "!"}
+    found_icons = [ic for ic in icons if ic in summary]
+    assert found_icons, (
+        f"get_summary() must contain at least one status icon ({icons}).\n"
+        f"Actual summary:\n{summary}"
+    )
+
+    # Must contain progress stats line "X/Y complete"
+    assert "/" in summary and "complete" in summary.lower(), (
+        f"get_summary() must include a progress line like '1/1 complete'.\n"
+        f"Actual summary:\n{summary}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 13. Plan walkthrough: multi-query project builds a growing plan history
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.requires_llm
+def test_plan_grows_across_multiple_queries(real_agent_workspace):
+    """
+    Three sequential queries on the same agent instance must each create
+    a separate plan row.  The most recent plan is returned by get_active_plan().
+    """
+    agent, ws = real_agent_workspace
+    state = agent.shared_state
+
+    plan_ids = []
+
+    agent.process_query(
+        f"Create math_utils.py in {ws} with add(a, b) and subtract(a, b) functions."
+    )
+    plan_ids.append(agent._current_plan_id)
+
+    agent.process_query(
+        f"Create string_utils.py in {ws} with reverse(s) and uppercase(s) functions."
+    )
+    plan_ids.append(agent._current_plan_id)
+
+    agent.process_query(
+        f"Create list_utils.py in {ws} with flatten(lst) that flattens one level of nesting."
+    )
+    plan_ids.append(agent._current_plan_id)
+
+    # All plan IDs must be distinct
+    assert len(set(plan_ids)) == 3, (
+        f"Three distinct plan IDs expected, got: {plan_ids}"
+    )
+
+    # Three plan rows in DB
+    count = state.memory.conn.execute(
+        "SELECT COUNT(*) FROM plans"
+    ).fetchone()[0]
+    assert count >= 3, f"At least 3 plans must exist in memory.db, got {count}"
+
+    # Most recent plan is the last one
+    active = state.plan.get_active_plan()
+    assert active["id"] == plan_ids[-1], (
+        f"get_active_plan() must return the last plan.\n"
+        f"Expected: {plan_ids[-1]}\nActual: {active['id']}"
+    )
+
+    # All three source files should exist
+    for filename in ("math_utils.py", "string_utils.py", "list_utils.py"):
+        assert (ws / filename).exists(), f"{filename} must have been created"

@@ -274,10 +274,11 @@ class TestAgentFactory:
 
             # Create some similar completed tasks
             state = get_shared_state(Path(tmpdir))
+            plan_id = state.plan.create_plan("Test plan")
 
             for i in range(3):
-                task = state.plan.create_task(f"Build FastAPI app {i}")
-                state.plan.update_task_status(task.id, "completed")
+                task_id = state.plan.create_task(plan_id, f"Build FastAPI app {i}")
+                state.plan.update_task_status(task_id, "completed")
 
             # Detect patterns
             patterns = factory.detect_pattern(min_occurrences=3)
@@ -292,11 +293,12 @@ class TestAgentFactory:
 
             # Create a mock pattern
             state = get_shared_state(Path(tmpdir))
+            plan_id = state.plan.create_plan("Test plan")
             tasks = []
             for i in range(3):
-                task = state.plan.create_task(f"Build API {i}")
-                state.plan.update_task_status(task.id, "completed")
-                tasks.append(task)
+                task_id = state.plan.create_task(plan_id, f"Build API {i}")
+                state.plan.update_task_status(task_id, "completed")
+                tasks.append(state.plan.get_task(task_id))
 
             pattern = {
                 "tasks": tasks,

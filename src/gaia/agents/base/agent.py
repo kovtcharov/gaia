@@ -1829,12 +1829,29 @@ You must respond ONLY in valid JSON. No text before { or after }.
         # Build messages array for chat completions
         messages = []
 
-        # Prepopulate with conversation history if available (for session persistence)
+        # Prepopulate with conversation history (in-memory first, then DB fallback)
         if hasattr(self, "conversation_history") and self.conversation_history:
             messages.extend(self.conversation_history)
             logger.debug(
                 f"Loaded {len(self.conversation_history)} messages from conversation history"
             )
+        elif (
+            hasattr(self, "shared_state")
+            and self.shared_state
+            and hasattr(self.shared_state, "memory")
+        ):
+            # No in-memory history (e.g. fresh process start) — restore last 20
+            # turns from memory.db so the agent has cross-session context.
+            db_turns = self.shared_state.memory.get_conversation_history(limit=20)
+            if db_turns:
+                for turn in db_turns:
+                    messages.append({"role": turn["role"], "content": turn["content"]})
+                    self.conversation_history.append(
+                        {"role": turn["role"], "content": turn["content"]}
+                    )
+                logger.debug(
+                    f"Restored {len(db_turns)} conversation turns from memory.db"
+                )
 
         steps_taken = 0
         final_answer = None
@@ -2909,6 +2926,25 @@ You must respond ONLY in valid JSON. No text before { or after }.
             self.conversation_history.append(
                 {"role": "assistant", "content": final_answer}
             )
+            # Also write to memory.db so history survives process restarts
+            # and is searchable across sessions.
+            if (
+                hasattr(self, "shared_state")
+                and self.shared_state
+                and hasattr(self.shared_state, "memory")
+            ):
+                session_id = getattr(self, "session_id", None) or str(
+                    getattr(self, "session_start", "")
+                )
+                try:
+                    self.shared_state.memory.store_conversation_turn(
+                        session_id, "user", user_input
+                    )
+                    self.shared_state.memory.store_conversation_turn(
+                        session_id, "assistant", final_answer
+                    )
+                except Exception:
+                    pass
 
         # Write trace to file if requested
         if trace:

@@ -109,14 +109,19 @@ try {
 
 /**
  * Manages SQLite database connections with connection pooling.
+ * Detects file recreation (inode change) and automatically reopens connections,
+ * which handles the case where Python deletes and recreates a .db file while
+ * the Electron app holds an open connection to the old inode.
  */
 class DatabaseManager {
   constructor() {
-    this.connections = new Map();
+    this.connections = new Map(); // key -> { db, ino }
   }
 
   /**
    * Get or create a database connection.
+   * If the file has been recreated (different inode), closes the old connection
+   * and opens a fresh one so we always read from the current file.
    * @param {string} dbPath - Absolute path to the .db file
    * @param {boolean} readOnly - Open in read-only mode
    * @returns {import('better-sqlite3').Database}
@@ -124,7 +129,16 @@ class DatabaseManager {
   getConnection(dbPath, readOnly = false) {
     const key = `${dbPath}:${readOnly ? 'ro' : 'rw'}`;
     if (this.connections.has(key)) {
-      return this.connections.get(key);
+      const { db, ino } = this.connections.get(key);
+      try {
+        const stat = fs.statSync(dbPath);
+        if (stat.ino === ino) return db; // Same file — reuse connection
+        // File was recreated (different inode) — close stale connection
+        try { db.close(); } catch (e) { /* ignore */ }
+        this.connections.delete(key);
+      } catch (e) {
+        return db; // Can't stat — use cached connection
+      }
     }
 
     if (!Database) {
@@ -142,7 +156,10 @@ class DatabaseManager {
       db.pragma('journal_mode = WAL');
     }
     db.pragma('busy_timeout = 5000');
-    this.connections.set(key, db);
+
+    let ino = 0;
+    try { ino = fs.statSync(dbPath).ino; } catch (e) { /* ignore */ }
+    this.connections.set(key, { db, ino });
     return db;
   }
 
@@ -151,7 +168,7 @@ class DatabaseManager {
    * @param {string} dbPath
    */
   closeConnection(dbPath) {
-    for (const [key, db] of this.connections.entries()) {
+    for (const [key, { db }] of this.connections.entries()) {
       if (key.startsWith(dbPath)) {
         try { db.close(); } catch (e) { /* ignore */ }
         this.connections.delete(key);
@@ -163,7 +180,7 @@ class DatabaseManager {
    * Close all connections.
    */
   closeAll() {
-    for (const [key, db] of this.connections.entries()) {
+    for (const [, { db }] of this.connections.entries()) {
       try { db.close(); } catch (e) { /* ignore */ }
     }
     this.connections.clear();

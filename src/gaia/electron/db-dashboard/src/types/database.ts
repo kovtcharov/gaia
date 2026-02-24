@@ -299,6 +299,69 @@ export interface LearnedToolEntry {
   code_path: string | null;
 }
 
+/** Row in the active_state table (working memory facts injected into LLM context) */
+export interface WorkingMemoryEntry {
+  key: string;
+  value: string;
+  tags: string | null;
+  stored_at: string;
+  last_accessed: string;
+}
+
+export interface PlanTask {
+  id: string;
+  plan_id: string;
+  parent_id: string | null;
+  title: string;
+  description: string | null;
+  status: string;           // pending | in_progress | completed | failed | blocked | cancelled
+  priority: number;         // 1-10
+  depth: number;            // 0=milestone 1=task 2+=subtask
+  owner: string | null;     // agent currently working on it
+  created_by: string | null;
+  result: string | null;
+  error: string | null;
+  dependencies: string | null;  // JSON array of task IDs
+  order_index: number;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  children: PlanTask[];     // populated client-side from flat list
+}
+
+export interface ActivePlan {
+  id: string;
+  title: string;
+  status: string;           // active | completed | abandoned
+  project_dir: string | null;
+  target_dir: string | null;
+  created_at: string;
+  completed_at: string | null;
+  tasks: PlanTask[];        // full tree
+  progress: {
+    total: number;
+    completed: number;
+    in_progress: number;
+    pending: number;
+    failed: number;
+    blocked: number;
+  };
+}
+
+/** Compact plan summary for history list (no full task tree) */
+export interface PlanHistoryEntry {
+  id: string;
+  title: string;
+  status: string;
+  project_dir: string | null;
+  created_at: string;
+  completed_at: string | null;
+  task_count: number;
+  completed_tasks: number;
+  failed_tasks: number;
+}
+
 export interface DashboardData {
   totalSize: number;
   dbCount: number;
@@ -319,6 +382,12 @@ export interface DashboardData {
   /** Tools created by the agent (source='learned') */
   learnedTools: LearnedToolEntry[];
   learnedToolsCount: number;
+  /** Active working memory from active_state in memory.db */
+  workingMemory: WorkingMemoryEntry[];
+  /** Active plan from plans/plan_tasks tables in memory.db */
+  activePlan: ActivePlan | null;
+  /** Recent plan history (last 20 plans) */
+  planHistory: PlanHistoryEntry[];
 }
 
 // ============================================================================

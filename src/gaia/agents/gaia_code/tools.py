@@ -156,6 +156,32 @@ class GaiaCodeTools:
             return self.tool_forget_memory(key)
 
         @tool
+        def search_conversations(query: str, limit: int = 10) -> Dict[str, Any]:
+            """
+            Search past conversation history stored in memory.db.
+
+            Uses full-text search (FTS5) across all previous sessions so you
+            can recall what was discussed, decided, or built in prior runs.
+            Conversations are stored automatically — no explicit save needed.
+
+            **EXAMPLES:**
+
+            # Recall decisions about authentication
+            search_conversations("authentication JWT approach")
+
+            # Find when a bug was discussed
+            search_conversations("sqlite lock error")
+
+            # Remember what files were created in a past session
+            search_conversations("created files hello.py")
+
+            Args:
+                query: Search terms (FTS5 syntax: AND/OR/phrase supported)
+                limit: Maximum number of matching turns to return (default: 10)
+            """
+            return self.tool_search_conversations(query, limit)
+
+        @tool
         def get_plan() -> Dict[str, Any]:
             """Get the current master plan showing all tasks."""
             return self.tool_get_plan()
@@ -550,8 +576,16 @@ def validate_header_guard(path: str) -> dict:
 
     def tool_remember(self, key: str, value: str, tags: Optional[List[str]] = None) -> Dict[str, Any]:
         """Store a fact in working memory (memory.db active_state)."""
+        import os
         state = get_shared_state()
-        state.memory.store_memory(key=key, value=value, tags=tags)
+        agent = getattr(self, "_agent", None)
+        source_dir = getattr(agent, "project_dir", None) or os.getcwd()
+        query_context = getattr(agent, "_current_query", None)
+        state.memory.store_memory(
+            key=key, value=value, tags=tags,
+            source_dir=source_dir,
+            query_context=query_context,
+        )
         return {"success": True, "key": key, "stored": True}
 
     def tool_recall_memory(
@@ -561,6 +595,7 @@ def validate_header_guard(path: str) -> dict:
         limit: int = 10,
     ) -> Dict[str, Any]:
         """Retrieve memories from working memory (memory.db active_state)."""
+        import os
         state = get_shared_state()
 
         if key:
@@ -569,7 +604,9 @@ def validate_header_guard(path: str) -> dict:
                 return {"success": True, "count": 1, "memories": [{"key": key, "value": value}]}
             return {"success": True, "count": 0, "memories": [], "message": f"No memory found for key '{key}'"}
 
-        memories = state.memory.recall_memories(query=query, limit=limit)
+        agent = getattr(self, "_agent", None)
+        source_dir = getattr(agent, "project_dir", None) or os.getcwd()
+        memories = state.memory.recall_memories(query=query, limit=limit, source_dir=source_dir)
         return {
             "success": True,
             "query": query,
@@ -582,6 +619,17 @@ def validate_header_guard(path: str) -> dict:
         state = get_shared_state()
         deleted = state.memory.forget_memory(key)
         return {"success": True, "key": key, "deleted": deleted}
+
+    def tool_search_conversations(self, query: str, limit: int = 10) -> Dict[str, Any]:
+        """Search past conversation history in memory.db using FTS5."""
+        state = get_shared_state()
+        results = state.memory.search_conversations(query=query, limit=limit)
+        return {
+            "success": True,
+            "query": query,
+            "count": len(results),
+            "turns": results,
+        }
 
     def tool_recall(self, query: str, top_k: int = 5) -> Dict[str, Any]:
         """

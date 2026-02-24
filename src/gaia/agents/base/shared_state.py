@@ -217,9 +217,137 @@ class MemoryDB:
                     value TEXT NOT NULL,
                     tags TEXT,
                     stored_at TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
-                    last_accessed TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
+                    last_accessed TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
+                    source_dir TEXT,
+                    query_context TEXT
                 )
             """
+            )
+            # Migrate existing databases that predate source_dir / query_context columns
+            for col in ("source_dir", "query_context"):
+                try:
+                    self.conn.execute(f"ALTER TABLE active_state ADD COLUMN {col} TEXT")
+                    self.conn.commit()
+                except Exception:
+                    pass  # Column already exists
+            # Persistent conversation history across sessions.
+            # Stores every user/assistant turn so sessions can be restored and
+            # searched.  Only the final user+assistant exchange per query is
+            # stored (not intermediate tool-call turns).
+            self.conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS conversation_history (
+                    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    role      TEXT NOT NULL,
+                    content   TEXT NOT NULL,
+                    timestamp TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
+                )
+                """
+            )
+            self.conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_conv_session
+                ON conversation_history(session_id)
+                """
+            )
+            self.conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_conv_timestamp
+                ON conversation_history(timestamp DESC)
+                """
+            )
+            # FTS5 for searching past conversations
+            self.conn.execute(
+                """
+                CREATE VIRTUAL TABLE IF NOT EXISTS conversation_fts
+                USING fts5(content, content=conversation_history, content_rowid=id)
+                """
+            )
+            # Keep FTS in sync via triggers
+            self.conn.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS conv_ai
+                AFTER INSERT ON conversation_history BEGIN
+                    INSERT INTO conversation_fts(rowid, content) VALUES (new.id, new.content);
+                END
+                """
+            )
+            self.conn.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS conv_ad
+                AFTER DELETE ON conversation_history BEGIN
+                    INSERT INTO conversation_fts(conversation_fts, rowid, content)
+                    VALUES ('delete', old.id, old.content);
+                END
+                """
+            )
+            # ----------------------------------------------------------------
+            # Plan tables: plans, plan_tasks, plan_task_events
+            # These live in memory.db so plans are co-located with working
+            # memory and searchable alongside other session data.
+            # ----------------------------------------------------------------
+            self.conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS plans (
+                    id           TEXT PRIMARY KEY,
+                    title        TEXT NOT NULL,
+                    status       TEXT NOT NULL DEFAULT 'active',
+                    project_dir  TEXT,
+                    target_dir   TEXT,
+                    created_at   TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
+                    completed_at TIMESTAMP
+                )
+                """
+            )
+            self.conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS plan_tasks (
+                    id           TEXT PRIMARY KEY,
+                    plan_id      TEXT NOT NULL REFERENCES plans(id),
+                    parent_id    TEXT,
+                    title        TEXT NOT NULL,
+                    description  TEXT,
+                    status       TEXT NOT NULL DEFAULT 'pending',
+                    priority     INTEGER NOT NULL DEFAULT 5,
+                    depth        INTEGER NOT NULL DEFAULT 0,
+                    owner        TEXT,
+                    created_by   TEXT,
+                    result       TEXT,
+                    error        TEXT,
+                    dependencies TEXT,
+                    order_index  INTEGER NOT NULL DEFAULT 0,
+                    created_at   TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
+                    updated_at   TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
+                    started_at   TIMESTAMP,
+                    completed_at TIMESTAMP
+                )
+                """
+            )
+            self.conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_plan_tasks_plan_id
+                ON plan_tasks(plan_id)
+                """
+            )
+            self.conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS plan_task_events (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id    TEXT NOT NULL,
+                    plan_id    TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    agent_name TEXT,
+                    details    TEXT,
+                    timestamp  TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
+                )
+                """
+            )
+            self.conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_plan_events_task_id
+                ON plan_task_events(task_id)
+                """
             )
             self.conn.commit()
 
@@ -263,7 +391,14 @@ class MemoryDB:
             self.conn.commit()
         logger.debug("[MemoryDB] tool result stored tool=%s", tool_name)
 
-    def store_memory(self, key: str, value: str, tags: Optional[List[str]] = None):
+    def store_memory(
+        self,
+        key: str,
+        value: str,
+        tags: Optional[List[str]] = None,
+        source_dir: Optional[str] = None,
+        query_context: Optional[str] = None,
+    ):
         """
         Store an arbitrary fact or context value under a key.
 
@@ -272,33 +407,51 @@ class MemoryDB:
             store_memory("current_project", "~/Work/gaia")
             store_memory("auth_approach", "JWT with RS256", tags=["architecture"])
             store_memory("failing_test", "test_agent.py::test_tool_registry")
+
+        Args:
+            source_dir: The project directory gaia-code was run from.
+                        Used to filter facts when recalling — cross-project facts
+                        are annotated so the LLM knows they may not be relevant.
+            query_context: The user query being processed when this was stored.
+                           Gives the LLM context for why this fact was recorded.
         """
         tags_json = json.dumps(tags) if tags else None
         with self.lock:
             self.conn.execute(
                 """
-                INSERT OR REPLACE INTO active_state (key, value, tags, stored_at, last_accessed)
-                VALUES (?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'), strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
+                INSERT OR REPLACE INTO active_state
+                    (key, value, tags, stored_at, last_accessed, source_dir, query_context)
+                VALUES (?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'),
+                        strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'), ?, ?)
                 """,
-                (key, value, tags_json),
+                (key, value, tags_json, source_dir, query_context),
             )
             self.conn.commit()
-        logger.debug("[MemoryDB] stored key=%s len=%d", key, len(value))
+        logger.debug("[MemoryDB] stored key=%s source_dir=%s", key, source_dir)
 
-    def recall_memories(self, query: Optional[str] = None, limit: int = 20) -> List[Dict]:
+    def recall_memories(
+        self,
+        query: Optional[str] = None,
+        limit: int = 20,
+        source_dir: Optional[str] = None,
+    ) -> List[Dict]:
         """
         Recall memories from active_state.
+
+        If source_dir is provided, results are split into two groups:
+          - same_project: facts stored from the same directory (prioritised)
+          - other_project: facts from different directories (included but annotated)
 
         If query is given, does a LIKE search on key and value.
         Otherwise returns the most recently stored entries.
         """
         with self.lock:
+            base_select = "SELECT key, value, tags, stored_at, source_dir, query_context FROM active_state"
             if query:
                 pattern = f"%{query}%"
                 cursor = self.conn.execute(
-                    """
-                    SELECT key, value, tags, stored_at
-                    FROM active_state
+                    f"""
+                    {base_select}
                     WHERE key LIKE ? OR value LIKE ?
                     ORDER BY last_accessed DESC
                     LIMIT ?
@@ -307,9 +460,8 @@ class MemoryDB:
                 )
             else:
                 cursor = self.conn.execute(
-                    """
-                    SELECT key, value, tags, stored_at
-                    FROM active_state
+                    f"""
+                    {base_select}
                     ORDER BY last_accessed DESC
                     LIMIT ?
                     """,
@@ -317,16 +469,20 @@ class MemoryDB:
                 )
             rows = cursor.fetchall()
 
-        results = [
-            {
+        results = []
+        for r in rows:
+            entry = {
                 "key": r[0],
                 "value": r[1],
                 "tags": json.loads(r[2]) if r[2] else [],
                 "stored_at": r[3],
+                "source_dir": r[4],
+                "query_context": r[5],
+                "same_project": source_dir is None or r[4] is None or r[4] == source_dir,
             }
-            for r in rows
-        ]
-        logger.debug("[MemoryDB] recall query=%r results=%d", query, len(results))
+            results.append(entry)
+
+        logger.debug("[MemoryDB] recall query=%r source_dir=%r results=%d", query, source_dir, len(results))
         return results
 
     def get_memory(self, key: str) -> Optional[str]:
@@ -356,12 +512,112 @@ class MemoryDB:
         logger.debug("[MemoryDB] forget key=%s deleted=%s", key, rowcount > 0)
         return rowcount > 0
 
+    def store_conversation_turn(self, session_id: str, role: str, content: str):
+        """
+        Persist one conversation turn (role='user' or 'assistant') to the DB.
+
+        Called after each process_query() completes so the exchange survives
+        process restarts and is searchable across sessions.
+        """
+        with self.lock:
+            self.conn.execute(
+                "INSERT INTO conversation_history (session_id, role, content) VALUES (?, ?, ?)",
+                (session_id, role, content),
+            )
+            self.conn.commit()
+        logger.debug("[MemoryDB] stored conversation turn session=%s role=%s", session_id, role)
+
+    def get_conversation_history(self, session_id: str = None, limit: int = 20) -> List[Dict]:
+        """
+        Retrieve recent conversation turns, optionally filtered by session.
+
+        Args:
+            session_id: If given, return only turns from that session.
+                        If None, return the most recent turns across all sessions.
+            limit:      Maximum number of turns to return (default 20).
+
+        Returns:
+            List of dicts with keys: id, session_id, role, content, timestamp.
+            Ordered oldest-first so they can be passed directly to the LLM as
+            a messages array.
+        """
+        with self.lock:
+            if session_id:
+                cursor = self.conn.execute(
+                    """
+                    SELECT id, session_id, role, content, timestamp
+                    FROM conversation_history
+                    WHERE session_id = ?
+                    ORDER BY id ASC
+                    LIMIT ?
+                    """,
+                    (session_id, limit),
+                )
+            else:
+                # Most recent `limit` turns across all sessions, oldest-first
+                cursor = self.conn.execute(
+                    """
+                    SELECT id, session_id, role, content, timestamp
+                    FROM (
+                        SELECT id, session_id, role, content, timestamp
+                        FROM conversation_history
+                        ORDER BY id DESC
+                        LIMIT ?
+                    ) ORDER BY id ASC
+                    """,
+                    (limit,),
+                )
+            rows = cursor.fetchall()
+        return [
+            {"id": r[0], "session_id": r[1], "role": r[2], "content": r[3], "timestamp": r[4]}
+            for r in rows
+        ]
+
+    def search_conversations(self, query: str, limit: int = 10) -> List[Dict]:
+        """
+        Full-text search across all stored conversation turns.
+
+        Uses FTS5 so results are ranked by relevance.  Useful for the agent
+        to recall what was discussed in previous sessions without loading the
+        full history into context.
+
+        Args:
+            query: Search terms (FTS5 syntax supported, e.g. "authentication jwt").
+            limit: Maximum results to return.
+
+        Returns:
+            List of dicts with keys: id, session_id, role, content, timestamp.
+        """
+        with self.lock:
+            try:
+                cursor = self.conn.execute(
+                    """
+                    SELECT c.id, c.session_id, c.role, c.content, c.timestamp
+                    FROM conversation_history c
+                    JOIN conversation_fts f ON c.id = f.rowid
+                    WHERE conversation_fts MATCH ?
+                    ORDER BY rank
+                    LIMIT ?
+                    """,
+                    (query, limit),
+                )
+                rows = cursor.fetchall()
+            except Exception:
+                rows = []
+        logger.debug("[MemoryDB] conversation search query=%r results=%d", query, len(rows))
+        return [
+            {"id": r[0], "session_id": r[1], "role": r[2], "content": r[3], "timestamp": r[4]}
+            for r in rows
+        ]
+
     def clear_working_memory(self):
         """
         Clear all working/session-scoped tables while keeping the DB file.
 
         This preserves the DB history (browsable in the dashboard) but starts
         the agent fresh. Called by SharedAgentState.reset_session().
+        Note: conversation_history is intentionally NOT cleared here — it is
+        persistent across sessions by design.
         """
         with self.lock:
             self.conn.execute("DELETE FROM active_state")
@@ -1241,6 +1497,7 @@ class SkillsDB:
 
             self.conn.commit()
 
+
     def register_skill(
         self,
         name: str,
@@ -1331,6 +1588,11 @@ class SkillsDB:
             )
             self.conn.commit()
         logger.debug("[SkillsDB] usage skill=%s success=%s confidence=%.2f", skill_name, success, confidence)
+
+
+# ============================================================================
+# AgentsDB: Specialist Agent Registry
+# ============================================================================
 
 
 class AgentsDB:
@@ -1489,7 +1751,6 @@ class AgentsDB:
                 (agent_id, success, task_type, duration_ms),
             )
 
-            # Update confidence based on usage history
             cursor = self.conn.execute(
                 """
                 SELECT COUNT(*) as total,
@@ -1515,7 +1776,7 @@ class AgentsDB:
 
 
 # ============================================================================
-# MasterPlan: Hierarchical Task Tree
+# MasterPlan: Hierarchical Task Tree (stored in memory.db)
 # ============================================================================
 
 
@@ -1523,81 +1784,193 @@ class MasterPlan:
     """
     Hierarchical task tree shared across all agents.
 
+    Plans and tasks are stored in memory.db (plans, plan_tasks, plan_task_events
+    tables) rather than a separate plan.db.  This co-locates plan data with
+    other working memory and keeps the file count low.
+
     Features:
-    - Parent-child task relationships
-    - Task ownership (which agent is working on what)
-    - Progress tracking
-    - Dynamic replanning
+    - plans table: top-level goal records with status tracking
+    - plan_tasks table: rich task tree (milestones → tasks → subtasks)
+    - plan_task_events table: full audit trail of all status transitions
+    - Multi-agent: owner/created_by columns track which agent worked on what
+    - Dynamic replanning: any task can gain subtasks at any time
     """
 
-    def __init__(self, db_path: Path):
-        self.db_path = db_path
-        self.conn = sqlite3.connect(str(db_path), check_same_thread=False)
-        self.lock = threading.RLock()  # Re-entrant: create_task calls get_task/update_task while holding lock
-        self._create_tables()
+    def __init__(self, memory_db: "MemoryDB"):
+        self.memory_db = memory_db
+        # Reuse MemoryDB's lock — all plan ops share the same connection+lock
+        self.lock = memory_db.lock
 
-    def _create_tables(self):
-        """Create plan tables."""
+    # ------------------------------------------------------------------
+    # Plan lifecycle
+    # ------------------------------------------------------------------
+
+    def create_plan(
+        self,
+        title: str,
+        project_dir: Optional[str] = None,
+        target_dir: Optional[str] = None,
+    ) -> str:
+        """Create a new top-level plan.  Returns the plan_id."""
+        plan_id = str(uuid4())
         with self.lock:
-            self.conn.execute(
+            self.memory_db.conn.execute(
                 """
-                CREATE TABLE IF NOT EXISTS tasks (
-                    id TEXT PRIMARY KEY,
-                    description TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    owner TEXT,
-                    parent_id TEXT,
-                    children TEXT,
-                    result TEXT,
-                    error TEXT,
-                    created_at TEXT NOT NULL,
-                    started_at TEXT,
-                    completed_at TEXT
-                )
-            """
+                INSERT INTO plans (id, title, status, project_dir, target_dir)
+                VALUES (?, ?, 'active', ?, ?)
+                """,
+                (plan_id, title[:500], project_dir, target_dir),
             )
-            self.conn.commit()
+            self.memory_db.conn.commit()
+        logger.info("[MasterPlan] plan created id=%s title=%.80s", plan_id, title)
+        return plan_id
+
+    def complete_plan(self, plan_id: str):
+        """Mark a plan as completed."""
+        with self.lock:
+            self.memory_db.conn.execute(
+                """
+                UPDATE plans SET status = 'completed',
+                    completed_at = strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')
+                WHERE id = ?
+                """,
+                (plan_id,),
+            )
+            self.memory_db.conn.commit()
+        logger.info("[MasterPlan] plan completed id=%s", plan_id)
+
+    def abandon_plan(self, plan_id: str):
+        """Mark a plan as abandoned."""
+        with self.lock:
+            self.memory_db.conn.execute(
+                "UPDATE plans SET status = 'abandoned' WHERE id = ?",
+                (plan_id,),
+            )
+            self.memory_db.conn.commit()
+        logger.info("[MasterPlan] plan abandoned id=%s", plan_id)
+
+    # ------------------------------------------------------------------
+    # Task creation
+    # ------------------------------------------------------------------
 
     def create_task(
-        self, description: str, parent_id: Optional[str] = None
-    ) -> TaskNode:
-        """Create a new task."""
-        task = TaskNode(id=str(uuid4()), description=description, parent_id=parent_id)
+        self,
+        plan_id: str,
+        title: str,
+        description: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        depth: Optional[int] = None,
+        priority: int = 5,
+        created_by: Optional[str] = None,
+        dependencies: Optional[List[str]] = None,
+    ) -> str:
+        """Create a task in the plan tree.  Returns the task_id.
 
-        with self.lock:
-            self.conn.execute(
-                """
-                INSERT INTO tasks (id, description, status, owner, parent_id, children, result, error, created_at, started_at, completed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                tuple(task.to_dict().values()),
-            )
+        Args:
+            plan_id:     The plan this task belongs to.
+            title:       Short imperative description (shown in dashboard).
+            description: Optional detailed description.
+            parent_id:   Parent task ID (None = top-level milestone).
+            depth:       Tree depth; auto-computed from parent if omitted.
+            priority:    1 (highest) to 10 (lowest).
+            created_by:  Agent name that created this task.
+            dependencies: Task IDs that must complete before this one.
+        """
+        task_id = str(uuid4())
 
-            # Update parent's children list
+        # Auto-compute depth from parent
+        if depth is None:
             if parent_id:
                 parent = self.get_task(parent_id)
-                if parent:
-                    parent.children.append(task.id)
-                    self._update_task(parent)
-
-            self.conn.commit()
-
-        logger.info("[MasterPlan] task created id=%s parent=%s desc=%.80s", task.id, parent_id, description)
-        return task
-
-    def get_task(self, task_id: str) -> Optional[TaskNode]:
-        """Get a task by ID."""
-        with self.lock:
-            cursor = self.conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
-            row = cursor.fetchone()
-            if row:
-                columns = [desc[0] for desc in cursor.description]
-                data = dict(zip(columns, row))
-                task = TaskNode.from_dict(data)
+                depth = (parent["depth"] + 1) if parent else 1
             else:
-                task = None
-        logger.debug("[MasterPlan] get_task id=%s found=%s", task_id, task is not None)
-        return task
+                depth = 0
+
+        with self.lock:
+            # Compute position among siblings
+            order_index = self.memory_db.conn.execute(
+                "SELECT COUNT(*) FROM plan_tasks WHERE plan_id = ? AND parent_id IS ?",
+                (plan_id, parent_id),
+            ).fetchone()[0]
+
+            self.memory_db.conn.execute(
+                """
+                INSERT INTO plan_tasks
+                    (id, plan_id, parent_id, title, description, status, priority,
+                     depth, created_by, dependencies, order_index)
+                VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+                """,
+                (
+                    task_id,
+                    plan_id,
+                    parent_id,
+                    title[:500],
+                    description,
+                    priority,
+                    depth,
+                    created_by,
+                    json.dumps(dependencies) if dependencies else None,
+                    order_index,
+                ),
+            )
+            self.memory_db.conn.execute(
+                """
+                INSERT INTO plan_task_events (task_id, plan_id, event_type, agent_name, details)
+                VALUES (?, ?, 'created', ?, ?)
+                """,
+                (task_id, plan_id, created_by, f"Task created: {title[:200]}"),
+            )
+            self.memory_db.conn.commit()
+
+        logger.info(
+            "[MasterPlan] task created id=%s plan=%s depth=%d title=%.80s",
+            task_id, plan_id, depth, title,
+        )
+        return task_id
+
+    # ------------------------------------------------------------------
+    # Task status transitions
+    # ------------------------------------------------------------------
+
+    def assign_task(self, task_id: str, owner: str):
+        """Assign a task to an agent (status stays pending)."""
+        with self.lock:
+            row = self.memory_db.conn.execute(
+                "SELECT plan_id FROM plan_tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            if not row:
+                return
+            plan_id = row[0]
+            self.memory_db.conn.execute(
+                """
+                UPDATE plan_tasks SET owner = ?,
+                    updated_at = strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')
+                WHERE id = ?
+                """,
+                (owner, task_id),
+            )
+            self.memory_db.conn.execute(
+                "INSERT INTO plan_task_events (task_id, plan_id, event_type, agent_name) VALUES (?, ?, 'assigned', ?)",
+                (task_id, plan_id, owner),
+            )
+            self.memory_db.conn.commit()
+        logger.debug("[MasterPlan] task assigned id=%s owner=%s", task_id, owner)
+
+    def start_task(self, task_id: str, owner: Optional[str] = None):
+        """Mark a task as in_progress."""
+        self.update_task_status(task_id, "in_progress", owner=owner)
+
+    def complete_task(self, task_id: str, result: Optional[str] = None, agent: Optional[str] = None):
+        """Mark a task as completed."""
+        self.update_task_status(task_id, "completed", result=result, owner=agent)
+
+    def fail_task(self, task_id: str, error: Optional[str] = None, agent: Optional[str] = None):
+        """Mark a task as failed."""
+        self.update_task_status(task_id, "failed", error=error, owner=agent)
+
+    def block_task(self, task_id: str, reason: Optional[str] = None):
+        """Mark a task as blocked."""
+        self.update_task_status(task_id, "blocked", error=reason)
 
     def update_task_status(
         self,
@@ -1605,60 +1978,204 @@ class MasterPlan:
         status: str,
         result: Optional[str] = None,
         error: Optional[str] = None,
+        owner: Optional[str] = None,
     ):
-        """Update task status."""
-        task = self.get_task(task_id)
-        if not task:
-            return
+        """General-purpose task status update with event recording."""
+        with self.lock:
+            row = self.memory_db.conn.execute(
+                "SELECT plan_id, status FROM plan_tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            if not row:
+                return
+            plan_id, old_status = row[0], row[1]
 
-        old_status = task.status
-        task.status = status
-        if result:
-            task.result = result
-        if error:
-            task.error = error
+            # Build started_at / completed_at expressions
+            started_at_sql = (
+                "strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')"
+                if status == "in_progress" else "started_at"
+            )
+            completed_at_sql = (
+                "strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')"
+                if status in ("completed", "failed", "cancelled") else "completed_at"
+            )
 
-        if status == "in_progress" and not task.started_at:
-            task.started_at = datetime.now()
-        elif status in ("completed", "failed"):
-            task.completed_at = datetime.now()
-
-        self._update_task(task)
+            self.memory_db.conn.execute(
+                f"""
+                UPDATE plan_tasks SET
+                    status = ?,
+                    result = COALESCE(?, result),
+                    error  = COALESCE(?, error),
+                    owner  = COALESCE(?, owner),
+                    updated_at   = strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'),
+                    started_at   = {started_at_sql},
+                    completed_at = {completed_at_sql}
+                WHERE id = ?
+                """,
+                (status, result, error, owner, task_id),
+            )
+            self.memory_db.conn.execute(
+                """
+                INSERT INTO plan_task_events
+                    (task_id, plan_id, event_type, agent_name, details)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (task_id, plan_id, status, owner, result or error),
+            )
+            self.memory_db.conn.commit()
         logger.info("[MasterPlan] task %s: %s -> %s", task_id, old_status, status)
 
-    def _update_task(self, task: TaskNode):
-        """Update task in database."""
-        with self.lock:
-            self.conn.execute(
-                """
-                UPDATE tasks
-                SET description = ?, status = ?, owner = ?, parent_id = ?, children = ?,
-                    result = ?, error = ?, created_at = ?, started_at = ?, completed_at = ?
-                WHERE id = ?
-            """,
-                tuple(list(task.to_dict().values())[1:] + [task.id]),
-            )
-            self.conn.commit()
+    # ------------------------------------------------------------------
+    # Queries
+    # ------------------------------------------------------------------
 
-    def get_all_tasks(self) -> List[TaskNode]:
-        """Get all tasks."""
+    def get_task(self, task_id: str) -> Optional[Dict]:
+        """Get a single task by ID."""
         with self.lock:
-            cursor = self.conn.execute("SELECT * FROM tasks")
-            columns = [desc[0] for desc in cursor.description]
-            tasks = []
-            for row in cursor.fetchall():
-                data = dict(zip(columns, row))
-                tasks.append(TaskNode.from_dict(data))
-            task_count = len(tasks)
-        logger.debug("[MasterPlan] get_all_tasks count=%d", task_count)
-        return tasks
+            row = self.memory_db.conn.execute(
+                """
+                SELECT id, plan_id, parent_id, title, description, status, priority,
+                       depth, owner, created_by, result, error, dependencies,
+                       order_index, created_at, updated_at, started_at, completed_at
+                FROM plan_tasks WHERE id = ?
+                """,
+                (task_id,),
+            ).fetchone()
+        return self._row_to_dict(row) if row else None
+
+    def get_plan_tasks(self, plan_id: str) -> List[Dict]:
+        """Return all tasks for a plan, ordered by depth then position."""
+        with self.lock:
+            rows = self.memory_db.conn.execute(
+                """
+                SELECT id, plan_id, parent_id, title, description, status, priority,
+                       depth, owner, created_by, result, error, dependencies,
+                       order_index, created_at, updated_at, started_at, completed_at
+                FROM plan_tasks WHERE plan_id = ?
+                ORDER BY depth ASC, order_index ASC, created_at ASC
+                """,
+                (plan_id,),
+            ).fetchall()
+        return [self._row_to_dict(r) for r in rows]
+
+    def get_active_plan(self) -> Optional[Dict]:
+        """Return the most recent active plan with all its tasks."""
+        with self.lock:
+            row = self.memory_db.conn.execute(
+                """
+                SELECT id, title, status, project_dir, target_dir, created_at, completed_at
+                FROM plans ORDER BY created_at DESC, rowid DESC LIMIT 1
+                """
+            ).fetchone()
+        if not row:
+            return None
+        plan_id = row[0]
+        tasks = self.get_plan_tasks(plan_id)
+        return {
+            "id": row[0],
+            "title": row[1],
+            "status": row[2],
+            "project_dir": row[3],
+            "target_dir": row[4],
+            "created_at": row[5],
+            "completed_at": row[6],
+            "tasks": tasks,
+        }
+
+    def get_summary(self) -> str:
+        """Return a compact text summary of the active plan for LLM context injection.
+
+        Renders in DFS order (parent then its children) so the tree structure
+        is preserved in the text — subtasks appear directly under their milestone.
+        """
+        plan = self.get_active_plan()
+        if not plan:
+            return ""
+        tasks = plan["tasks"]
+        if not tasks:
+            return ""
+
+        status_icons = {
+            "pending": "○", "in_progress": "◉", "completed": "✓",
+            "failed": "✗", "blocked": "⊘", "cancelled": "⊝",
+        }
+
+        # Build parent→children map for DFS traversal
+        children_map: Dict[Optional[str], List[Dict]] = {}
+        for t in tasks:
+            pid = t["parent_id"]
+            children_map.setdefault(pid, []).append(t)
+        # Sort each sibling group by order_index then created_at
+        for pid in children_map:
+            children_map[pid].sort(key=lambda t: (t["order_index"], t["created_at"] or ""))
+
+        lines = [f"## Active Plan: {plan['title'][:120]}"]
+
+        def render(task_id: Optional[str], depth: int):
+            for t in children_map.get(task_id, []):
+                indent = "  " * depth
+                icon = status_icons.get(t["status"], "○")
+                agent_note = f" [{t['owner']}]" if t["owner"] else ""
+                lines.append(f"{indent}{icon} {t['title']}{agent_note}")
+                render(t["id"], depth + 1)
+
+        render(None, 0)
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Backward compatibility (used by agent.py checkpoint + TUI)
+    # ------------------------------------------------------------------
 
     def clear_all_tasks(self):
-        """Clear all tasks from the plan. Use at session start to avoid stale tasks."""
+        """Delete all plans and tasks (used in tests / session reset)."""
         with self.lock:
-            self.conn.execute("DELETE FROM tasks")
-            self.conn.commit()
-        logger.info("[MasterPlan] all tasks cleared")
+            self.memory_db.conn.execute("DELETE FROM plan_task_events")
+            self.memory_db.conn.execute("DELETE FROM plan_tasks")
+            self.memory_db.conn.execute("DELETE FROM plans")
+            self.memory_db.conn.commit()
+        logger.debug("[MasterPlan] all tasks cleared")
+
+    def get_all_tasks(self) -> List["TaskNode"]:
+        """Return tasks from the active plan as TaskNode objects (backward compat)."""
+        plan = self.get_active_plan()
+        if not plan:
+            return []
+        result = []
+        for t in plan["tasks"]:
+            node = TaskNode(
+                id=t["id"],
+                description=t["title"],
+                status=t["status"],
+                owner=t["owner"],
+                parent_id=t["parent_id"],
+            )
+            result.append(node)
+        return result
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _row_to_dict(self, row) -> Dict:
+        return {
+            "id":           row[0],
+            "plan_id":      row[1],
+            "parent_id":    row[2],
+            "title":        row[3],
+            "description":  row[4],
+            "status":       row[5],
+            "priority":     row[6],
+            "depth":        row[7],
+            "owner":        row[8],
+            "created_by":   row[9],
+            "result":       row[10],
+            "error":        row[11],
+            "dependencies": json.loads(row[12]) if row[12] else [],
+            "order_index":  row[13],
+            "created_at":   row[14],
+            "updated_at":   row[15],
+            "started_at":   row[16],
+            "completed_at": row[17],
+        }
 
 
 # ============================================================================
@@ -1928,8 +2445,8 @@ class SharedAgentState:
         self.agents = AgentsDB(workspace_dir / "agents.db")
         self.logs = LogsDB(workspace_dir / "logs.db")  # Runtime logs for introspection
 
-        # Initialize plan and manifest
-        self.plan = MasterPlan(workspace_dir / "plan.db")
+        # Initialize plan (shares memory.db connection — no separate plan.db file)
+        self.plan = MasterPlan(self.memory)
         self.manifest = ProjectManifest()
 
         # Initialize call stack and message queue
@@ -1963,7 +2480,7 @@ class SharedAgentState:
         - tools.db      (registry + usage history)
         - skills.db     (learned workflows + usage history)
         - agents.db     (specialist registry + usage history)
-        - plan.db       (task history)
+        - plans/plan_tasks in memory.db (task history persists intentionally)
         """
         self.memory.clear_working_memory()
 

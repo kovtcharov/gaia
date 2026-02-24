@@ -14,13 +14,14 @@ import {
   Line,
   CartesianGrid,
 } from 'recharts';
-import { HardDrive, Table2, Rows3, Clock, Wrench, Users, Zap, BrainCircuit, BookOpen, AlertTriangle, Trash2, Hammer } from 'lucide-react';
-import type { DashboardData, DbStats, AgentEntry, SkillEntry, MemoryToolEntry, KnowledgeInsightEntry, LearnedToolEntry } from '../../types/database';
+import { HardDrive, Table2, Rows3, Clock, Wrench, Users, Zap, BrainCircuit, BookOpen, AlertTriangle, Trash2, Hammer, MemoryStick } from 'lucide-react';
+import type { DashboardData, DbStats, AgentEntry, SkillEntry, MemoryToolEntry, KnowledgeInsightEntry, LearnedToolEntry, WorkingMemoryEntry } from '../../types/database';
 import Badge from '../shared/Badge';
 import StatsCards from './StatsCards';
 import DonutChart from './DonutChart';
 import ActivityHeatmap from './ActivityHeatmap';
 import RecentActivity from './RecentActivity';
+import PlanView from './PlanView';
 
 interface OverviewProps {
   data: DashboardData;
@@ -81,6 +82,9 @@ export default function Overview({ data, workspacePath, onClearAll }: OverviewPr
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Live Plan -- front and center */}
+      <PlanView plan={data.activePlan} planHistory={data.planHistory} />
+
       {/* Stats Cards Row */}
       <StatsCards
         trendStats={data.trendStats}
@@ -194,6 +198,9 @@ export default function Overview({ data, workspacePath, onClearAll }: OverviewPr
       {(data.learnedTools.length > 0 || data.learnedToolsCount > 0) && (
         <LearnedToolsSection tools={data.learnedTools} total={data.learnedToolsCount} />
       )}
+
+      {/* Working Memory (active_state) */}
+      <WorkingMemorySection entries={data.workingMemory || []} />
 
       {/* Resource Usage (Agents, Skills, Memory, Knowledge) */}
       <ResourceUsage
@@ -346,6 +353,58 @@ function LearnedToolsSection({ tools, total }: { tools: LearnedToolEntry[]; tota
                   <span className="text-2xs text-gh-fg-subtle">{formatRelative(tool.last_used)}</span>
                 )}
               </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+// ============================================================================
+// Working Memory Section
+// ============================================================================
+
+function WorkingMemorySection({ entries }: { entries: WorkingMemoryEntry[] }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: 0.19 }}
+      className="card card-hover p-4"
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <MemoryStick size={14} className="text-gh-accent-fg" />
+        <h3 className="text-xs font-semibold text-gh-fg-muted uppercase tracking-wider">
+          Working Memory
+        </h3>
+        <Badge variant="info">{entries.length}</Badge>
+        <span className="text-2xs text-gh-fg-subtle ml-auto">active_state · injected into every LLM prompt</span>
+      </div>
+      {entries.length === 0 ? (
+        <div className="py-6 text-center text-xs text-gh-fg-subtle">
+          No working memory entries. Use <code className="font-mono text-gh-accent-fg">remember()</code> to store facts.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-1 max-h-64 overflow-y-auto">
+          {entries.map((entry) => (
+            <motion.div
+              key={entry.key}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-start gap-2 p-2 rounded-md hover:bg-gh-canvas-subtle/50 transition-colors"
+            >
+              <span className="text-xs font-mono text-gh-accent-fg shrink-0 mt-0.5">{entry.key}</span>
+              <span className="text-2xs text-gh-fg-subtle shrink-0 mt-0.5">→</span>
+              <div className="flex-1 min-w-0">
+                <span className="text-xs text-gh-fg-default block truncate">{entry.value}</span>
+                {entry.tags && entry.tags !== 'null' && (
+                  <span className="text-2xs text-gh-fg-subtle">{entry.tags}</span>
+                )}
+              </div>
+              <span className="text-2xs text-gh-fg-subtle shrink-0 ml-1">
+                {entry.stored_at ? entry.stored_at.slice(11, 16) : ''}
+              </span>
             </motion.div>
           ))}
         </div>
