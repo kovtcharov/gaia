@@ -18,52 +18,127 @@ import sys
 import time
 from pathlib import Path
 
+# Load .env (handles CRLF line endings correctly, unlike bash `source`)
+_env = Path(__file__).parent / ".env"
+if _env.exists():
+    import os
+    for line in _env.read_bytes().decode("utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, _, v = line.partition("=")
+            os.environ.setdefault(k.strip(), v.strip())
+
 # Add gaia to path
 sys.path.insert(0, str(Path("/mnt/c/Users/14255/Work/gaia/src")))
 
 OUTPUT_DIR = "/mnt/c/Users/14255/Work/Projects/GaiaCodeExperiments/gaiacpp_gaia"
 
+# Enumerate the exact files the agent MUST create so it can't skip writing them.
+REQUIRED_FILES = [
+    f"{OUTPUT_DIR}/CMakeLists.txt",
+    f"{OUTPUT_DIR}/include/gaia/agent.hpp",
+    f"{OUTPUT_DIR}/include/gaia/tool_registry.hpp",
+    f"{OUTPUT_DIR}/include/gaia/console.hpp",
+    f"{OUTPUT_DIR}/include/gaia/mcp_client.hpp",
+    f"{OUTPUT_DIR}/src/agent.cpp",
+    f"{OUTPUT_DIR}/src/tool_registry.cpp",
+    f"{OUTPUT_DIR}/src/console.cpp",
+    f"{OUTPUT_DIR}/src/mcp_client.cpp",
+    f"{OUTPUT_DIR}/tests/test_agent.cpp",
+    f"{OUTPUT_DIR}/demo/main.cpp",
+    f"{OUTPUT_DIR}/README.md",
+]
+
 BENCHMARK_QUERY = (
-    f"Analyze the GAIA Python agent framework source code in "
-    f"/mnt/c/Users/14255/Work/gaia/src/gaia/agents/base/ and "
-    f"/mnt/c/Users/14255/Work/gaia/src/gaia/mcp/, "
-    f"then implement a C++17 port of the core framework. "
-    f"Write all output files to {OUTPUT_DIR}/. "
-    f"Include: "
-    f"(1) base Agent class with state machine (idle/running/done/error), "
-    f"(2) tool registry with registration and dispatch, "
-    f"(3) console output interface (print_thought, print_tool_usage, print_final_answer), "
-    f"(4) MCP client (JSON-RPC over stdio). "
-    f"Use nlohmann/json for JSON, CMake as the build system, and Google Test for unit tests. "
-    f"Include a simple demo agent that registers two tools and runs one query. "
-    f"Create: CMakeLists.txt, include/gaia/*.hpp, src/*.cpp, tests/test_*.cpp, README.md."
+    f"TASK: Write a complete, working C++17 implementation of the GAIA agent framework to disk.\n"
+    f"\n"
+    f"OUTPUT DIRECTORY: {OUTPUT_DIR}/\n"
+    f"\n"
+    f"SCOPE: Write ALL files needed for a WORKING, COMPILABLE system — not just the 12 listed below.\n"
+    f"If a working program needs additional utility files (e.g. json_utils.hpp, types.h), write them.\n"
+    f"Ask: 'What does a WORKING, compilable C++ agent framework need?' — not 'What was explicitly listed?'\n"
+    f"\n"
+    f"MINIMUM REQUIRED FILES (12 files — may write more):\n"
+    + "\n".join(f"  {f}" for f in REQUIRED_FILES)
+    + f"\n"
+    f"\n"
+    f"IMPLEMENTATION PLAN — execute these 8 agent_query calls in sequence:\n"
+    f"\n"
+    f"  STEP 1 — Build system:\n"
+    f"    agent_query(task='Write {OUTPUT_DIR}/CMakeLists.txt and {OUTPUT_DIR}/README.md. "
+    f"CMake 3.17+, C++17, FetchContent for nlohmann_json + GTest. "
+    f"include_directories(include). README includes cmake -B build && cmake --build build && ctest.')\n"
+    f"\n"
+    f"  STEP 2 — Shared types header:\n"
+    f"    agent_query(task='Write {OUTPUT_DIR}/include/gaia/types.h with shared types: "
+    f"ToolFunction (std::function<std::string(const std::string&)>), AgentState enum (IDLE, RUNNING, DONE, ERROR), "
+    f"ToolCall struct (name, args, result). C++17, include guards.')\n"
+    f"\n"
+    f"  STEP 3 — Core headers (READ types.h first):\n"
+    f"    agent_query(task='READ {OUTPUT_DIR}/include/gaia/types.h FIRST. Then write 4 headers in {OUTPUT_DIR}/include/gaia/: "
+    f"agent.hpp (Agent class, uses AgentState+ToolFunction from types.h, run(query)->string, add_tool), "
+    f"tool_registry.hpp (ToolRegistry, register_tool, dispatch, list_tools, uses ToolFunction), "
+    f"console.hpp (print_thought, print_tool_usage, print_final_answer with ANSI color), "
+    f"mcp_client.hpp (MCPClient, call_tool via JSON-RPC 2.0 over stdin/stdout). C++17, include guards.')\n"
+    f"\n"
+    f"  STEP 4 — Source implementations (READ all headers first):\n"
+    f"    agent_query(task='READ all headers in {OUTPUT_DIR}/include/gaia/ FIRST. Then write 4 source files in {OUTPUT_DIR}/src/: "
+    f"agent.cpp (Agent impl — full processQuery loop with ToolRegistry + Console), "
+    f"tool_registry.cpp (unordered_map<string,ToolFunction> dispatch), "
+    f"console.cpp (ANSI color output implementation), "
+    f"mcp_client.cpp (stdin/stdout JSON-RPC client using nlohmann_json). "
+    f"#include the corresponding headers from {OUTPUT_DIR}/include/gaia/.')\n"
+    f"\n"
+    f"  STEP 5 — Analyze codebase for bugs (specialist: CppCodeAnalysisAgent):\n"
+    f"    agent_query(task='Analyze ALL C++ files in {OUTPUT_DIR} for bugs. "
+    f"Check: header vs implementation API mismatches, missing #includes, constructor signature mismatches, "
+    f"CMakeLists.txt linkage gaps, ODR violations. "
+    f"Read every .hpp and .cpp file. Run cmake -B {OUTPUT_DIR}/build -S {OUTPUT_DIR} 2>&1. "
+    f"Output a structured JSON bug report.', specialist='CppCodeAnalysisAgent')\n"
+    f"\n"
+    f"  STEP 6 — Fix all bugs from analysis (specialist: CppBugBasherAgent):\n"
+    f"    agent_query(task='Fix ALL bugs from the CppCodeAnalysisAgent report. "
+    f"Read each file before editing. Apply targeted edits (edit_file). "
+    f"After fixes: cmake -B {OUTPUT_DIR}/build -S {OUTPUT_DIR} && cmake --build {OUTPUT_DIR}/build. "
+    f"Output must compile cleanly.', specialist='CppBugBasherAgent')\n"
+    f"\n"
+    f"  STEP 7 — Tests + demo (READ ALL headers first, specialist: TestingAgent):\n"
+    f"    agent_query(task='READ all headers in {OUTPUT_DIR}/include/gaia/ FIRST. "
+    f"Write {OUTPUT_DIR}/tests/test_agent.cpp (GoogleTest: ≥10 tests for Agent, ToolRegistry, Console — "
+    f"use ONLY constructors/methods confirmed in the headers). "
+    f"Write {OUTPUT_DIR}/demo/main.cpp (demo: register echo+reverse tools, run one query, print result). "
+    f"Ensure CMakeLists.txt has test target with GTest linkage.', specialist='TestingAgent')\n"
+    f"\n"
+    f"  STEP 8 — Compile and run tests:\n"
+    f"    run_shell_command('cmake -B {OUTPUT_DIR}/build -S {OUTPUT_DIR} -DCMAKE_BUILD_TYPE=Debug && "
+    f"cmake --build {OUTPUT_DIR}/build --parallel && cd {OUTPUT_DIR}/build && ctest --output-on-failure')\n"
+    f"\n"
+    f"Execute all 8 steps. After all steps complete, verify all 12+ files exist with "
+    f"list_files(path='{OUTPUT_DIR}'), then answer with the compilation and test results."
 )
 
 
 def clear_workspace(output_dir: Path):
     """
-    Reset the agent workspace for a fresh benchmark run.
+    Full workspace wipe for a reproducible benchmark run.
 
-    Clears:
-    - Output directory (generated C++ files from previous runs)
-    - Agent working memory (active_state, file_cache, tool_results, call stack)
-    - Plan task history in memory.db (so the plan panel starts blank)
-
-    Keeps:
-    - knowledge.db (insights), tools.db, agents.db, skills.db
+    Deletes all DB files in ~/.gaia/workspace/ (they are recreated fresh on
+    next agent startup, with agents.db reseeded with the 7 default specialists).
+    Also wipes the benchmark output directory.
     """
-    # Wipe output directory so generated files don't accumulate across runs
+    workspace = Path.home() / ".gaia" / "workspace"
+    if workspace.exists():
+        for f in workspace.iterdir():
+            if f.is_file():
+                f.unlink()
+            else:
+                shutil.rmtree(f)
+        print(f"  Cleared workspace: {workspace}")
+
     if output_dir.exists():
         shutil.rmtree(output_dir)
         print(f"  Cleared output dir: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Reset agent shared state (working memory + plan history)
-    from gaia.agents.base.shared_state import get_shared_state
-    state = get_shared_state()
-    state.reset_session()           # clears active_state, file_cache, tool_results, call stack
-    state.plan.clear_all_tasks()    # clears plan_tasks / plans in memory.db
-    print("  Agent workspace reset (working memory + plan history cleared)")
 
 
 def main():
@@ -101,12 +176,30 @@ def main():
         # Use default ~/.gaia/workspace for DBs; gaiacpp_gaia is only the code output target
         silent_mode=False,
         tui_mode="off",
+        # Tell the agent where output files will live so path validation passes
+        target_dir=OUTPUT_DIR,
     )
 
     print(f"\nAgent initialized in {time.time() - start_time:.1f}s")
     print("\nRunning benchmark query...\n")
 
     result = agent.process_query(BENCHMARK_QUERY)
+
+    # --- Retry guard: if any required files are missing, prompt the agent ---
+    missing = [f for f in REQUIRED_FILES if not Path(f).exists()]
+    if missing:
+        print(f"\n[BENCHMARK] {len(missing)} required files missing — sending corrective follow-up...\n")
+        for mf in missing:
+            print(f"  MISSING: {mf}")
+        followup = (
+            f"The following {len(missing)} required files are still missing from {OUTPUT_DIR}/:\n"
+            + "\n".join(f"  {f}" for f in missing)
+            + f"\n\nPlease write ALL missing files now using write_file. "
+            f"Write each file with complete, working C++17 content. "
+            f"Do NOT return an answer until all files exist — verify with "
+            f"list_files(\"{OUTPUT_DIR}\")."
+        )
+        result = agent.process_query(followup, create_plan=False)
 
     elapsed = time.time() - start_time
 

@@ -17,9 +17,15 @@ from typing import List, Optional
 from .shared_state import get_shared_state
 from .specialists import (
     ArchitectureAgent,
+    BugBasherAgent,
+    CodeAnalysisAgent,
+    CppBugBasherAgent,
+    CppCodeAnalysisAgent,
     DebuggerAgent,
     DocumentationAgent,
     PerformanceAgent,
+    PythonBugBasherAgent,
+    PythonCodeAnalysisAgent,
     RefactoringAgent,
     SecurityAgent,
     TestingAgent,
@@ -208,6 +214,14 @@ def register_specialists(state) -> int:
         DocumentationAgent(),
         PerformanceAgent(),
         ArchitectureAgent(),
+        # Domain-specific analysis agents (produce JSON bug reports)
+        CppCodeAnalysisAgent(),
+        PythonCodeAnalysisAgent(),
+        CodeAnalysisAgent(),
+        # Domain-specific bug-basher agents (consume JSON reports, apply fixes)
+        CppBugBasherAgent(),
+        PythonBugBasherAgent(),
+        BugBasherAgent(),
     ]
 
     count = 0
@@ -353,6 +367,48 @@ def register_initial_skills(state) -> int:
                 {"step": 3, "action": "search_codebase", "description": "Search for relevant components"},
             ],
             "tools_used": ["index_codebase", "analyze_architecture", "search_codebase", "find_symbol"],
+        },
+        {
+            "name": "cpp_project_create_verify",
+            "description": "Write C++ project files (CMake + headers + sources + tests) with cross-session consistency and compile verification",
+            "category": "coding",
+            "domain": "cpp",
+            "steps": [
+                {"step": 1, "action": "agent_query", "description": "Write CMakeLists.txt and shared types header (types.h)"},
+                {"step": 2, "action": "agent_query", "description": "Write all .hpp headers — READ types.h first"},
+                {"step": 3, "action": "agent_query", "description": "Write all .cpp sources — READ headers first"},
+                {"step": 4, "action": "agent_query", "description": "Write tests with TestingAgent — READ all headers first", "specialist": "TestingAgent"},
+                {"step": 5, "action": "run_shell_command", "description": "Build: cmake -B build -S . && cmake --build build"},
+                {"step": 6, "action": "run_shell_command", "description": "Test: cd build && ctest --output-on-failure"},
+            ],
+            "tools_used": ["agent_query", "read_file", "write_file", "run_shell_command"],
+        },
+        {
+            "name": "cross_session_code_generation",
+            "description": "Generate code across multiple agent_query calls with API consistency — read before write",
+            "category": "coding",
+            "domain": "any",
+            "steps": [
+                {"step": 1, "action": "agent_query", "description": "Write base types and interfaces"},
+                {"step": 2, "action": "read_file", "description": "Read types/interfaces written in step 1"},
+                {"step": 3, "action": "agent_query", "description": "Write implementations using read interfaces"},
+                {"step": 4, "action": "read_file", "description": "Read implementations to verify API"},
+                {"step": 5, "action": "agent_query", "description": "Write tests — READ implementation headers first", "specialist": "TestingAgent"},
+                {"step": 6, "action": "verify", "description": "Run tests to confirm compilation and correctness"},
+            ],
+            "tools_used": ["agent_query", "read_file", "write_file", "run_shell_command"],
+        },
+        {
+            "name": "verify_file_output",
+            "description": "Verify written files exist and are non-trivial without relying on list_files",
+            "category": "verification",
+            "domain": "any",
+            "steps": [
+                {"step": 1, "action": "list_files", "description": "Try list_files(path=output_dir) — note: parameter is 'path=', not 'dir='"},
+                {"step": 2, "action": "read_file", "description": "If list_files fails, read_file one representative file to confirm"},
+                {"step": 3, "action": "answer", "description": "Declare done based on read_file confirmation"},
+            ],
+            "tools_used": ["list_files", "read_file"],
         },
     ]
 
@@ -835,6 +891,162 @@ def seed_common_tool_recipes(state) -> int:
     return count
 
 
+def seed_initial_knowledge(state) -> int:
+    """
+    Seed knowledge.db with actionable workflow patterns discovered from benchmark analysis.
+
+    These entries serve as initial knowledge the agent can recall() to guide its behavior
+    on common task types. They are stored once on startup (idempotent).
+
+    Returns:
+        Number of insights seeded (0 if already seeded)
+    """
+    # Check if already seeded (idempotent — look for our sentinel key)
+    existing = None
+    try:
+        existing = state.knowledge.conn.execute(
+            "SELECT id FROM insights WHERE category='workflow' AND domain='cpp' LIMIT 1"
+        ).fetchone()
+    except Exception:
+        pass
+    if existing:
+        logger.debug("[KnowledgeDB] initial workflow knowledge already seeded, skipping")
+        return 0
+
+    seeds = [
+        {
+            "category": "workflow",
+            "domain": "cpp",
+            "content": (
+                "When writing C++ tests, ALWAYS call read_file on every header before generating "
+                "test code. Each agent_query sub-agent has no memory of previous writes. "
+                "Constructors, method signatures, and namespaces must be confirmed by reading "
+                "the actual headers — never invented from memory."
+            ),
+            "tags": ["cpp", "testing", "cross-session", "consistency"],
+        },
+        {
+            "category": "workflow",
+            "domain": "any",
+            "content": (
+                "list_files() requires parameter name 'path=', not 'dir_path=', 'directory=', "
+                "or 'folder='. Correct usage: list_files(path='/my/dir'). "
+                "If list_files fails, use read_file on one representative file instead to confirm "
+                "directory is populated, then declare done."
+            ),
+            "tags": ["tool_usage", "list_files", "verification"],
+        },
+        {
+            "category": "workflow",
+            "domain": "any",
+            "content": (
+                "When task completes via agent_query strategy: after all planned agent_query "
+                "calls return successfully (no '[FAILED]' prefix), immediately return "
+                '{"answer": "..."} without re-writing files. Re-verification is optional '
+                "and should be a single list_files or read_file call — not a full re-write loop."
+            ),
+            "tags": ["efficiency", "completion", "agent_query"],
+        },
+        {
+            "category": "workflow",
+            "domain": "cpp",
+            "content": (
+                "C++ project verification after file creation: "
+                "run_shell_command('cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug && cmake --build build') "
+                "then run_shell_command('cd build && ctest --output-on-failure'). "
+                "Never claim 'all tests pass' without running ctest or gtest binary."
+            ),
+            "tags": ["cpp", "cmake", "verification", "testing"],
+        },
+        {
+            "category": "workflow",
+            "domain": "python",
+            "content": (
+                "Python project verification: run_shell_command('python -m pytest tests/ -v') "
+                "for test execution, run_shell_command('python -m py_compile src/file.py') "
+                "for syntax. Never claim tests pass without a tool invocation showing actual output."
+            ),
+            "tags": ["python", "pytest", "verification"],
+        },
+        {
+            "category": "workflow",
+            "domain": "any",
+            "content": (
+                "For multi-file projects: decompose by functional group, not by file. "
+                "Ideal decomposition: (1) shared types/interfaces, (2) core headers, "
+                "(3) implementations, (4) tests [use TestingAgent], (5) build+verify. "
+                "Each group is one agent_query call. One agent_query per file is too granular; "
+                "all files in one agent_query is too coarse."
+            ),
+            "tags": ["decomposition", "planning", "agent_query", "code_generation"],
+        },
+        {
+            "category": "tool_usage",
+            "domain": "any",
+            "content": (
+                "Specialist selection guide: "
+                "test files → specialist='TestingAgent'; "
+                "type systems/headers → specialist='ArchitectureAgent'; "
+                "debugging failures → specialist='DebuggerAgent'; "
+                "performance → specialist='PerformanceAgent'; "
+                "security → specialist='SecurityAgent'; "
+                "docs → specialist='DocumentationAgent'; "
+                "C++ bug analysis → specialist='CppCodeAnalysisAgent'; "
+                "fix C++ bugs from report → specialist='CppBugBasherAgent'; "
+                "Python bug analysis → specialist='PythonCodeAnalysisAgent'; "
+                "fix Python bugs from report → specialist='PythonBugBasherAgent'; "
+                "TS/JS/Rust/Go bug analysis → specialist='CodeAnalysisAgent'; "
+                "fix TS/JS/Rust/Go bugs → specialist='BugBasherAgent'. "
+                "Pass specialist= to agent_query() for best results."
+            ),
+            "tags": ["specialists", "agent_query", "tool_usage"],
+        },
+        {
+            "category": "workflow",
+            "domain": "any",
+            "content": (
+                "Analysis-before-tests workflow (mandatory for any multi-file project): "
+                "After writing all source files and before running tests, add an analysis step: "
+                "(1) agent_query('Analyze codebase for bugs', specialist='CppCodeAnalysisAgent') for C++, "
+                "or specialist='PythonCodeAnalysisAgent' for Python, or 'CodeAnalysisAgent' for other. "
+                "(2) agent_query('Fix bugs from analysis: {report}', specialist='CppBugBasherAgent'). "
+                "Only AFTER bug fixes are applied should tests be run. "
+                "This catches API mismatches, missing includes, and constructor errors before they waste test time."
+            ),
+            "tags": ["analysis", "bug_bash", "workflow", "quality", "pre-test"],
+        },
+        {
+            "category": "workflow",
+            "domain": "any",
+            "content": (
+                "Scope inference rule: When a task says 'write a working X' or 'build a complete Y', "
+                "infer ALL files needed for a working system — do NOT limit to explicitly listed files. "
+                "Example: 'port this C++ agent' implies: CMakeLists.txt, all headers, all sources, "
+                "test files, and any utility files needed for compilation. "
+                "If the task lists 12 files but a working program needs 14, write 14. "
+                "Ask: 'What does a WORKING version need?' — not 'What was explicitly listed?'"
+            ),
+            "tags": ["scope", "planning", "completeness", "inference"],
+        },
+    ]
+
+    count = 0
+    for seed in seeds:
+        try:
+            state.knowledge.store_insight(
+                category=seed["category"],
+                domain=seed["domain"],
+                content=seed["content"],
+                triggers=seed.get("tags"),  # store tags as FTS triggers
+            )
+            count += 1
+        except Exception as e:
+            logger.warning(f"Failed to seed knowledge entry: {e}")
+
+    logger.info(f"Seeded {count} initial knowledge entries")
+    return count
+
+
 def initialize_workspace(workspace_dir: Optional[Path] = None) -> Path:
     """
     Initialize GAIA Code workspace.
@@ -867,11 +1079,15 @@ def initialize_workspace(workspace_dir: Optional[Path] = None) -> Path:
     # Register initial skills
     skills_count = register_initial_skills(state)
 
+    # Seed initial knowledge (workflow patterns from benchmark analysis)
+    knowledge_count = seed_initial_knowledge(state)
+
     logger.info(f"Workspace initialized at {workspace_dir}")
     logger.info(f"  - {tools_count} tools registered")
     logger.info(f"  - {recipes_count} tool recipes seeded")
     logger.info(f"  - {specialists_count} specialists registered")
     logger.info(f"  - {skills_count} skills registered")
+    logger.info(f"  - {knowledge_count} knowledge entries seeded")
 
     return workspace_dir
 
