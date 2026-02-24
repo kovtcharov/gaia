@@ -273,61 +273,14 @@ class PersonaEngine:
         profile = self.profile
 
         prompt = f"""
-# Your Personality: {profile.name}
+# Personality: {profile.name}
 
 {profile.description}
+Style: {self._describe_trait(PersonalityTrait.DIRECTNESS)} | {self._describe_trait(PersonalityTrait.VERBOSITY)} | pushback: {self._get_pushback_style()}
 
-## Communication Style
-
-**Directness**: {self._describe_trait(PersonalityTrait.DIRECTNESS)}
-**Verbosity**: {self._describe_trait(PersonalityTrait.VERBOSITY)}
-**Formality**: {self._describe_trait(PersonalityTrait.FORMALITY)}
-**Assertiveness**: {self._describe_trait(PersonalityTrait.ASSERTIVENESS)}
-
-## When to Push Back
-
-You should push back (disagree, suggest alternative) when:
-- User's approach will create bugs or security vulnerabilities
-- There's a significantly better solution
-- The request violates best practices
-- Over-engineering when simple solution exists
-- Under-engineering critical functionality
-
-**Your pushback style**: {self._get_pushback_style()}
-
-## Examples of Your Voice
-
-{chr(10).join(f'- "{ex}"' for ex in profile.examples)}
-
-## Key Principles
-
-1. **Be Honest**: Tell the truth, even if uncomfortable
-   - Bad: "Great idea!" (when it's not)
-   - Good: "This will cause X problem. Here's a better approach:"
-
-2. **Be Constructive**: Criticism always includes alternative
-   - Bad: "This won't work."
-   - Good: "This won't work because Y. Try Z instead:"
-
-3. **Be Authentic**: Use natural language, not robotic
-   - Bad: "I acknowledge your request and will proceed accordingly."
-   - Good: "Got it. Let me implement that for you."
-
-4. **Push Back When Needed**: Don't agree with bad ideas
-   - If user asks for SQL injection vulnerability → REFUSE and explain
-   - If user wants over-complicated solution → Suggest simpler approach
-   - If user's approach has flaws → Point them out and offer alternative
-
-5. **Adapt Over Time**: Learn user's preferences
-   - If user rejects your suggestions → Be less assertive next time
-   - If user appreciates pushback → Be more direct
-   - Track what communication style works best
-
-## User Preferences Learned
+Examples: {' | '.join(f'"{ex}"' for ex in profile.examples[:2])}
 
 {self._format_user_preferences()}
-
-Remember: You're a professional colleague, not a servant. Be helpful AND honest.
 """
         return prompt
 
@@ -407,15 +360,11 @@ Remember: You're a professional colleague, not a servant. Be helpful AND honest.
         return prefs
 
     def _format_user_preferences(self) -> str:
-        """Format learned user preferences."""
+        """Format learned user preferences (compact inline format)."""
         if not self.user_preferences:
-            return "(None learned yet - will adapt based on your feedback)"
-
-        lines = []
-        for key, value in self.user_preferences.items():
-            lines.append(f"- {key}: {value:.2f}")
-
-        return "\n".join(lines)
+            return ""
+        parts = [f"{k}={v:.2f}" for k, v in self.user_preferences.items()]
+        return f"Learned prefs: {', '.join(parts)}"
 
     def record_pushback(self, accepted: bool, context: str):
         """
@@ -494,7 +443,7 @@ Remember: You're a professional colleague, not a servant. Be helpful AND honest.
         """
         style = self.profile.communication_style
 
-        if style == "direct":
+        if style in ("direct", "torvalds"):
             if severity > 0.8:
                 return f"No. {issue} This will break. {alternative}"
             else:
@@ -512,17 +461,35 @@ Remember: You're a professional colleague, not a servant. Be helpful AND honest.
             else:
                 return f"Interesting approach. How would you handle {issue}? Have you considered {alternative}?"
 
-        elif style == "mentor":
+        elif style in ("mentor", "knuth"):
             if severity > 0.8:
                 return f"Let me explain why this is problematic. {issue} A better pattern is: {alternative}"
             else:
                 return f"Good thinking! Here's a way to make it even better. {issue} Try: {alternative}"
 
-        elif style == "pragmatic":
+        elif style in ("pragmatic", "pike", "thompson"):
             if severity > 0.8:
                 return f"This will cause problems. {issue} Here's what actually works: {alternative}"
             else:
                 return f"Works, but not optimal. {issue} Simpler: {alternative}"
+
+        elif style == "carmack":
+            if severity > 0.8:
+                return f"Performance hit. {issue} Profile first, then: {alternative}"
+            else:
+                return f"Could be faster. {issue} Consider: {alternative}"
+
+        elif style in ("hickey", "kay"):
+            if severity > 0.8:
+                return f"Mutability hazard. {issue} Immutable alternative: {alternative}"
+            else:
+                return f"Stateful approach here. {issue} Functional take: {alternative}"
+
+        elif style == "hopper":
+            if severity > 0.8:
+                return f"This will fail in production. {issue} The reliable path: {alternative}"
+            else:
+                return f"It works, but consider clarity. {issue} More readable: {alternative}"
 
         else:  # friendly
             if severity > 0.8:

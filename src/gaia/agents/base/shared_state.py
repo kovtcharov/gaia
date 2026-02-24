@@ -193,7 +193,7 @@ class MemoryDB:
                 CREATE TABLE IF NOT EXISTS file_cache (
                     path TEXT PRIMARY KEY,
                     content TEXT NOT NULL,
-                    last_accessed TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    last_accessed TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
                 )
             """
             )
@@ -204,7 +204,7 @@ class MemoryDB:
                     tool_name TEXT NOT NULL,
                     args TEXT,
                     result TEXT,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    timestamp TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
                 )
             """
             )
@@ -216,8 +216,8 @@ class MemoryDB:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL,
                     tags TEXT,
-                    stored_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_accessed TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    stored_at TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
+                    last_accessed TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
                 )
             """
             )
@@ -278,7 +278,7 @@ class MemoryDB:
             self.conn.execute(
                 """
                 INSERT OR REPLACE INTO active_state (key, value, tags, stored_at, last_accessed)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'), strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
                 """,
                 (key, value, tags_json),
             )
@@ -714,7 +714,7 @@ class KnowledgeDB:
                     content TEXT NOT NULL,
                     confidence REAL DEFAULT 0.5,
                     triggers TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
                     last_used TIMESTAMP,
                     use_count INTEGER DEFAULT 0
                 )
@@ -728,7 +728,7 @@ class KnowledgeDB:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL,
                     description TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
                 )
             """
             )
@@ -742,7 +742,7 @@ class KnowledgeDB:
                     fix_pattern TEXT NOT NULL,
                     success_count INTEGER DEFAULT 0,
                     confidence REAL DEFAULT 0.5,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
                 )
             """
             )
@@ -755,7 +755,7 @@ class KnowledgeDB:
                     scope TEXT NOT NULL,
                     pattern TEXT NOT NULL,
                     description TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
                 )
             """
             )
@@ -913,6 +913,23 @@ class ToolsDB:
         self.conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self.lock = threading.Lock()
         self._create_tables()
+        self._migrate_tables()
+
+    def _migrate_tables(self):
+        """Add new observability columns to existing tables if missing."""
+        migrations = [
+            ("tools", "last_used", "TIMESTAMP"),
+            ("tools", "use_count", "INTEGER DEFAULT 0"),
+            ("tools", "error_count", "INTEGER DEFAULT 0"),
+            ("tools", "avg_duration_ms", "REAL DEFAULT 0"),
+        ]
+        with self.lock:
+            for table, col, defn in migrations:
+                try:
+                    self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {defn}")
+                except Exception:
+                    pass  # Column already exists
+            self.conn.commit()
 
     def _create_tables(self):
         """Create tool registry tables."""
@@ -927,9 +944,13 @@ class ToolsDB:
                     description TEXT NOT NULL,
                     parameters TEXT,
                     code_path TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
                     version INTEGER DEFAULT 1,
-                    enabled BOOLEAN DEFAULT TRUE
+                    enabled BOOLEAN DEFAULT TRUE,
+                    last_used TIMESTAMP,
+                    use_count INTEGER DEFAULT 0,
+                    error_count INTEGER DEFAULT 0,
+                    avg_duration_ms REAL DEFAULT 0
                 )
             """
             )
@@ -939,7 +960,7 @@ class ToolsDB:
                 CREATE TABLE IF NOT EXISTS tool_usage (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     tool_id TEXT REFERENCES tools(id),
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    timestamp TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
                     success BOOLEAN,
                     duration_ms INTEGER,
                     context TEXT,
@@ -978,27 +999,40 @@ class ToolsDB:
         parameters: Optional[Dict] = None,
         code_path: Optional[str] = None,
     ) -> str:
-        """Register a new tool."""
-        tool_id = str(uuid4())
+        """Register a new tool (idempotent: updates existing entry if name already exists)."""
         params_json = json.dumps(parameters) if parameters else None
 
         with self.lock:
-            self.conn.execute(
-                """
-                INSERT INTO tools (id, name, category, source, description, parameters, code_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-                (tool_id, name, category, source, description, params_json, code_path),
-            )
+            existing = self.conn.execute(
+                "SELECT id FROM tools WHERE name = ?", (name,)
+            ).fetchone()
 
-            # Add to FTS index
-            self.conn.execute(
-                """
-                INSERT INTO tools_fts (id, name, description, category)
-                VALUES (?, ?, ?, ?)
-            """,
-                (tool_id, name, description, category),
-            )
+            if existing:
+                tool_id = existing[0]
+                self.conn.execute(
+                    """
+                    UPDATE tools SET category=?, source=?, description=?, parameters=?, code_path=?
+                    WHERE name=?
+                    """,
+                    (category, source, description, params_json, code_path, name),
+                )
+            else:
+                tool_id = str(uuid4())
+                self.conn.execute(
+                    """
+                    INSERT INTO tools (id, name, category, source, description, parameters, code_path)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (tool_id, name, category, source, description, params_json, code_path),
+                )
+                # Add to FTS index (only for new entries)
+                self.conn.execute(
+                    """
+                    INSERT INTO tools_fts (id, name, description, category)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (tool_id, name, description, category),
+                )
 
             self.conn.commit()
 
@@ -1006,7 +1040,7 @@ class ToolsDB:
         return tool_id
 
     def find_tools(self, query: str, top_k: int = 10) -> List[Dict]:
-        """Find tools using FTS5 search."""
+        """Find tools using FTS5 search. Returns name, category, description, and parameters."""
         safe_query = _sanitize_fts5_query(query)
         if safe_query is None:
             logger.debug("[ToolsDB] find skipped, empty/invalid query")
@@ -1014,7 +1048,7 @@ class ToolsDB:
         with self.lock:
             cursor = self.conn.execute(
                 """
-                SELECT t.id, t.name, t.category, t.description
+                SELECT t.id, t.name, t.category, t.description, t.parameters
                 FROM tools t
                 JOIN tools_fts fts ON t.id = fts.id
                 WHERE tools_fts MATCH ? AND t.enabled = TRUE
@@ -1032,6 +1066,7 @@ class ToolsDB:
                         "name": row[1],
                         "category": row[2],
                         "description": row[3],
+                        "parameters": json.loads(row[4]) if row[4] else None,
                     }
                 )
             result_count = len(results)
@@ -1085,6 +1120,21 @@ class ToolsDB:
             """,
                 (tool_id, success, duration_ms, context, error),
             )
+
+            # Update aggregated stats on the tools row for quick dashboard access
+            if tool_id:
+                self.conn.execute(
+                    """
+                    UPDATE tools SET
+                        last_used = strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'),
+                        use_count = use_count + 1,
+                        error_count = error_count + (CASE WHEN ? THEN 0 ELSE 1 END),
+                        avg_duration_ms = (avg_duration_ms * use_count + ?) / (use_count + 1)
+                    WHERE id = ?
+                """,
+                    (success, duration_ms, tool_id),
+                )
+
             self.conn.commit()
         logger.debug("[ToolsDB] usage tool=%s success=%s duration=%dms", tool_name, success, duration_ms)
 
@@ -1138,6 +1188,20 @@ class SkillsDB:
         self.conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self.lock = threading.Lock()
         self._create_tables()
+        self._migrate_tables()
+
+    def _migrate_tables(self):
+        """Add new observability columns to existing tables if missing."""
+        migrations = [
+            ("skills", "use_count", "INTEGER DEFAULT 0"),
+        ]
+        with self.lock:
+            for table, col, defn in migrations:
+                try:
+                    self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {defn}")
+                except Exception:
+                    pass
+            self.conn.commit()
 
     def _create_tables(self):
         """Create skills tables."""
@@ -1154,8 +1218,9 @@ class SkillsDB:
                     tools_used TEXT,
                     success_count INTEGER DEFAULT 0,
                     failure_count INTEGER DEFAULT 0,
+                    use_count INTEGER DEFAULT 0,
                     confidence REAL DEFAULT 0.5,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
                     last_used TIMESTAMP
                 )
             """
@@ -1166,7 +1231,7 @@ class SkillsDB:
                 CREATE TABLE IF NOT EXISTS skill_usage (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     skill_id TEXT REFERENCES skills(id),
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    timestamp TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
                     success BOOLEAN,
                     task_description TEXT,
                     feedback TEXT
@@ -1259,7 +1324,9 @@ class SkillsDB:
             confidence = successes / total if total > 0 else 0.5
 
             self.conn.execute(
-                "UPDATE skills SET success_count = ?, failure_count = ?, confidence = ?, last_used = CURRENT_TIMESTAMP WHERE id = ?",
+                """UPDATE skills SET success_count = ?, failure_count = ?, confidence = ?,
+                   use_count = use_count + 1,
+                   last_used = strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime') WHERE id = ?""",
                 (successes, failures, confidence, skill_id),
             )
             self.conn.commit()
@@ -1283,6 +1350,22 @@ class AgentsDB:
         self.conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self.lock = threading.Lock()
         self._create_tables()
+        self._migrate_tables()
+
+    def _migrate_tables(self):
+        """Add new observability columns to existing tables if missing."""
+        migrations = [
+            ("agents", "use_count", "INTEGER DEFAULT 0"),
+            ("agents", "success_count", "INTEGER DEFAULT 0"),
+            ("agents", "failure_count", "INTEGER DEFAULT 0"),
+        ]
+        with self.lock:
+            for table, col, defn in migrations:
+                try:
+                    self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {defn}")
+                except Exception:
+                    pass
+            self.conn.commit()
 
     def _create_tables(self):
         """Create agent registry tables."""
@@ -1297,8 +1380,11 @@ class AgentsDB:
                     system_prompt TEXT,
                     tool_packs TEXT,
                     confidence REAL DEFAULT 0.5,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_used TIMESTAMP
+                    created_at TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
+                    last_used TIMESTAMP,
+                    use_count INTEGER DEFAULT 0,
+                    success_count INTEGER DEFAULT 0,
+                    failure_count INTEGER DEFAULT 0
                 )
             """
             )
@@ -1308,7 +1394,7 @@ class AgentsDB:
                 CREATE TABLE IF NOT EXISTS agent_usage (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     agent_id TEXT REFERENCES agents(id),
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    timestamp TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
                     success BOOLEAN,
                     task_type TEXT,
                     duration_ms INTEGER
@@ -1416,8 +1502,13 @@ class AgentsDB:
             confidence = stats[1] / stats[0] if stats[0] > 0 else 0.5
 
             self.conn.execute(
-                "UPDATE agents SET confidence = ?, last_used = CURRENT_TIMESTAMP WHERE id = ?",
-                (confidence, agent_id),
+                """UPDATE agents SET confidence = ?,
+                   last_used = strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'),
+                   use_count = use_count + 1,
+                   success_count = success_count + ?,
+                   failure_count = failure_count + ?
+                   WHERE id = ?""",
+                (confidence, 1 if success else 0, 0 if success else 1, agent_id),
             )
             self.conn.commit()
         logger.debug("[AgentsDB] usage agent=%s success=%s confidence=%.2f", agent_name, success, confidence)

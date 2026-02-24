@@ -260,8 +260,15 @@ class GaiaCodeAgent(
         self.requirements_validator = RequirementsValidator()
 
         # IMPORTANT: Rebuild system prompt to include tools and persona
-        # The base Agent's rebuild_system_prompt() adds tools from _TOOL_REGISTRY
+        # Uses _format_tools_for_prompt() override which only includes essential tools
         self.rebuild_system_prompt()
+
+        # Sync all _TOOL_REGISTRY tools → tools.db so find_tool() can discover them
+        # Must be AFTER rebuild_system_prompt() (which triggers _register_tools())
+        self._sync_tools_to_db()
+
+        # Load tools created by the agent in previous sessions back into _TOOL_REGISTRY
+        self._load_learned_tools()
 
         logger.debug("GAIA Code Agent initialized")
         logger.debug(f"Workspace: {self.shared_state.workspace_dir}")
@@ -276,7 +283,7 @@ class GaiaCodeAgent(
         Get the BASE system prompt for GAIA Code (without tools).
 
         The base Agent's rebuild_system_prompt() will add:
-        - Tools from _TOOL_REGISTRY
+        - Tools from _TOOL_REGISTRY (compact format via _format_tools_for_prompt override)
         - Response format instructions
 
         This method provides our custom prompt content.
@@ -287,10 +294,149 @@ class GaiaCodeAgent(
         # Add tool usage guidelines
         prompt += "\n\n" + get_tool_usage_guidelines()
 
-        # Add persona-specific communication style
+        # Add persona-specific communication style (single active profile only)
         prompt += "\n\n" + self.persona.get_system_prompt_addition()
 
         return prompt
+
+    # Essential tools always present in the system prompt — the minimum needed
+    # to bootstrap any task. All other tools are discovered on-demand via find_tool().
+    _ESSENTIAL_TOOLS = {
+        "read_file", "write_file", "edit_file",          # file I/O
+        "run_shell_command",                               # execution
+        "glob_search", "grep_content",                    # search
+        "agent_query",                                     # recursive decomposition
+        "find_tool", "recall", "remember",                # memory / tool discovery
+    }
+
+    def _format_tools_for_prompt(self) -> str:
+        """
+        Include only essential bootstrap tools in the system prompt.
+
+        All other tools (~60+) are discovered on demand via find_tool(query).
+        This reduces the tool section from ~7,100 tokens to ~150 tokens.
+
+        Usage pattern:
+          1. Agent calls find_tool("run python tests") → tools.db returns run_pytest definition
+          2. Agent calls run_pytest(path="tests/") using the returned signature
+        """
+        from gaia.agents.base.tools import _TOOL_REGISTRY
+
+        tool_lines = []
+        for name in sorted(self._ESSENTIAL_TOOLS):
+            if name not in _TOOL_REGISTRY:
+                continue
+            tool_info = _TOOL_REGISTRY[name]
+            params_str = ", ".join(
+                f"{pname}{'' if pinfo['required'] else '?'}: {pinfo['type']}"
+                for pname, pinfo in tool_info["parameters"].items()
+            )
+            desc = tool_info["description"].split("\n")[0].strip()  # first line only
+            tool_lines.append(f"- {name}({params_str}): {desc}")
+
+        # Add a note about tool discovery
+        tool_lines.append("")
+        tool_lines.append("All other tools are in tools.db — use find_tool(query) to discover them.")
+        tool_lines.append("find_tool returns: name, parameters, description — enough to call the tool immediately.")
+
+        return "\n".join(tool_lines)
+
+    def _sync_tools_to_db(self) -> None:
+        """
+        Sync all tools from _TOOL_REGISTRY into tools.db so find_tool() can discover them.
+
+        Called once after all tools are registered. The tools.db entry includes the full
+        parameter schema so find_tool() results have enough info to call the tool.
+        """
+        from gaia.agents.base.tools import _TOOL_REGISTRY
+
+        if not self.shared_state:
+            return
+
+        # Infer category from tool name
+        def _infer_category(name: str) -> str:
+            if name.startswith("git_"):
+                return "git"
+            if name in ("run_pytest", "run_jest", "check_coverage"):
+                return "testing"
+            if name in ("check_syntax", "run_linter", "check_imports", "format_code"):
+                return "quality"
+            if name in ("run_python", "run_shell_command", "run_background"):
+                return "execution"
+            if name in ("read_file", "write_file", "edit_file", "glob_search",
+                        "grep_content", "list_files", "delete_file", "copy_file", "move_file"):
+                return "file_io"
+            if name in ("recall", "store_insight", "find_tool", "agent_query", "remember"):
+                return "memory"
+            if any(kw in name for kw in ("npm", "next", "react", "css", "html", "web")):
+                return "web"
+            if any(kw in name for kw in ("typescript", "_ts_", "eslint")):
+                return "typescript"
+            return "utility"
+
+        synced = 0
+        for name, tool_info in _TOOL_REGISTRY.items():
+            try:
+                # Convert _TOOL_REGISTRY parameter format to a clean schema dict
+                params = {
+                    pname: {"type": pinfo["type"], "required": pinfo["required"]}
+                    for pname, pinfo in tool_info["parameters"].items()
+                }
+                self.shared_state.tools.register_tool(
+                    name=name,
+                    category=_infer_category(name),
+                    description=tool_info["description"].strip(),
+                    source="registry",
+                    parameters=params,
+                )
+                synced += 1
+            except Exception as e:
+                logger.debug(f"[GaiaCode] skip sync for {name}: {e}")
+
+        logger.info(f"[GaiaCode] synced {synced} tools to tools.db")
+
+    def _load_learned_tools(self) -> int:
+        """
+        Load tools created by the agent in previous sessions into _TOOL_REGISTRY.
+
+        Called once at startup. Each learned tool's .py wrapper is imported via
+        importlib and registered so it's callable this session without rediscovery.
+
+        Returns:
+            Number of learned tools loaded
+        """
+        import importlib.util
+        from gaia.agents.base.tools import tool as tool_decorator
+
+        if not self.shared_state:
+            return 0
+
+        rows = self.shared_state.tools.conn.execute(
+            "SELECT name, code_path FROM tools WHERE source='learned' AND enabled=TRUE"
+        ).fetchall()
+
+        loaded = 0
+        for name, code_path in rows:
+            if not code_path:
+                continue
+            path = Path(code_path)
+            if not path.exists():
+                logger.warning(f"[GaiaCode] learned tool '{name}' missing file: {code_path}")
+                continue
+            try:
+                spec = importlib.util.spec_from_file_location(name, path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                func = getattr(module, name)
+                tool_decorator(func)
+                loaded += 1
+                logger.debug(f"[GaiaCode] loaded learned tool: {name}")
+            except Exception as e:
+                logger.warning(f"[GaiaCode] failed to load learned tool '{name}': {e}")
+
+        if loaded:
+            logger.info(f"[GaiaCode] loaded {loaded} learned tools from previous sessions")
+        return loaded
 
     def _register_tools(self) -> None:
         """Register all tools: CodeAgent tools + GAIA Code RAC tools."""
@@ -385,6 +531,9 @@ class GaiaCodeAgent(
         # Inject current working memories into the task context
         # This makes the agent aware of what it stored in previous calls
         if self.shared_state:
+            context_blocks = []
+
+            # 1. Working memory (session key/value facts)
             try:
                 memories = self.shared_state.memory.recall_memories(limit=20)
                 if memories:
@@ -392,12 +541,61 @@ class GaiaCodeAgent(
                         f"  [{m['key']}] {m['value']}"
                         for m in memories
                     )
-                    memory_block = f"\n\n## Working Memory (from this session)\n{mem_lines}"
-                    # Prepend to the query so the agent sees its own context
-                    query = f"{query}{memory_block}"
+                    context_blocks.append(f"## Working Memory (from this session)\n{mem_lines}")
                     logger.debug("[GaiaCode] injected %d memories into task", len(memories))
             except Exception:
                 pass
+
+            # 2. Relevant knowledge insights (cross-session learnings)
+            try:
+                insights = self.shared_state.knowledge.recall(query[:200], top_k=5)
+                if insights:
+                    ins_lines = "\n".join(
+                        f"  - [{i.get('category', '?')}] {i.get('content', '')[:200]}"
+                        for i in insights
+                    )
+                    context_blocks.append(f"## Relevant Knowledge (from past sessions)\n{ins_lines}")
+                    logger.debug("[GaiaCode] injected %d insights into task", len(insights))
+            except Exception:
+                pass
+
+            # 3. Available skills (learned workflows)
+            try:
+                skills = self.shared_state.skills.find_skills()
+                if skills:
+                    sk_lines = "\n".join(
+                        f"  - {s['name']} ({s['category']}): {s['description']}"
+                        for s in skills[:10]
+                    )
+                    context_blocks.append(f"## Available Skills (reusable workflows)\n{sk_lines}")
+                    logger.debug("[GaiaCode] injected %d skills into task", len(skills))
+            except Exception:
+                pass
+
+            # 4. Relevant tools from tools.db (semantic search — no extra LLM call)
+            # Injects the top-K matching tool definitions BEFORE the LLM sees the query.
+            # Scales to thousands of tools: only relevant ones enter context.
+            try:
+                relevant_tools = self.shared_state.tools.find_tools(query[:300], top_k=12)
+                if relevant_tools:
+                    tool_lines = []
+                    for t in relevant_tools:
+                        params = ""
+                        if t.get("parameters"):
+                            params = ", ".join(
+                                f"{k}: {v['type']}" for k, v in t["parameters"].items()
+                            )
+                        tool_lines.append(f"  - {t['name']}({params}): {t['description'][:120]}")
+                    context_blocks.append(
+                        "## Contextually Relevant Tools (pre-fetched from tools.db)\n"
+                        + "\n".join(tool_lines)
+                    )
+                    logger.debug("[GaiaCode] injected %d relevant tools into task", len(relevant_tools))
+            except Exception:
+                pass
+
+            if context_blocks:
+                query = query + "\n\n" + "\n\n".join(context_blocks)
 
         # Auto-detect output directories from the query and add to PathValidator
         self._auto_add_query_paths(query)

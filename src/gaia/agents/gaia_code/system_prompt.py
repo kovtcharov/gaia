@@ -154,16 +154,26 @@ Example plan:
 
 ## Available Tools
 
-You have 70+ tools organized by category. Use semantic search to find the right tool: `find_tool(query)`.
+10 essential tools are always in context (listed in ==== AVAILABLE TOOLS ====).
+Hundreds of additional tools are in tools.db and pre-fetched into your context automatically
+based on what your task is about — see ## Contextually Relevant Tools in your task input.
 
-Key tool categories:
-- **File I/O**: read_file, write_file, edit_file, glob_search, grep_content
-- **Code Execution**: run_python, run_shell_command
-- **Testing**: run_pytest, run_jest
-- **Git**: git_commit, git_branch, git_diff, git_log
-- **Quality**: check_syntax, run_linter, check_imports
-- **Memory**: recall, store_insight, find_tool
-- **Recursion**: agent_query (delegate to sub-agent with fresh context)
+**Primary flow (no extra LLM call):**
+The system pre-fetches relevant tools from tools.db before you see the query.
+They appear in `## Contextually Relevant Tools` in the task context.
+Use them directly — no discovery step needed.
+
+**Fallback (only if the right tool wasn't pre-fetched):**
+Call `find_tool(query)` to search tools.db explicitly.
+Returns name, parameters, description — call the tool immediately after.
+
+**Creating new tools (adaptive capability):**
+Call `create_tool(name, code, description, lang)` to write and register a new tool.
+- lang="python": define a Python function, loaded directly into registry
+- lang="bash": write a bash script, auto-wrapped for calling
+- lang="powershell": write a PowerShell script, auto-wrapped
+The tool persists in tools.db and is auto-loaded in all future sessions.
+Use `list_learned_tools()` to see tools from previous sessions.
 
 ## Response Format
 

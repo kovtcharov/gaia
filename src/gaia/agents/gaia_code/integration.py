@@ -382,6 +382,459 @@ def register_initial_skills(state) -> int:
     return count
 
 
+def seed_common_tool_recipes(state) -> int:
+    """
+    Pre-seed tools.db with shell command recipes for common development tools.
+
+    These are NOT callable Python functions — they are discovery hints so the
+    agent can call find_tool("cmake build") and get back the exact shell command
+    to pass to run_shell_command(). Registered with source="recipe".
+
+    Returns:
+        Number of recipes seeded (0 if already seeded)
+    """
+    # Check if already seeded (idempotent)
+    existing = state.tools.conn.execute(
+        "SELECT COUNT(*) FROM tools WHERE source = 'recipe'"
+    ).fetchone()[0]
+    if existing > 0:
+        logger.debug(f"[ToolsDB] recipes already seeded ({existing} entries), skipping")
+        return 0
+
+    recipes = [
+        # ── Python ───────────────────────────────────────────────────────────
+        {
+            "name": "pytest_run",
+            "category": "python_testing",
+            "description": "Run pytest tests. Command: pytest {path} (e.g. pytest tests/ or pytest tests/test_foo.py). Use run_shell_command.",
+        },
+        {
+            "name": "pytest_coverage",
+            "category": "python_testing",
+            "description": "Run pytest with coverage report. Command: pytest --cov={src_dir} --cov-report=term-missing {test_dir}. Use run_shell_command.",
+        },
+        {
+            "name": "pytest_verbose",
+            "category": "python_testing",
+            "description": "Run pytest with verbose output and stop on first failure. Command: pytest -xvs {path}. Use run_shell_command.",
+        },
+        {
+            "name": "pytest_single_test",
+            "category": "python_testing",
+            "description": "Run a single pytest test function by name. Command: pytest -xvs tests/test_foo.py::test_function_name. Use run_shell_command.",
+        },
+        {
+            "name": "black_format",
+            "category": "python_quality",
+            "description": "Format Python code with black. Command: black {path} (e.g. black src/ or black file.py). Use run_shell_command.",
+        },
+        {
+            "name": "ruff_check",
+            "category": "python_quality",
+            "description": "Lint Python code with ruff (fast linter). Command: ruff check {path}. Use run_shell_command.",
+        },
+        {
+            "name": "ruff_fix",
+            "category": "python_quality",
+            "description": "Auto-fix Python lint issues with ruff. Command: ruff check --fix {path}. Use run_shell_command.",
+        },
+        {
+            "name": "mypy_typecheck",
+            "category": "python_quality",
+            "description": "Run mypy static type checker on Python code. Command: mypy {path} --ignore-missing-imports. Use run_shell_command.",
+        },
+        {
+            "name": "isort_imports",
+            "category": "python_quality",
+            "description": "Sort Python imports with isort. Command: isort {path}. Use run_shell_command.",
+        },
+        {
+            "name": "pip_install",
+            "category": "python_packages",
+            "description": "Install Python packages with pip. Command: pip install {package} or pip install -r requirements.txt. Use run_shell_command.",
+        },
+        {
+            "name": "uv_install",
+            "category": "python_packages",
+            "description": "Install Python packages with uv (fast pip replacement). Command: uv pip install {package} or uv pip install -e '.[dev]'. Use run_shell_command.",
+        },
+        {
+            "name": "uv_sync",
+            "category": "python_packages",
+            "description": "Sync Python environment with uv. Command: uv sync or uv sync --all-extras. Use run_shell_command.",
+        },
+        {
+            "name": "bandit_security_scan",
+            "category": "python_security",
+            "description": "Scan Python code for security issues with bandit. Command: bandit -r {src_dir} -ll. Use run_shell_command.",
+        },
+        {
+            "name": "python_syntax_check",
+            "category": "python_quality",
+            "description": "Check Python file syntax without running it. Command: python -m py_compile {file.py} && echo OK. Use run_shell_command.",
+        },
+        {
+            "name": "python_profile",
+            "category": "python_performance",
+            "description": "Profile Python script execution. Command: python -m cProfile -s cumulative {script.py}. Use run_shell_command.",
+        },
+        # ── C++ ──────────────────────────────────────────────────────────────
+        {
+            "name": "cmake_configure",
+            "category": "cpp_build",
+            "description": "Configure a CMake C++ project. Command: cmake -B build -S . (or cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug). Use run_shell_command.",
+        },
+        {
+            "name": "cmake_configure_release",
+            "category": "cpp_build",
+            "description": "Configure CMake project for release (optimized). Command: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release. Use run_shell_command.",
+        },
+        {
+            "name": "cmake_configure_debug",
+            "category": "cpp_build",
+            "description": "Configure CMake project for debug build with symbols. Command: cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON. Use run_shell_command.",
+        },
+        {
+            "name": "cmake_build",
+            "category": "cpp_build",
+            "description": "Build a CMake C++ project. Command: cmake --build build or cmake --build build --parallel $(nproc). Use run_shell_command.",
+        },
+        {
+            "name": "cmake_build_target",
+            "category": "cpp_build",
+            "description": "Build a specific CMake target. Command: cmake --build build --target {target_name}. Use run_shell_command.",
+        },
+        {
+            "name": "cmake_install",
+            "category": "cpp_build",
+            "description": "Install CMake build artifacts. Command: cmake --install build or cmake --install build --prefix /usr/local. Use run_shell_command.",
+        },
+        {
+            "name": "cmake_clean",
+            "category": "cpp_build",
+            "description": "Clean CMake build directory. Command: rm -rf build && mkdir build. Use run_shell_command.",
+        },
+        {
+            "name": "make_build",
+            "category": "cpp_build",
+            "description": "Build with make. Command: make -j$(nproc) or make -j4. Use run_shell_command with cwd set to build directory.",
+        },
+        {
+            "name": "make_clean",
+            "category": "cpp_build",
+            "description": "Clean make build artifacts. Command: make clean. Use run_shell_command with cwd set to build directory.",
+        },
+        {
+            "name": "ctest_run",
+            "category": "cpp_testing",
+            "description": "Run C++ tests with CTest. Command: ctest --test-dir build or cd build && ctest. Use run_shell_command.",
+        },
+        {
+            "name": "ctest_verbose",
+            "category": "cpp_testing",
+            "description": "Run CTest with verbose output and show test output on failure. Command: ctest --test-dir build --output-on-failure -V. Use run_shell_command.",
+        },
+        {
+            "name": "gtest_run",
+            "category": "cpp_testing",
+            "description": "Run GoogleTest binary directly. Command: ./build/{test_binary} --gtest_output=xml:test_results.xml. Use run_shell_command.",
+        },
+        {
+            "name": "gpp_compile",
+            "category": "cpp_compile",
+            "description": "Compile C++ file with g++. Command: g++ -std=c++17 -Wall -Wextra -o {output} {source.cpp}. Use run_shell_command.",
+        },
+        {
+            "name": "clang_compile",
+            "category": "cpp_compile",
+            "description": "Compile C++ file with clang++. Command: clang++ -std=c++17 -Wall -Wextra -o {output} {source.cpp}. Use run_shell_command.",
+        },
+        {
+            "name": "clang_format",
+            "category": "cpp_quality",
+            "description": "Format C++ code with clang-format. Command: clang-format -i {file.cpp} or find src -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i. Use run_shell_command.",
+        },
+        {
+            "name": "clang_tidy",
+            "category": "cpp_quality",
+            "description": "Run clang-tidy static analyzer on C++ code. Command: clang-tidy {file.cpp} -- -std=c++17 -I include. Use run_shell_command.",
+        },
+        {
+            "name": "cppcheck_analyze",
+            "category": "cpp_quality",
+            "description": "Run cppcheck static analyzer. Command: cppcheck --enable=all --suppress=missingIncludeSystem src/. Use run_shell_command.",
+        },
+        {
+            "name": "valgrind_memcheck",
+            "category": "cpp_debug",
+            "description": "Check C++ program for memory leaks with valgrind. Command: valgrind --leak-check=full --show-leak-kinds=all ./{binary}. Use run_shell_command.",
+        },
+        {
+            "name": "gdb_debug",
+            "category": "cpp_debug",
+            "description": "Start GDB debugger on a C++ binary. Command: gdb ./{binary} (then run, bt, break main, etc.). Use run_shell_command.",
+        },
+        {
+            "name": "address_sanitizer",
+            "category": "cpp_debug",
+            "description": "Build C++ with AddressSanitizer to detect memory errors. Command: cmake -B build -DCMAKE_CXX_FLAGS='-fsanitize=address -g' && cmake --build build. Use run_shell_command.",
+        },
+        {
+            "name": "conan_install",
+            "category": "cpp_packages",
+            "description": "Install C++ dependencies with Conan package manager. Command: conan install . --output-folder=build --build=missing. Use run_shell_command.",
+        },
+        {
+            "name": "vcpkg_install",
+            "category": "cpp_packages",
+            "description": "Install C++ package with vcpkg. Command: vcpkg install {package} or vcpkg install --triplet x64-linux. Use run_shell_command.",
+        },
+        {
+            "name": "doxygen_generate",
+            "category": "cpp_docs",
+            "description": "Generate C++ documentation with Doxygen. Command: doxygen Doxyfile (create with doxygen -g if missing). Use run_shell_command.",
+        },
+        # ── Frontend / JavaScript / TypeScript ───────────────────────────────
+        {
+            "name": "npm_install",
+            "category": "frontend_packages",
+            "description": "Install npm packages. Command: npm install or npm install {package}. Use run_shell_command with cwd set to project root.",
+        },
+        {
+            "name": "npm_ci",
+            "category": "frontend_packages",
+            "description": "Clean install npm packages from lockfile (CI-safe). Command: npm ci. Use run_shell_command.",
+        },
+        {
+            "name": "npm_build",
+            "category": "frontend_build",
+            "description": "Build frontend project with npm. Command: npm run build. Use run_shell_command with cwd set to project root.",
+        },
+        {
+            "name": "npm_dev",
+            "category": "frontend_build",
+            "description": "Start npm development server. Command: npm run dev or npm start. Use run_shell_command.",
+        },
+        {
+            "name": "npm_test",
+            "category": "frontend_testing",
+            "description": "Run npm tests. Command: npm test or npm run test. Use run_shell_command.",
+        },
+        {
+            "name": "yarn_install",
+            "category": "frontend_packages",
+            "description": "Install packages with yarn. Command: yarn install or yarn add {package}. Use run_shell_command.",
+        },
+        {
+            "name": "yarn_build",
+            "category": "frontend_build",
+            "description": "Build with yarn. Command: yarn build. Use run_shell_command.",
+        },
+        {
+            "name": "pnpm_install",
+            "category": "frontend_packages",
+            "description": "Install packages with pnpm. Command: pnpm install or pnpm add {package}. Use run_shell_command.",
+        },
+        {
+            "name": "tsc_typecheck",
+            "category": "frontend_quality",
+            "description": "Run TypeScript compiler type check without emitting files. Command: tsc --noEmit or npx tsc --noEmit. Use run_shell_command.",
+        },
+        {
+            "name": "eslint_check",
+            "category": "frontend_quality",
+            "description": "Lint JavaScript/TypeScript with ESLint. Command: npx eslint {path} or eslint src/. Use run_shell_command.",
+        },
+        {
+            "name": "eslint_fix",
+            "category": "frontend_quality",
+            "description": "Auto-fix ESLint issues. Command: npx eslint --fix {path} or eslint --fix src/. Use run_shell_command.",
+        },
+        {
+            "name": "prettier_format",
+            "category": "frontend_quality",
+            "description": "Format code with Prettier. Command: npx prettier --write {path} or prettier --write 'src/**/*.{ts,tsx,js,jsx,json,css}'. Use run_shell_command.",
+        },
+        {
+            "name": "jest_run",
+            "category": "frontend_testing",
+            "description": "Run Jest tests. Command: npx jest or npx jest --testPathPattern={pattern}. Use run_shell_command.",
+        },
+        {
+            "name": "jest_coverage",
+            "category": "frontend_testing",
+            "description": "Run Jest with coverage report. Command: npx jest --coverage. Use run_shell_command.",
+        },
+        {
+            "name": "vitest_run",
+            "category": "frontend_testing",
+            "description": "Run Vitest tests. Command: npx vitest run or npx vitest run --reporter=verbose. Use run_shell_command.",
+        },
+        {
+            "name": "playwright_test",
+            "category": "frontend_testing",
+            "description": "Run Playwright end-to-end tests. Command: npx playwright test or npx playwright test --reporter=list. Use run_shell_command.",
+        },
+        {
+            "name": "vite_build",
+            "category": "frontend_build",
+            "description": "Build project with Vite. Command: npx vite build or vite build. Use run_shell_command.",
+        },
+        {
+            "name": "next_build",
+            "category": "frontend_build",
+            "description": "Build Next.js project for production. Command: npm run build or next build. Use run_shell_command.",
+        },
+        {
+            "name": "next_dev",
+            "category": "frontend_build",
+            "description": "Start Next.js development server. Command: npm run dev or next dev. Use run_shell_command.",
+        },
+        # ── Shell / General utilities ─────────────────────────────────────────
+        {
+            "name": "find_files",
+            "category": "shell_utility",
+            "description": "Find files by name or extension recursively. Command: find {dir} -name '*.py' or find . -name '*.cpp' -not -path '*/build/*'. Use run_shell_command.",
+        },
+        {
+            "name": "grep_recursive",
+            "category": "shell_utility",
+            "description": "Search file contents recursively with grep. Command: grep -rn '{pattern}' {dir} or grep -rn 'TODO' src/. Use run_shell_command.",
+        },
+        {
+            "name": "sed_replace",
+            "category": "shell_utility",
+            "description": "Replace text in files with sed. Command: sed -i 's/old/new/g' {file} or find . -name '*.py' | xargs sed -i 's/old/new/g'. Use run_shell_command.",
+        },
+        {
+            "name": "curl_get",
+            "category": "shell_network",
+            "description": "Make HTTP GET request with curl. Command: curl -s {url} or curl -s -H 'Authorization: Bearer {token}' {url}. Use run_shell_command.",
+        },
+        {
+            "name": "curl_post_json",
+            "category": "shell_network",
+            "description": "POST JSON with curl. Command: curl -s -X POST -H 'Content-Type: application/json' -d '{\"key\":\"val\"}' {url}. Use run_shell_command.",
+        },
+        {
+            "name": "jq_parse",
+            "category": "shell_utility",
+            "description": "Parse and query JSON with jq. Command: echo '{json}' | jq '.field' or cat file.json | jq '.results[0]'. Use run_shell_command.",
+        },
+        {
+            "name": "tar_extract",
+            "category": "shell_archive",
+            "description": "Extract tar archive. Command: tar -xzf {file.tar.gz} -C {dest_dir} or tar -xjf {file.tar.bz2}. Use run_shell_command.",
+        },
+        {
+            "name": "tar_create",
+            "category": "shell_archive",
+            "description": "Create tar archive. Command: tar -czf {archive.tar.gz} {dir} or tar -czf backup.tar.gz src/. Use run_shell_command.",
+        },
+        {
+            "name": "zip_create",
+            "category": "shell_archive",
+            "description": "Create zip archive. Command: zip -r {archive.zip} {dir} or zip -r dist.zip dist/. Use run_shell_command.",
+        },
+        {
+            "name": "zip_extract",
+            "category": "shell_archive",
+            "description": "Extract zip archive. Command: unzip {archive.zip} -d {dest_dir}. Use run_shell_command.",
+        },
+        {
+            "name": "docker_build",
+            "category": "docker",
+            "description": "Build Docker image. Command: docker build -t {image_name}:{tag} . or docker build -f Dockerfile.prod -t myapp:latest .. Use run_shell_command.",
+        },
+        {
+            "name": "docker_run",
+            "category": "docker",
+            "description": "Run Docker container. Command: docker run -it --rm {image_name} or docker run -p 8080:80 {image_name}. Use run_shell_command.",
+        },
+        {
+            "name": "docker_compose_up",
+            "category": "docker",
+            "description": "Start services with docker-compose. Command: docker-compose up -d or docker compose up --build. Use run_shell_command.",
+        },
+        {
+            "name": "docker_compose_down",
+            "category": "docker",
+            "description": "Stop docker-compose services. Command: docker-compose down or docker compose down -v (to also remove volumes). Use run_shell_command.",
+        },
+        {
+            "name": "env_check",
+            "category": "shell_utility",
+            "description": "Check environment variables. Command: env | grep {PATTERN} or printenv {VAR_NAME}. Use run_shell_command.",
+        },
+        {
+            "name": "process_kill",
+            "category": "shell_utility",
+            "description": "Find and kill processes. Command: pkill -f {process_name} or kill $(lsof -t -i:{port}). Use run_shell_command.",
+        },
+        {
+            "name": "port_check",
+            "category": "shell_network",
+            "description": "Check what is listening on a port. Command: lsof -i :{port} or ss -tlnp | grep {port}. Use run_shell_command.",
+        },
+        {
+            "name": "disk_usage",
+            "category": "shell_utility",
+            "description": "Check disk usage of directories. Command: du -sh {dir} or du -sh * | sort -h. Use run_shell_command.",
+        },
+        {
+            "name": "chmod_executable",
+            "category": "shell_utility",
+            "description": "Make file executable. Command: chmod +x {file} or chmod 755 {file}. Use run_shell_command.",
+        },
+        {
+            "name": "symlink_create",
+            "category": "shell_utility",
+            "description": "Create symbolic link. Command: ln -s {target} {link_name} or ln -sf {target} {link_name} to force. Use run_shell_command.",
+        },
+        {
+            "name": "watch_command",
+            "category": "shell_utility",
+            "description": "Run a command repeatedly and watch output. Command: watch -n 2 {command} (e.g. watch -n 2 'ls -lh build/'). Use run_shell_command.",
+        },
+        {
+            "name": "git_log_pretty",
+            "category": "git",
+            "description": "Show git log with graph and color. Command: git log --oneline --graph --decorate --all. Use run_shell_command.",
+        },
+        {
+            "name": "git_stash",
+            "category": "git",
+            "description": "Stash or restore working tree changes. Command: git stash or git stash pop or git stash list. Use run_shell_command.",
+        },
+        {
+            "name": "git_reset_soft",
+            "category": "git",
+            "description": "Undo last commit keeping changes staged. Command: git reset --soft HEAD~1. Use run_shell_command.",
+        },
+        {
+            "name": "rsync_copy",
+            "category": "shell_utility",
+            "description": "Copy files efficiently with rsync, preserving permissions. Command: rsync -avz {src}/ {dest}/ or rsync -avz --exclude='*.pyc' src/ dest/. Use run_shell_command.",
+        },
+    ]
+
+    count = 0
+    for recipe in recipes:
+        try:
+            state.tools.register_tool(
+                name=recipe["name"],
+                category=recipe["category"],
+                description=recipe["description"],
+                source="recipe",
+            )
+            count += 1
+        except Exception as e:
+            logger.warning(f"Failed to seed recipe {recipe['name']}: {e}")
+
+    logger.info(f"Seeded {count} common tool recipes")
+    return count
+
+
 def initialize_workspace(workspace_dir: Optional[Path] = None) -> Path:
     """
     Initialize GAIA Code workspace.
@@ -405,6 +858,9 @@ def initialize_workspace(workspace_dir: Optional[Path] = None) -> Path:
     # Register core tools
     tools_count = register_core_tools(state)
 
+    # Seed common tool recipes (Python, C++, Frontend, Shell)
+    recipes_count = seed_common_tool_recipes(state)
+
     # Register specialists
     specialists_count = register_specialists(state)
 
@@ -413,6 +869,7 @@ def initialize_workspace(workspace_dir: Optional[Path] = None) -> Path:
 
     logger.info(f"Workspace initialized at {workspace_dir}")
     logger.info(f"  - {tools_count} tools registered")
+    logger.info(f"  - {recipes_count} tool recipes seeded")
     logger.info(f"  - {specialists_count} specialists registered")
     logger.info(f"  - {skills_count} skills registered")
 

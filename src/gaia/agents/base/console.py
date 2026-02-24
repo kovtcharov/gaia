@@ -2164,3 +2164,12 @@ class SilentConsole(OutputHandler):
         is_duplicate: bool = False,
     ):
         """No-op implementation."""
+
+    def start_file_preview(self, filename: str, max_lines: int = 15):
+        """No-op implementation."""
+
+    def update_file_preview(self, content_chunk: str) -> None:
+        """No-op implementation."""
+
+    def stop_file_preview(self) -> None:
+        """No-op implementation."""

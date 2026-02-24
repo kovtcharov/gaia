@@ -388,6 +388,92 @@ class GaiaCodeTools:
             """Run an interactive CLI tool and respond to prompts."""
             return self.tool_run_interactive_cli(command, interactions, timeout)
 
+        # ── Learned Tools ────────────────────────────────────────────────────
+
+        @tool
+        def create_tool(
+            name: str,
+            code: str,
+            description: str,
+            category: Optional[str] = None,
+            lang: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            """
+            Write a Python function as a reusable tool and store it in tools.db.
+
+            The tool is immediately callable this session AND auto-loaded in all
+            future sessions. Use this when you find yourself writing the same logic
+            more than once, or when a task-specific helper would save repeated work.
+
+            **Requirements for `code`:**
+            - Must define a function with exactly the name given in `name`
+            - Must include type annotations on all parameters (needed for registry)
+            - Should return a dict with at least {"status": "success"} or {"status": "error"}
+            - May import standard library modules at the top of the code string
+
+            **Example — create a C++ error parser:**
+            create_tool(
+                name="parse_cmake_errors",
+                description="Extract error lines from cmake build output",
+                category="cpp_utility",
+                code='''
+def parse_cmake_errors(output: str) -> dict:
+    lines = output.splitlines()
+    errors = [l for l in lines if "error:" in l.lower()]
+    warnings = [l for l in lines if "warning:" in l.lower()]
+    return {"errors": errors, "warnings": warnings, "error_count": len(errors)}
+'''
+            )
+
+            **Example — project-specific file validator:**
+            create_tool(
+                name="validate_header_guard",
+                description="Check C++ header has correct include guard",
+                code='''
+import re
+def validate_header_guard(path: str) -> dict:
+    import pathlib
+    content = pathlib.Path(path).read_text()
+    name = pathlib.Path(path).stem.upper()
+    guard = f"_{name}_HPP_"
+    has_guard = f"#ifndef {guard}" in content and f"#define {guard}" in content
+    return {"valid": has_guard, "expected_guard": guard, "path": path}
+'''
+            )
+
+            Args:
+                name: Function name (valid Python identifier, e.g. "parse_cmake_errors")
+                code: Full source code for the tool (function body or script)
+                description: What the tool does — used by find_tool() for discovery
+                category: Optional category for grouping (default: "learned")
+                lang: "python" (default) | "bash" | "sh" | "powershell" | "python_script"
+                      bash/powershell/python_script: saved as script, auto-wrapped in Python shim
+            """
+            return self.tool_create_tool(name, code, description, category, lang or "python")
+
+        @tool
+        def list_learned_tools() -> Dict[str, Any]:
+            """
+            List all tools created by the agent in previous and current sessions.
+
+            Shows name, description, category, use count, and when last used.
+            Useful for checking what custom tools are available before writing new ones.
+            """
+            return self.tool_list_learned_tools()
+
+        @tool
+        def delete_tool(name: str) -> Dict[str, Any]:
+            """
+            Delete a learned tool from tools.db and disk.
+
+            Only works on tools with source='learned' (agent-created tools).
+            Cannot delete built-in core or registry tools.
+
+            Args:
+                name: Name of the learned tool to delete
+            """
+            return self.tool_delete_tool(name)
+
     def tool_agent_query(
         self, task: str, specialist: Optional[str] = None, max_depth: Optional[int] = None
     ) -> Dict[str, Any]:
@@ -1161,3 +1247,262 @@ class GaiaCodeTools:
             return result
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    # ── Learned Tools implementation ─────────────────────────────────────────
+
+    # Wrapper templates for non-Python script languages.
+    # The generated wrapper is stored as {name}.py and loaded into _TOOL_REGISTRY.
+    _SCRIPT_WRAPPER_TEMPLATES = {
+        "bash": '''\
+import subprocess
+from pathlib import Path
+
+def {name}(cwd: str = ".") -> dict:
+    """{description}"""
+    result = subprocess.run(
+        ["bash", r"{script_path}"],
+        cwd=cwd, capture_output=True, text=True
+    )
+    return {{
+        "status": "success" if result.returncode == 0 else "error",
+        "output": result.stdout[-4000:] if result.stdout else "",
+        "error": result.stderr[-1000:] if result.stderr else "",
+        "returncode": result.returncode,
+    }}
+''',
+        "powershell": '''\
+import subprocess
+from pathlib import Path
+
+def {name}(cwd: str = ".") -> dict:
+    """{description}"""
+    result = subprocess.run(
+        ["powershell", "-ExecutionPolicy", "Bypass", "-File", r"{script_path}"],
+        cwd=cwd, capture_output=True, text=True
+    )
+    return {{
+        "status": "success" if result.returncode == 0 else "error",
+        "output": result.stdout[-4000:] if result.stdout else "",
+        "error": result.stderr[-1000:] if result.stderr else "",
+        "returncode": result.returncode,
+    }}
+''',
+        "python_script": '''\
+import subprocess
+import sys
+from pathlib import Path
+
+def {name}(cwd: str = ".") -> dict:
+    """{description}"""
+    result = subprocess.run(
+        [sys.executable, r"{script_path}"],
+        cwd=cwd, capture_output=True, text=True
+    )
+    return {{
+        "status": "success" if result.returncode == 0 else "error",
+        "output": result.stdout[-4000:] if result.stdout else "",
+        "error": result.stderr[-1000:] if result.stderr else "",
+        "returncode": result.returncode,
+    }}
+''',
+    }
+
+    # File extensions for each script language
+    _SCRIPT_EXTENSIONS = {
+        "bash": ".sh",
+        "sh": ".sh",
+        "powershell": ".ps1",
+        "ps1": ".ps1",
+        "python_script": ".py",
+        "python": ".py",
+    }
+
+    def tool_create_tool(
+        self,
+        name: str,
+        code: str,
+        description: str,
+        category: Optional[str] = None,
+        lang: str = "python",
+    ) -> Dict[str, Any]:
+        """
+        Write a script as a persistent callable tool stored in tools.db.
+
+        Supports Python functions (loaded directly into registry) and shell scripts
+        (bash, PowerShell, python_script — wrapped in a thin Python shim).
+        """
+        import ast
+        import importlib.util
+        from gaia.agents.base.tools import tool as tool_decorator, _TOOL_REGISTRY
+
+        # Normalise
+        name = name.strip()
+        lang = lang.lower().strip()
+        effective_category = category or "learned"
+
+        # Validate name
+        if not name.isidentifier():
+            return {"status": "error", "error": f"Invalid tool name '{name}': must be a valid Python identifier"}
+
+        # Resolve workspace tools dir
+        state = get_shared_state()
+        if not state or not state.workspace_dir:
+            return {"status": "error", "error": "No workspace directory configured"}
+
+        tools_dir = Path(state.workspace_dir) / "tools"
+        tools_dir.mkdir(exist_ok=True)
+
+        ext = self._SCRIPT_EXTENSIONS.get(lang, ".py")
+
+        if lang in ("python",):
+            # ── Python function: validate, save, load directly ───────────────
+            try:
+                ast.parse(code)
+            except SyntaxError as e:
+                return {"status": "error", "error": f"Syntax error in Python code: {e}"}
+
+            tree = ast.parse(code)
+            func_defs = [n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+            if name not in func_defs:
+                return {"status": "error", "error": f"Code must define a function named '{name}'"}
+
+            tool_file = tools_dir / f"{name}.py"
+            tool_file.write_text(code, encoding="utf-8")
+            load_file = tool_file
+
+        else:
+            # ── Script language: save script, generate Python wrapper ────────
+            template = self._SCRIPT_WRAPPER_TEMPLATES.get(lang)
+            if template is None:
+                supported = list(self._SCRIPT_WRAPPER_TEMPLATES.keys())
+                return {"status": "error", "error": f"Unsupported lang '{lang}'. Supported: python, {', '.join(supported)}"}
+
+            script_file = tools_dir / f"{name}{ext}"
+            script_file.write_text(code, encoding="utf-8")
+            if ext == ".sh":
+                script_file.chmod(0o755)
+
+            wrapper_code = template.format(
+                name=name,
+                description=description.replace('"', '\\"'),
+                script_path=str(script_file).replace("\\", "/"),
+            )
+
+            wrapper_file = tools_dir / f"{name}.py"
+            wrapper_file.write_text(wrapper_code, encoding="utf-8")
+            load_file = wrapper_file
+
+        # Load and register in _TOOL_REGISTRY
+        try:
+            spec = importlib.util.spec_from_file_location(name, load_file)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            func = getattr(module, name)
+            tool_decorator(func)
+        except Exception as e:
+            return {"status": "error", "error": f"Failed to load tool '{name}': {e}"}
+
+        # Extract parameters from the now-registered tool
+        registered = _TOOL_REGISTRY.get(name, {})
+        params = {
+            pname: {"type": pinfo["type"], "required": pinfo["required"]}
+            for pname, pinfo in registered.get("parameters", {}).items()
+        }
+
+        # Persist in tools.db
+        state.tools.register_tool(
+            name=name,
+            category=effective_category,
+            description=description,
+            source="learned",
+            parameters=params,
+            code_path=str(load_file),
+        )
+
+        logger.info(f"[GaiaCode] created learned tool: {name} (lang={lang})")
+
+        return {
+            "status": "success",
+            "name": name,
+            "lang": lang,
+            "file": str(load_file),
+            "parameters": params,
+            "message": (
+                f"Tool '{name}' created and registered. "
+                "Callable this session and auto-loaded in all future sessions."
+            ),
+        }
+
+    def tool_list_learned_tools(self) -> Dict[str, Any]:
+        """List all tools created by the agent (source='learned')."""
+        state = get_shared_state()
+        if not state:
+            return {"status": "error", "error": "No shared state"}
+
+        rows = state.tools.conn.execute(
+            """
+            SELECT name, category, description, use_count, last_used, code_path
+            FROM tools
+            WHERE source = 'learned' AND enabled = TRUE
+            ORDER BY use_count DESC, name
+            """
+        ).fetchall()
+
+        tools = [
+            {
+                "name": r[0],
+                "category": r[1],
+                "description": r[2],
+                "use_count": r[3],
+                "last_used": r[4],
+                "file": r[5],
+            }
+            for r in rows
+        ]
+
+        return {
+            "status": "success",
+            "count": len(tools),
+            "tools": tools,
+        }
+
+    def tool_delete_tool(self, name: str) -> Dict[str, Any]:
+        """Delete a learned tool from tools.db and disk."""
+        import os
+        from gaia.agents.base.tools import _TOOL_REGISTRY
+
+        state = get_shared_state()
+        if not state:
+            return {"status": "error", "error": "No shared state"}
+
+        row = state.tools.conn.execute(
+            "SELECT source, code_path FROM tools WHERE name = ?", (name,)
+        ).fetchone()
+
+        if not row:
+            return {"status": "error", "error": f"Tool '{name}' not found"}
+        if row[0] != "learned":
+            return {"status": "error", "error": f"Cannot delete built-in tool '{name}' (source={row[0]})"}
+
+        code_path = row[1]
+
+        # Remove from DB
+        state.tools.conn.execute("DELETE FROM tools WHERE name = ?", (name,))
+        state.tools.conn.execute("DELETE FROM tools_fts WHERE name = ?", (name,))
+        state.tools.conn.commit()
+
+        # Remove from _TOOL_REGISTRY
+        _TOOL_REGISTRY.pop(name, None)
+
+        # Remove files from disk
+        deleted_files = []
+        for path_str in [code_path]:
+            if path_str and Path(path_str).exists():
+                try:
+                    os.remove(path_str)
+                    deleted_files.append(path_str)
+                except Exception:
+                    pass
+
+        logger.info(f"[GaiaCode] deleted learned tool: {name}")
+        return {"status": "success", "name": name, "deleted_files": deleted_files}
