@@ -42,6 +42,8 @@ skips = ["B101"]  # Skip assert warnings (common in tests)
 markers = [
     "slow: marks tests as slow (real Docker operations, may take > 5 seconds)",
     "integration: marks tests as integration tests (require external services like Lemonade server)",
+    "system: marks tests as system-level agent loop tests",
+    "requires_llm: marks tests that need a live LLM (pass --real-llm to enable)",
 ]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

@@ -330,7 +330,7 @@ export default function App() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
-                className="flex-1 overflow-hidden"
+                className="flex-1 overflow-hidden flex flex-col"
               >
                 {!workspacePath || dbsLoading ? (
                   <EmptyState

@@ -352,7 +352,7 @@ class ShellToolsMixin:
                     logger.info(f"Executing command: {command} in {cwd}")
 
                 # Execute command
-                start_time = datetime.utcnow()
+                start_time = datetime.now()
                 try:
                     result = subprocess.run(
                         cmd_parts,
@@ -363,12 +363,12 @@ class ShellToolsMixin:
                         check=False,
                         env=os.environ.copy(),
                     )
-                    duration = (datetime.utcnow() - start_time).total_seconds()
+                    duration = (datetime.now() - start_time).total_seconds()
 
                     # Record successful command execution for rate limiting
                     self._record_command_execution()
                 except subprocess.TimeoutExpired as exc:
-                    duration = (datetime.utcnow() - start_time).total_seconds()
+                    duration = (datetime.now() - start_time).total_seconds()
 
                     # Handle timeout gracefully
                     stdout_str = ""

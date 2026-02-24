@@ -271,6 +271,8 @@ export function useDashboardData(
         topSkills: [],
         topMemoryTools: [],
         topKnowledge: [],
+        learnedTools: [],
+        learnedToolsCount: 0,
       };
 
       // Gather per-database stats
@@ -400,6 +402,29 @@ export function useDashboardData(
           );
           if (toolResult.success && 'rows' in toolResult) {
             data.topTools = toolResult.rows as DashboardData['topTools'];
+          }
+        } catch { /* ignore */ }
+
+        // Agent-created tools (source='learned')
+        try {
+          const learnedCountResult = await api().executeSQL(
+            toolsDb.path,
+            `SELECT COUNT(*) as cnt FROM tools WHERE source = 'learned'`,
+            true,
+          );
+          if (learnedCountResult.success && 'rows' in learnedCountResult && learnedCountResult.rows.length > 0) {
+            data.learnedToolsCount = (learnedCountResult.rows[0] as Record<string, number>).cnt || 0;
+          }
+        } catch { /* ignore */ }
+
+        try {
+          const learnedResult = await api().executeSQL(
+            toolsDb.path,
+            `SELECT name, category, description, created_at, use_count, last_used, code_path FROM tools WHERE source = 'learned' ORDER BY created_at DESC LIMIT 20`,
+            true,
+          );
+          if (learnedResult.success && 'rows' in learnedResult) {
+            data.learnedTools = learnedResult.rows as DashboardData['learnedTools'];
           }
         } catch { /* ignore */ }
       }

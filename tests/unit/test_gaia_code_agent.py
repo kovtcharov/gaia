@@ -20,93 +20,108 @@ import pytest
 
 from gaia.agents.gaia_code.agent import GaiaCodeAgent
 
+# Correct patch targets:
+# - get_shared_state lives in base/agent.py (imported there)
+# - initialize_workspace is imported locally inside GaiaCodeAgent.__init__
+_PATCH_SHARED_STATE = "gaia.agents.base.shared_state.get_shared_state"
+_PATCH_CHAT_SDK = "gaia.agents.base.agent.ChatSDK"
+_PATCH_INIT_WORKSPACE = "gaia.agents.gaia_code.integration.initialize_workspace"
+_PATCH_CREDENTIALS = "gaia.agents.gaia_code.credentials.check_and_setup_credentials"
+
+
+def _make_mock_state(tmpdir):
+    """Helper: create a fully-mocked SharedAgentState."""
+    mock_state = MagicMock()
+    mock_state.workspace_dir = Path(tmpdir)
+    # plan.get_all_tasks() returns empty list by default
+    mock_state.plan.get_all_tasks.return_value = []
+    return mock_state
+
+
+def _make_agent(tmpdir, mock_get_shared_state, extra_kwargs=None):
+    """Helper: instantiate GaiaCodeAgent with all external deps mocked."""
+    mock_state = _make_mock_state(tmpdir)
+    mock_get_shared_state.return_value = mock_state
+    kwargs = dict(workspace_dir=Path(tmpdir), silent_mode=True, skip_lemonade=True)
+    if extra_kwargs:
+        kwargs.update(extra_kwargs)
+    agent = GaiaCodeAgent(**kwargs)
+    return agent, mock_state
+
 
 class TestGaiaCodeAgent:
     """Test GaiaCodeAgent."""
 
-    @patch("gaia.agents.gaia_code.agent.get_shared_state")
-    @patch("gaia.agents.base.agent.ChatSDK")
-    def test_initialization(self, mock_chat_sdk, mock_get_shared_state):
+    @patch(_PATCH_INIT_WORKSPACE)
+    @patch(_PATCH_CREDENTIALS, return_value=(True, None))
+    @patch(_PATCH_CHAT_SDK)
+    @patch(_PATCH_SHARED_STATE)
+    def test_initialization(
+        self, mock_get_shared_state, mock_chat_sdk, mock_creds, mock_init_ws
+    ):
         """Test agent initialization."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_state = MagicMock()
-            mock_state.workspace_dir = Path(tmpdir)
-            mock_get_shared_state.return_value = mock_state
-
-            agent = GaiaCodeAgent(
-                workspace_dir=Path(tmpdir),
-                silent_mode=True,
-                skip_lemonade=True,
-            )
+            agent, _ = _make_agent(tmpdir, mock_get_shared_state)
 
             assert agent.shared_state is not None
             assert agent.quality_gates is not None
             assert agent.escalation_ladder is not None
             assert agent.session_start is not None
 
-    @patch("gaia.agents.gaia_code.agent.get_shared_state")
-    @patch("gaia.agents.base.agent.ChatSDK")
-    def test_tool_registration(self, mock_chat_sdk, mock_get_shared_state):
+    @patch(_PATCH_INIT_WORKSPACE)
+    @patch(_PATCH_CREDENTIALS, return_value=(True, None))
+    @patch(_PATCH_CHAT_SDK)
+    @patch(_PATCH_SHARED_STATE)
+    def test_tool_registration(
+        self, mock_get_shared_state, mock_chat_sdk, mock_creds, mock_init_ws
+    ):
         """Test that GAIA Code tools are registered."""
+        from gaia.agents.base.tools import _TOOL_REGISTRY
+
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_state = MagicMock()
-            mock_state.workspace_dir = Path(tmpdir)
-            mock_get_shared_state.return_value = mock_state
+            agent, _ = _make_agent(tmpdir, mock_get_shared_state)
 
-            agent = GaiaCodeAgent(
-                workspace_dir=Path(tmpdir),
-                silent_mode=True,
-                skip_lemonade=True,
-            )
+            # Verify key RAC tools are registered after instantiation
+            assert "remember" in _TOOL_REGISTRY, "remember tool must be registered"
+            assert "recall_memory" in _TOOL_REGISTRY, "recall_memory tool must be registered"
+            assert "forget_memory" in _TOOL_REGISTRY, "forget_memory tool must be registered"
+            assert "store_insight" in _TOOL_REGISTRY, "store_insight tool must be registered"
+            assert "agent_query" in _TOOL_REGISTRY, "agent_query tool must be registered"
+            assert "recall" in _TOOL_REGISTRY, "recall tool must be registered"
+            assert "find_tool" in _TOOL_REGISTRY, "find_tool tool must be registered"
 
-            # Verify key tools are registered
-            # Note: This depends on implementation details
-            # In full implementation, would check agent.tools or similar
-
-    @patch("gaia.agents.gaia_code.agent.get_shared_state")
-    @patch("gaia.agents.base.agent.ChatSDK")
-    def test_checkpoint_and_resume(self, mock_chat_sdk, mock_get_shared_state):
+    @patch(_PATCH_INIT_WORKSPACE)
+    @patch(_PATCH_CREDENTIALS, return_value=(True, None))
+    @patch(_PATCH_CHAT_SDK)
+    @patch(_PATCH_SHARED_STATE)
+    def test_checkpoint_and_resume(
+        self, mock_get_shared_state, mock_chat_sdk, mock_creds, mock_init_ws
+    ):
         """Test checkpoint and resume functionality."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_state = MagicMock()
-            mock_state.workspace_dir = Path(tmpdir)
-            mock_get_shared_state.return_value = mock_state
-
-            agent = GaiaCodeAgent(
-                workspace_dir=Path(tmpdir),
-                silent_mode=True,
-                skip_lemonade=True,
-            )
+            agent, _ = _make_agent(tmpdir, mock_get_shared_state)
 
             # Create checkpoint
             checkpoint_result = agent.checkpoint()
             assert checkpoint_result["success"] is True
 
             # Create new agent instance
-            agent2 = GaiaCodeAgent(
-                workspace_dir=Path(tmpdir),
-                silent_mode=True,
-                skip_lemonade=True,
-            )
+            agent2, _ = _make_agent(tmpdir, mock_get_shared_state)
 
             # Resume from checkpoint
             resumed = agent2.resume_from_checkpoint()
             assert resumed is True
 
-    @patch("gaia.agents.gaia_code.agent.get_shared_state")
-    @patch("gaia.agents.base.agent.ChatSDK")
-    def test_audit_logging(self, mock_chat_sdk, mock_get_shared_state):
+    @patch(_PATCH_INIT_WORKSPACE)
+    @patch(_PATCH_CREDENTIALS, return_value=(True, None))
+    @patch(_PATCH_CHAT_SDK)
+    @patch(_PATCH_SHARED_STATE)
+    def test_audit_logging(
+        self, mock_get_shared_state, mock_chat_sdk, mock_creds, mock_init_ws
+    ):
         """Test audit logging."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_state = MagicMock()
-            mock_state.workspace_dir = Path(tmpdir)
-            mock_get_shared_state.return_value = mock_state
-
-            agent = GaiaCodeAgent(
-                workspace_dir=Path(tmpdir),
-                silent_mode=True,
-                skip_lemonade=True,
-            )
+            agent, _ = _make_agent(tmpdir, mock_get_shared_state)
 
             # Log some actions
             agent._log_audit("TEST_ACTION", {"key": "value"})
@@ -118,13 +133,16 @@ class TestGaiaCodeAgent:
             assert log[0]["action_type"] == "TEST_ACTION"
             assert log[1]["action_type"] == "ANOTHER_ACTION"
 
-    @patch("gaia.agents.gaia_code.agent.get_shared_state")
-    @patch("gaia.agents.base.agent.ChatSDK")
-    def test_progress_tracking(self, mock_chat_sdk, mock_get_shared_state):
+    @patch(_PATCH_INIT_WORKSPACE)
+    @patch(_PATCH_CREDENTIALS, return_value=(True, None))
+    @patch(_PATCH_CHAT_SDK)
+    @patch(_PATCH_SHARED_STATE)
+    def test_progress_tracking(
+        self, mock_get_shared_state, mock_chat_sdk, mock_creds, mock_init_ws
+    ):
         """Test progress tracking."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_state = MagicMock()
-            mock_state.workspace_dir = Path(tmpdir)
+            mock_state = _make_mock_state(tmpdir)
 
             # Create mock plan with tasks
             mock_task1 = MagicMock()
@@ -134,10 +152,7 @@ class TestGaiaCodeAgent:
             mock_task3 = MagicMock()
             mock_task3.status = "pending"
 
-            mock_plan = MagicMock()
-            mock_plan.get_all_tasks.return_value = [mock_task1, mock_task2, mock_task3]
-
-            mock_state.plan = mock_plan
+            mock_state.plan.get_all_tasks.return_value = [mock_task1, mock_task2, mock_task3]
             mock_get_shared_state.return_value = mock_state
 
             agent = GaiaCodeAgent(
@@ -155,20 +170,16 @@ class TestGaiaCodeAgent:
             assert progress["pending"] == 1
             assert progress["progress_percent"] == 33  # 1/3 = 33%
 
-    @patch("gaia.agents.gaia_code.agent.get_shared_state")
-    @patch("gaia.agents.base.agent.ChatSDK")
-    def test_system_prompt(self, mock_chat_sdk, mock_get_shared_state):
+    @patch(_PATCH_INIT_WORKSPACE)
+    @patch(_PATCH_CREDENTIALS, return_value=(True, None))
+    @patch(_PATCH_CHAT_SDK)
+    @patch(_PATCH_SHARED_STATE)
+    def test_system_prompt(
+        self, mock_get_shared_state, mock_chat_sdk, mock_creds, mock_init_ws
+    ):
         """Test system prompt generation."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_state = MagicMock()
-            mock_state.workspace_dir = Path(tmpdir)
-            mock_get_shared_state.return_value = mock_state
-
-            agent = GaiaCodeAgent(
-                workspace_dir=Path(tmpdir),
-                silent_mode=True,
-                skip_lemonade=True,
-            )
+            agent, _ = _make_agent(tmpdir, mock_get_shared_state)
 
             prompt = agent._get_system_prompt()
 

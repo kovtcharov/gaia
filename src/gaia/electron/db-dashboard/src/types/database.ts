@@ -288,6 +288,17 @@ export interface KnowledgeInsightEntry {
   last_used: string | null;
 }
 
+/** Agent-created tool stored in tools.db with source='learned' */
+export interface LearnedToolEntry {
+  name: string;
+  category: string;
+  description: string;
+  created_at: string;
+  use_count: number;
+  last_used: string | null;
+  code_path: string | null;
+}
+
 export interface DashboardData {
   totalSize: number;
   dbCount: number;
@@ -305,6 +316,9 @@ export interface DashboardData {
   topSkills: SkillEntry[];
   topMemoryTools: MemoryToolEntry[];
   topKnowledge: KnowledgeInsightEntry[];
+  /** Tools created by the agent (source='learned') */
+  learnedTools: LearnedToolEntry[];
+  learnedToolsCount: number;
 }
 
 // ============================================================================

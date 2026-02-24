@@ -130,17 +130,17 @@ Brief description of what the project does.
 
 ## Installation
 
-\`\`\`bash
+```bash
 pip install project-name
-\`\`\`
+```
 
 ## Quick Start
 
-\`\`\`python
+```python
 from project import main
 
 result = main()
-\`\`\`
+```
 
 ## Usage
 
@@ -176,13 +176,13 @@ Get a user by ID.
 - `id` (integer): User ID
 
 **Response:**
-\`\`\`json
+```json
 {
   "id": 1,
   "name": "Alice",
   "email": "alice@example.com"
 }
-\`\`\`
+```
 
 **Errors:**
 - `404 Not Found`: User not found
@@ -196,11 +196,11 @@ Get a user by ID.
 
 ## High-Level Design
 
-\`\`\`
+```
 ┌─────────┐     ┌─────────┐     ┌──────────┐
 │ Client  │────>│   API   │────>│ Database │
 └─────────┘     └─────────┘     └──────────┘
-\`\`\`
+```
 
 ## Components
 

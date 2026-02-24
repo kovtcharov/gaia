@@ -24,6 +24,15 @@ import pytest
 class TestGaiaCodeEndToEnd:
     """End-to-end integration tests."""
 
+    @pytest.fixture(autouse=True)
+    def reset_shared_state(self):
+        """Reset SharedAgentState singleton between tests so each test gets a fresh instance."""
+        from gaia.agents.base.shared_state import SharedAgentState
+
+        SharedAgentState._instance = None
+        yield
+        SharedAgentState._instance = None
+
     @patch("gaia.agents.base.agent.ChatSDK")
     def test_simple_task_execution(self, mock_chat_sdk):
         """Test executing a simple coding task."""
@@ -61,16 +70,13 @@ class TestGaiaCodeEndToEnd:
             test_file = Path(tmpdir) / "broken.py"
             test_file.write_text("def broken()\\n    return 'missing colon'")
 
-            # Run quality gates
-            context = {
-                "files": [str(test_file)],
-                "project_dir": tmpdir,
-            }
-            all_passed, results = agent.quality_gates.run_all(context)
+            # Run quality gates using the correct API: run_all(paths, **kwargs)
+            results = agent.quality_gates.run_all([str(test_file)], project_dir=tmpdir)
+            all_passed = agent.quality_gates.all_passed(results)
 
             # Should fail syntax gate
             assert all_passed is False
-            assert any(r.gate_name == "Syntax" and not r.passed for r in results)
+            assert any(not r.passed and r.gate_name == "Syntax" for r in results.values())
 
     @patch("gaia.agents.base.agent.ChatSDK")
     def test_checkpoint_and_resume(self, mock_chat_sdk):

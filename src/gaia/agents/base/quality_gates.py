@@ -485,12 +485,12 @@ class EscalationLadder:
         """Get the current escalation action.
 
         Checks in reverse order (most escalated first) so the elif
-        chain correctly progresses: retry → decompose → alternative → ask_user.
+        chain correctly progresses: retry → decompose → cloud → ask_user.
         """
         if self.should_ask_user():
             action = "ask_user"
         elif self.should_escalate_to_cloud():
-            action = "alternative"
+            action = "cloud"
         elif self.should_decompose():
             action = "decompose"
         else:

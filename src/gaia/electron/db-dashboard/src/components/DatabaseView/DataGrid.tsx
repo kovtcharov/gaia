@@ -3,7 +3,7 @@
 
 /**
  * DataGrid - Virtualized data table with sorting, filtering, pagination,
- * and inline editing support.
+ * column resizing, and inline editing support.
  *
  * Uses react-window for virtualized scrolling to handle 100K+ rows without lag.
  * Framer Motion provides smooth highlight animations for new/changed rows.
@@ -49,6 +49,9 @@ interface DataGridProps {
 
 const ROW_HEIGHT = 36;
 const HEADER_HEIGHT = 36;
+const ACTIONS_WIDTH = 64;
+const MIN_COL_WIDTH = 60;
+const DEFAULT_COL_WIDTH = 150;
 
 export default function DataGrid({
   rows,
@@ -70,6 +73,10 @@ export default function DataGrid({
   const [insertValues, setInsertValues] = useState<Record<string, string>>({});
   const [copiedCell, setCopiedCell] = useState<string | null>(null);
 
+  // ---- Column widths ----
+  const [colWidths, setColWidths] = useState<Record<string, number>>({});
+  const resizingRef = useRef<{ col: string; startX: number; startWidth: number } | null>(null);
+
   const listRef = useRef<List>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(500);
@@ -85,7 +92,7 @@ export default function DataGrid({
     if (!containerRef.current) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setContainerHeight(entry.contentRect.height - HEADER_HEIGHT - 48); // header + pagination
+        setContainerHeight(entry.contentRect.height - HEADER_HEIGHT - 48);
       }
     });
     observer.observe(containerRef.current);
@@ -98,6 +105,68 @@ export default function DataGrid({
     if (rows.length > 0) return Object.keys(rows[0]);
     return [];
   }, [columns, rows]);
+
+  // ---- Initialize column widths when table/columns change ----
+  useEffect(() => {
+    if (colNames.length === 0) return;
+    const containerWidth = containerRef.current?.clientWidth || 900;
+    const actionsArea = readOnly ? 0 : ACTIONS_WIDTH;
+    const available = Math.max(containerWidth - actionsArea - 2, colNames.length * DEFAULT_COL_WIDTH);
+    const defaultW = Math.max(DEFAULT_COL_WIDTH, Math.floor(available / colNames.length));
+
+    setColWidths((prev) => {
+      // Only reset if the column set changed (different table)
+      const prevCols = Object.keys(prev);
+      const sameTable = colNames.every((c) => prevCols.includes(c)) && prevCols.every((c) => colNames.includes(c));
+      if (sameTable && prevCols.length > 0) return prev; // keep user's sizes
+      const next: Record<string, number> = {};
+      for (const col of colNames) {
+        next[col] = prev[col] ?? defaultW;
+      }
+      return next;
+    });
+  }, [colNames, readOnly]);
+
+  // ---- Column resize handlers ----
+  const getColWidth = useCallback(
+    (col: string) => colWidths[col] ?? DEFAULT_COL_WIDTH,
+    [colWidths],
+  );
+
+  const handleResizeStart = useCallback(
+    (e: React.MouseEvent, col: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      resizingRef.current = { col, startX: e.clientX, startWidth: getColWidth(col) };
+
+      const onMouseMove = (ev: MouseEvent) => {
+        if (!resizingRef.current) return;
+        const delta = ev.clientX - resizingRef.current.startX;
+        const newWidth = Math.max(MIN_COL_WIDTH, resizingRef.current.startWidth + delta);
+        setColWidths((prev) => ({ ...prev, [resizingRef.current!.col]: newWidth }));
+      };
+
+      const onMouseUp = () => {
+        resizingRef.current = null;
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    },
+    [getColWidth],
+  );
+
+  const handleResizeDoubleClick = useCallback(
+    (e: React.MouseEvent, col: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Reset to default width on double-click
+      setColWidths((prev) => ({ ...prev, [col]: DEFAULT_COL_WIDTH }));
+    },
+    [],
+  );
 
   // ---- Primary key detection ----
   const pkColumn = useMemo(() => {
@@ -219,6 +288,21 @@ export default function DataGrid({
     setTimeout(() => setCopiedCell(null), 1500);
   }, []);
 
+  // ---- Tooltip ----
+  const [tooltip, setTooltip] = useState<{ content: string; x: number; y: number } | null>(null);
+
+  const handleCellMouseEnter = useCallback((e: React.MouseEvent<HTMLSpanElement>, content: string) => {
+    const el = e.currentTarget;
+    if (el.scrollWidth > el.offsetWidth + 1) {
+      const rect = el.getBoundingClientRect();
+      setTooltip({ content, x: rect.left, y: rect.top - 6 });
+    }
+  }, []);
+
+  const handleCellMouseLeave = useCallback(() => {
+    setTooltip(null);
+  }, []);
+
   // ---- Cell renderer ----
   const formatCell = (value: unknown): string => {
     if (value === null || value === undefined) return 'NULL';
@@ -245,7 +329,7 @@ export default function DataGrid({
         >
           {/* Row actions */}
           {!readOnly && (
-            <div className="w-16 shrink-0 flex items-center justify-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="shrink-0 flex items-center justify-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ width: ACTIONS_WIDTH }}>
               {isEditing ? (
                 <>
                   <button
@@ -289,12 +373,13 @@ export default function DataGrid({
             const rawValue = row[col];
             const displayValue = formatCell(rawValue);
             const isNull = rawValue === null || rawValue === undefined;
+            const width = getColWidth(col);
 
             return (
               <div
                 key={col}
-                className="flex-1 min-w-[120px] max-w-[300px] px-3 py-1 truncate relative group/cell"
-                title={displayValue}
+                className="shrink-0 px-3 py-1 relative group/cell border-r border-gh-border-muted/30 overflow-hidden"
+                style={{ width }}
               >
                 {isEditing ? (
                   <input
@@ -307,7 +392,9 @@ export default function DataGrid({
                   />
                 ) : (
                   <span
-                    className={`text-xs ${isNull ? 'italic text-gh-fg-subtle' : 'text-gh-fg-default'} cursor-default`}
+                    className={`text-xs block truncate ${isNull ? 'italic text-gh-fg-subtle' : 'text-gh-fg-default'} cursor-default`}
+                    onMouseEnter={(e) => handleCellMouseEnter(e, displayValue)}
+                    onMouseLeave={handleCellMouseLeave}
                     onDoubleClick={() => {
                       if (!readOnly) handleStartEdit(index);
                     }}
@@ -343,10 +430,14 @@ export default function DataGrid({
       editValues,
       readOnly,
       copiedCell,
+      colWidths,
       handleSaveEdit,
       handleStartEdit,
       handleDeleteRow,
       handleCopyCell,
+      handleCellMouseEnter,
+      handleCellMouseLeave,
+      getColWidth,
     ],
   );
 
@@ -451,35 +542,51 @@ export default function DataGrid({
 
       {/* Table header */}
       <div
-        className="flex items-center bg-gh-canvas-subtle border-b border-gh-border shrink-0"
+        className="flex items-center bg-gh-canvas-subtle border-b border-gh-border shrink-0 overflow-hidden"
         style={{ height: HEADER_HEIGHT }}
       >
-        {!readOnly && <div className="w-16 shrink-0" />}
+        {!readOnly && <div className="shrink-0" style={{ width: ACTIONS_WIDTH }} />}
         {colNames.map((col) => {
           const isSorted = queryOptions.sortColumn === col;
+          const width = getColWidth(col);
           return (
-            <button
+            <div
               key={col}
-              onClick={() => handleSort(col)}
-              className="flex-1 min-w-[120px] max-w-[300px] flex items-center gap-1 px-3 text-left text-xs font-semibold text-gh-fg-muted uppercase tracking-wider hover:text-gh-fg-default transition-colors select-none"
+              className="relative shrink-0 flex items-center border-r border-gh-border-muted/40"
+              style={{ width }}
             >
-              <span className="truncate">{col}</span>
-              {isSorted ? (
-                queryOptions.sortDirection === 'ASC' ? (
-                  <ArrowUp size={11} className="text-gh-accent-fg shrink-0" />
+              <button
+                onClick={() => handleSort(col)}
+                className="flex-1 flex items-center gap-1 px-3 h-full text-left text-xs font-semibold text-gh-fg-muted uppercase tracking-wider hover:text-gh-fg-default transition-colors select-none overflow-hidden"
+              >
+                <span className="truncate">{col}</span>
+                {isSorted ? (
+                  queryOptions.sortDirection === 'ASC' ? (
+                    <ArrowUp size={11} className="text-gh-accent-fg shrink-0" />
+                  ) : (
+                    <ArrowDown size={11} className="text-gh-accent-fg shrink-0" />
+                  )
                 ) : (
-                  <ArrowDown size={11} className="text-gh-accent-fg shrink-0" />
-                )
-              ) : (
-                <ArrowUpDown size={11} className="opacity-0 group-hover:opacity-30 shrink-0" />
-              )}
-            </button>
+                  <ArrowUpDown size={11} className="opacity-0 group-hover:opacity-30 shrink-0" />
+                )}
+              </button>
+
+              {/* Resize handle */}
+              <div
+                className="absolute right-0 top-0 h-full w-2 cursor-default z-10 flex items-center justify-center group/resize"
+                onMouseDown={(e) => handleResizeStart(e, col)}
+                onDoubleClick={(e) => handleResizeDoubleClick(e, col)}
+                title="Drag to resize · Double-click to reset"
+              >
+                <div className="w-px h-4 bg-gh-border-muted group-hover/resize:bg-gh-accent-emphasis/60 group-hover/resize:h-full transition-all" />
+              </div>
+            </div>
           );
         })}
       </div>
 
       {/* Virtual scrolling body */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-auto">
         {rows.length === 0 ? (
           <div className="flex items-center justify-center h-full text-xs text-gh-fg-subtle">
             No data to display
@@ -573,6 +680,20 @@ export default function DataGrid({
           </select>
         </div>
       </div>
+
+      {/* Cell tooltip (only when text is truncated) */}
+      {tooltip && (
+        <div
+          className="fixed z-50 max-w-sm px-3 py-2 rounded-md shadow-xl border border-gh-border bg-gh-canvas text-xs text-gh-fg-default whitespace-pre-wrap break-words pointer-events-none"
+          style={{
+            left: Math.min(tooltip.x, window.innerWidth - 320),
+            top: tooltip.y,
+            transform: 'translateY(-100%)',
+          }}
+        >
+          {tooltip.content}
+        </div>
+      )}
 
       {/* Insert Row Modal */}
       <Modal

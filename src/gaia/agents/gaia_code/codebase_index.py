@@ -593,15 +593,17 @@ class CodebaseIndex:
             triggers=["architecture", "codebase", "structure"],
         )
 
-        # Store each issue as a learning
-        for issue in self.issues:
-            if issue["severity"] in ("warning", "critical"):
-                self.state.knowledge.store_insight(
-                    category="code_issue",
-                    content=f"{issue['type']}: {issue['message']}",
-                    domain="code_quality",
-                    triggers=[issue["type"], "issue", "codebase"],
-                )
+        # Store only critical/error-severity issues to avoid flooding the DB.
+        # Warnings (e.g. high_complexity, large_file) are numerous and transient;
+        # they are visible in the architecture summary instead.
+        critical_issues = [i for i in self.issues if i["severity"] in ("error", "critical")]
+        for issue in critical_issues[:10]:  # cap at 10 to prevent runaway growth
+            self.state.knowledge.store_insight(
+                category="code_issue",
+                content=f"{issue['type']}: {issue['message']}",
+                domain="code_quality",
+                triggers=[issue["type"], "issue", "codebase"],
+            )
 
         logger.info(f"Persisted index to knowledge DB: {summary[:100]}...")
 

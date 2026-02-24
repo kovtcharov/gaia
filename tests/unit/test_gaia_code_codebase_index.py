@@ -124,32 +124,56 @@ async def async_function():
             large_file = Path(tmpdir) / "large.py"
             large_file.write_text("\n".join([f"# Line {i}" for i in range(600)]))
 
-            # Create a file with missing docstrings
+            # Create a file with missing docstrings (> 5 required to trigger the issue)
             no_docs = Path(tmpdir) / "no_docs.py"
             no_docs.write_text(
                 '''
 class UndocumentedClass:
     pass
 
+class AnotherUndocumented:
+    pass
+
 def undocumented_function():
+    pass
+
+def another_undocumented():
+    pass
+
+def yet_another_undocumented():
+    pass
+
+def one_more_undocumented():
     pass
 '''
             )
 
-            # Create a complex function
+            # Create a complex function (needs complexity > 10 to trigger the issue)
             complex_func = Path(tmpdir) / "complex.py"
             complex_func.write_text(
                 '''
-def complex_function(x):
-    """Complex function."""
+def complex_function(x, y, z):
+    """Complex function with high cyclomatic complexity."""
     if x > 0:
         if x > 10:
             if x > 20:
                 if x > 30:
-                    return "very high"
-                return "high"
+                    if x > 40:
+                        return "very high"
+                    return "high"
+                return "medium-high"
             return "medium"
         return "low"
+    elif y > 0:
+        if y > 10:
+            if y > 20:
+                if y > 30:
+                    return "y very high"
+                return "y high"
+            return "y medium"
+        return "y low"
+    elif z > 0:
+        return "z positive"
     return "zero"
 '''
             )

@@ -11,17 +11,18 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "electron .",
-    "dev:browser": "node dev-server.js"
+    "dev:browser": "node dev-server.js",
+    "postinstall": "electron-rebuild"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.62.0",
     "better-sqlite3": "^11.7.0",
     "framer-motion": "^11.18.0",
     "lucide-react": "^0.469.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-window": "^1.8.10",
-    "recharts": "^2.15.0",
-    "@tanstack/react-query": "^5.62.0"
+    "recharts": "^2.15.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",
@@ -30,13 +31,14 @@
     "@types/react-window": "^1.8.8",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
-    "concurrently": "^9.1.0",
+    "concurrently": "^9.2.1",
     "cross-env": "^7.0.3",
     "electron": "^31.0.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
-    "wait-on": "^8.0.1"
+    "wait-on": "^8.0.5",
+    "electron-rebuild": "^3.2.9"
   }
 }

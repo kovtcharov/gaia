@@ -14,8 +14,8 @@ import {
   Line,
   CartesianGrid,
 } from 'recharts';
-import { HardDrive, Table2, Rows3, Clock, Wrench, Users, Zap, BrainCircuit, BookOpen, AlertTriangle, Trash2 } from 'lucide-react';
-import type { DashboardData, DbStats, AgentEntry, SkillEntry, MemoryToolEntry, KnowledgeInsightEntry } from '../../types/database';
+import { HardDrive, Table2, Rows3, Clock, Wrench, Users, Zap, BrainCircuit, BookOpen, AlertTriangle, Trash2, Hammer } from 'lucide-react';
+import type { DashboardData, DbStats, AgentEntry, SkillEntry, MemoryToolEntry, KnowledgeInsightEntry, LearnedToolEntry } from '../../types/database';
 import Badge from '../shared/Badge';
 import StatsCards from './StatsCards';
 import DonutChart from './DonutChart';
@@ -88,6 +88,7 @@ export default function Overview({ data, workspacePath, onClearAll }: OverviewPr
         totalSize={data.totalSize}
         dbCount={data.dbCount}
         lastActivity={data.lastActivity}
+        learnedToolsCount={data.learnedToolsCount}
       />
 
       {/* Donut + Heatmap Row */}
@@ -189,6 +190,11 @@ export default function Overview({ data, workspacePath, onClearAll }: OverviewPr
         </motion.div>
       </div>
 
+      {/* Created Tools (agent-learned) */}
+      {(data.learnedTools.length > 0 || data.learnedToolsCount > 0) && (
+        <LearnedToolsSection tools={data.learnedTools} total={data.learnedToolsCount} />
+      )}
+
       {/* Resource Usage (Agents, Skills, Memory, Knowledge) */}
       <ResourceUsage
         agents={data.topAgents}
@@ -282,6 +288,69 @@ export default function Overview({ data, workspacePath, onClearAll }: OverviewPr
         </motion.div>
       )}
     </div>
+  );
+}
+
+// ============================================================================
+// Created Tools Section
+// ============================================================================
+
+function LearnedToolsSection({ tools, total }: { tools: LearnedToolEntry[]; total: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: 0.18 }}
+      className="card card-hover p-4"
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <Hammer size={14} className="text-gh-success-fg" />
+        <h3 className="text-xs font-semibold text-gh-fg-muted uppercase tracking-wider">
+          Created Tools
+        </h3>
+        <Badge variant="success">{total}</Badge>
+        <span className="text-2xs text-gh-fg-subtle ml-auto">Agent-learned · source=learned in tools.db</span>
+      </div>
+      {tools.length === 0 ? (
+        <div className="py-6 text-center text-xs text-gh-fg-subtle">
+          No tools created yet. Use <code className="font-mono text-gh-accent-fg">create_tool()</code> to build and persist custom tools.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-1 max-h-64 overflow-y-auto">
+          {tools.map((tool, i) => (
+            <motion.div
+              key={tool.name}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.2, delay: i * 0.02 }}
+              className="flex items-start justify-between p-2 rounded-md hover:bg-gh-canvas-subtle/50 transition-colors"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-mono text-gh-accent-fg">{tool.name}</span>
+                  {tool.category && (
+                    <span className="text-2xs px-1 py-0.5 rounded bg-gh-canvas-subtle border border-gh-border-muted text-gh-fg-subtle">
+                      {tool.category}
+                    </span>
+                  )}
+                </div>
+                {tool.description && (
+                  <div className="text-2xs text-gh-fg-muted truncate mt-0.5">
+                    {truncate(tool.description, 65)}
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col items-end ml-2 shrink-0">
+                <span className="text-2xs font-mono text-gh-fg-muted">{tool.use_count} uses</span>
+                {tool.last_used && (
+                  <span className="text-2xs text-gh-fg-subtle">{formatRelative(tool.last_used)}</span>
+                )}
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </motion.div>
   );
 }
 

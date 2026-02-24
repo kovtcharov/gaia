@@ -136,7 +136,11 @@ class DatabaseManager {
     }
 
     const db = new Database(dbPath, { readonly: readOnly });
-    db.pragma('journal_mode = WAL');
+    // Only set journal_mode on writable connections — read-only connections
+    // cannot execute PRAGMA journal_mode = WAL and will throw.
+    if (!readOnly) {
+      db.pragma('journal_mode = WAL');
+    }
     db.pragma('busy_timeout = 5000');
     this.connections.set(key, db);
     return db;

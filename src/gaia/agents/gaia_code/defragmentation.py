@@ -64,12 +64,17 @@ class MemoryDefragmenter:
         self.confidence_threshold = confidence_threshold
         self.staleness_days = staleness_days
 
-        # Initialize embedder and vector search
-        self.embedder = EmbeddingEngine()
-        self.vector_search = VectorSearch(
-            workspace_dir=workspace_dir,
-            embedding_engine=self.embedder,
-        )
+        # Initialize embedder and vector search (optional — requires sentence-transformers)
+        try:
+            self.embedder = EmbeddingEngine()
+            self.vector_search = VectorSearch(
+                workspace_dir=workspace_dir,
+                embedding_engine=self.embedder,
+            )
+        except ImportError:
+            logger.debug("sentence-transformers not available; embedding-based defrag disabled")
+            self.embedder = None
+            self.vector_search = None
 
     def defragment(self) -> Dict:
         """

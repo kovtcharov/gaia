@@ -6,6 +6,11 @@
 @tailwind utilities;
 
 @layer base {
+  /* Force default system cursor everywhere — prevents oversized custom cursors in Electron/WSLg */
+  *, *:hover, *:focus, *:active {
+    cursor: default !important;
+  }
+
   * {
     scrollbar-width: thin;
     scrollbar-color: #30363d #0d1117;

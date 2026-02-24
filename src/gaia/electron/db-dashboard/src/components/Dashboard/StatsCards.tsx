@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, Minus, Activity, AlertTriangle, Cpu, Wrench } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Activity, AlertTriangle, Cpu, Wrench, Hammer } from 'lucide-react';
 import type { TrendStats } from '../../types/database';
 
 interface StatsCardsProps {
@@ -12,6 +12,7 @@ interface StatsCardsProps {
   totalSize: number;
   dbCount: number;
   lastActivity: Date | null;
+  learnedToolsCount: number;
 }
 
 function formatBytes(bytes: number): string {
@@ -40,7 +41,7 @@ interface StatCardData {
   icon: React.ReactNode;
 }
 
-export default function StatsCards({ trendStats, totalRows, totalSize, dbCount, lastActivity }: StatsCardsProps) {
+export default function StatsCards({ trendStats, totalRows, totalSize, dbCount, lastActivity, learnedToolsCount }: StatsCardsProps) {
   const ts = trendStats;
 
   const logsDiff = ts ? ts.totalLogs24h - ts.totalLogsPrev24h : 0;
@@ -85,10 +86,18 @@ export default function StatsCards({ trendStats, totalRows, totalSize, dbCount, 
       trendGood: ts && ts.totalToolCalls > 0 ? true : null,
       icon: <Wrench size={16} />,
     },
+    {
+      label: 'Created Tools',
+      value: learnedToolsCount.toLocaleString(),
+      trend: learnedToolsCount > 0 ? 'up' : 'stable',
+      trendLabel: learnedToolsCount > 0 ? 'learned' : 'none yet',
+      trendGood: learnedToolsCount > 0 ? true : null,
+      icon: <Hammer size={16} />,
+    },
   ];
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
       {cards.map((card, i) => (
         <motion.div
           key={card.label}

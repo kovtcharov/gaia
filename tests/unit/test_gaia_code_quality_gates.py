@@ -33,7 +33,7 @@ class TestSyntaxGate:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create valid Python file
             file_path = Path(tmpdir) / "valid.py"
-            file_path.write_text("def hello():\\n    print('hello')")
+            file_path.write_text("def hello():\n    print('hello')")
 
             gate = SyntaxGate()
             result = gate.check({"files": [str(file_path)]})
@@ -46,7 +46,7 @@ class TestSyntaxGate:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create invalid Python file (missing colon)
             file_path = Path(tmpdir) / "invalid.py"
-            file_path.write_text("def hello()\\n    print('hello')")
+            file_path.write_text("def hello()\n    print('hello')")
 
             gate = SyntaxGate()
             result = gate.check({"files": [str(file_path)]})
@@ -72,7 +72,7 @@ class TestImportGate:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create file with valid imports
             file_path = Path(tmpdir) / "valid.py"
-            file_path.write_text("import os\\nimport sys\\nfrom pathlib import Path")
+            file_path.write_text("import os\nimport sys\nfrom pathlib import Path")
 
             gate = ImportGate()
             result = gate.check({"files": [str(file_path)]})
@@ -85,7 +85,7 @@ class TestImportGate:
             # Create file with invalid import
             file_path = Path(tmpdir) / "invalid.py"
             file_path.write_text(
-                "import os\\nimport nonexistent_module_12345\\nfrom pathlib import Path"
+                "import os\nimport nonexistent_module_12345\nfrom pathlib import Path"
             )
 
             gate = ImportGate()
@@ -137,12 +137,11 @@ class TestQualityGateRunner:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create valid file
             file_path = Path(tmpdir) / "valid.py"
-            file_path.write_text("import os\\n\\ndef hello():\\n    print('hello')")
+            file_path.write_text("import os\n\ndef hello():\n    print('hello')")
 
             runner = QualityGateRunner()
-            all_passed, results = runner.run_all(
-                {"files": [str(file_path)], "project_dir": tmpdir}
-            )
+            results = runner.run_all([str(file_path)], project_dir=tmpdir)
+            all_passed = runner.all_passed(results)
 
             assert all_passed is True
             assert len(results) >= 2  # At least syntax and imports
@@ -152,15 +151,14 @@ class TestQualityGateRunner:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create file with syntax error
             file_path = Path(tmpdir) / "invalid.py"
-            file_path.write_text("def hello()\\n    print('hello')")
+            file_path.write_text("def hello()\n    print('hello')")
 
             runner = QualityGateRunner()
-            all_passed, results = runner.run_all(
-                {"files": [str(file_path)], "project_dir": tmpdir}
-            )
+            results = runner.run_all([str(file_path)], project_dir=tmpdir)
+            all_passed = runner.all_passed(results)
 
             assert all_passed is False
-            assert any(not r.passed for r in results)
+            assert any(not r.passed for r in results.values())
 
     def test_disable_gate(self):
         """Test disabling a gate."""
@@ -178,14 +176,12 @@ class TestQualityGateRunner:
         """Test result formatting."""
         with tempfile.TemporaryDirectory() as tmpdir:
             file_path = Path(tmpdir) / "valid.py"
-            file_path.write_text("import os\\n\\ndef hello():\\n    print('hello')")
+            file_path.write_text("import os\n\ndef hello():\n    print('hello')")
 
             runner = QualityGateRunner()
-            all_passed, results = runner.run_all(
-                {"files": [str(file_path)], "project_dir": tmpdir}
-            )
+            results = runner.run_all([str(file_path)], project_dir=tmpdir)
 
-            formatted = runner.format_results(results)
+            formatted = runner.format_results(list(results.values()))
 
             assert "Quality Gate Results" in formatted
             assert "✅" in formatted or "PASS" in formatted
