@@ -279,6 +279,8 @@ export function useDashboardData(
         workingMemory: [],
         activePlan: null,
         planHistory: [],
+        agentSpecialists: [],
+        recentAgentCalls: [],
       };
 
       // Gather per-database stats
@@ -528,14 +530,39 @@ export function useDashboardData(
       // Query agents.db
       const agentsDb = existingDbs.find((d) => d.name === 'agents.db');
       if (agentsDb) {
+        // Compact summary for ResourceUsage widget (topAgents)
         try {
           const agentResult = await api().executeSQL(
             agentsDb.path,
-            `SELECT a.name, a.description, COUNT(au.id) as usage_count, a.last_used FROM agents a LEFT JOIN agent_usage au ON a.id = au.agent_id GROUP BY a.id ORDER BY usage_count DESC LIMIT 10`,
+            `SELECT name, description, use_count as usage_count, last_used FROM agents ORDER BY use_count DESC LIMIT 10`,
             true,
           );
           if (agentResult.success && 'rows' in agentResult) {
             data.topAgents = agentResult.rows as DashboardData['topAgents'];
+          }
+        } catch { /* ignore */ }
+
+        // Full specialist registry for Agent Dispatch panel
+        try {
+          const specResult = await api().executeSQL(
+            agentsDb.path,
+            `SELECT name, description, confidence, use_count, success_count, failure_count, created_at, last_used FROM agents ORDER BY use_count DESC`,
+            true,
+          );
+          if (specResult.success && 'rows' in specResult) {
+            data.agentSpecialists = specResult.rows as DashboardData['agentSpecialists'];
+          }
+        } catch { /* ignore */ }
+
+        // Recent sub-agent invocations for Agent Dispatch panel
+        try {
+          const callResult = await api().executeSQL(
+            agentsDb.path,
+            `SELECT a.name, au.timestamp, au.success, au.task_type, au.duration_ms FROM agent_usage au JOIN agents a ON au.agent_id = a.id ORDER BY au.timestamp DESC LIMIT 20`,
+            true,
+          );
+          if (callResult.success && 'rows' in callResult) {
+            data.recentAgentCalls = callResult.rows as DashboardData['recentAgentCalls'];
           }
         } catch { /* ignore */ }
       }

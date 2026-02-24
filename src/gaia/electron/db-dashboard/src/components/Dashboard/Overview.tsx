@@ -14,8 +14,8 @@ import {
   Line,
   CartesianGrid,
 } from 'recharts';
-import { HardDrive, Table2, Rows3, Clock, Wrench, Users, Zap, BrainCircuit, BookOpen, AlertTriangle, Trash2, Hammer, MemoryStick } from 'lucide-react';
-import type { DashboardData, DbStats, AgentEntry, SkillEntry, MemoryToolEntry, KnowledgeInsightEntry, LearnedToolEntry, WorkingMemoryEntry } from '../../types/database';
+import { HardDrive, Table2, Rows3, Clock, Wrench, Users, Zap, BrainCircuit, BookOpen, AlertTriangle, Trash2, Hammer, MemoryStick, Bot, CheckCircle, XCircle } from 'lucide-react';
+import type { DashboardData, DbStats, AgentEntry, SkillEntry, MemoryToolEntry, KnowledgeInsightEntry, LearnedToolEntry, WorkingMemoryEntry, AgentSpecialistEntry, AgentCallEntry } from '../../types/database';
 import Badge from '../shared/Badge';
 import StatsCards from './StatsCards';
 import DonutChart from './DonutChart';
@@ -201,6 +201,12 @@ export default function Overview({ data, workspacePath, onClearAll }: OverviewPr
 
       {/* Working Memory (active_state) */}
       <WorkingMemorySection entries={data.workingMemory || []} />
+
+      {/* Agent Dispatch — specialist registry + invocation history */}
+      <AgentDispatchSection
+        specialists={data.agentSpecialists || []}
+        calls={data.recentAgentCalls || []}
+      />
 
       {/* Resource Usage (Agents, Skills, Memory, Knowledge) */}
       <ResourceUsage
@@ -597,5 +603,143 @@ function ResourceUsage({ agents, skills, memoryTools, knowledge }: ResourceUsage
         </div>
       </motion.div>
     </div>
+  );
+}
+
+// ============================================================================
+// Agent Dispatch Section
+// ============================================================================
+
+interface AgentDispatchProps {
+  specialists: AgentSpecialistEntry[];
+  calls: AgentCallEntry[];
+}
+
+function AgentDispatchSection({ specialists, calls }: AgentDispatchProps) {
+  const maxUse = Math.max(...specialists.map((a) => a.use_count || 0), 1);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: 0.22 }}
+      className="card card-hover p-4"
+    >
+      <div className="flex items-center gap-2 mb-4">
+        <Bot size={14} className="text-gh-accent-fg" />
+        <h3 className="text-xs font-semibold text-gh-fg-muted uppercase tracking-wider">
+          Agent Dispatch
+        </h3>
+        <Badge variant="info">{specialists.length} specialists</Badge>
+        {calls.length > 0 && (
+          <span className="text-2xs text-gh-fg-subtle ml-auto">{calls.length} recent invocations</span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Left: Registered Specialists */}
+        <div>
+          <div className="text-2xs font-semibold text-gh-fg-subtle uppercase tracking-wider mb-2">
+            Registered Specialists
+          </div>
+          {specialists.length === 0 ? (
+            <div className="py-6 text-center text-xs text-gh-fg-subtle">
+              No specialists registered. Specialists are seeded at agent startup.
+            </div>
+          ) : (
+            <div className="space-y-1 max-h-72 overflow-y-auto">
+              {specialists.map((agent, i) => {
+                const confidence = agent.confidence != null ? Math.round(agent.confidence * 100) : 0;
+                const pct = Math.round(((agent.use_count || 0) / maxUse) * 100);
+                const total = (agent.success_count ?? 0) + (agent.failure_count ?? 0);
+                const successRate = total > 0 ? Math.round(((agent.success_count ?? 0) / total) * 100) : null;
+                return (
+                  <motion.div
+                    key={agent.name}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.2, delay: i * 0.03 }}
+                    className="p-2 rounded-md hover:bg-gh-canvas-subtle/50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium text-gh-fg-default">{agent.name}</span>
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        <span className="text-2xs text-gh-fg-muted font-mono">{agent.use_count} calls</span>
+                        {successRate !== null && (
+                          <span className={`text-2xs font-mono ${successRate >= 80 ? 'text-gh-success-fg' : successRate >= 50 ? 'text-gh-attention-fg' : 'text-gh-danger-fg'}`}>
+                            {successRate}% ok
+                          </span>
+                        )}
+                        <span className="text-2xs text-gh-fg-subtle">{confidence}% conf</span>
+                      </div>
+                    </div>
+                    <div className="h-1 bg-gh-canvas-subtle rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gh-accent-fg rounded-full transition-all duration-500"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    {agent.last_used && (
+                      <div className="text-2xs text-gh-fg-subtle mt-0.5">
+                        last: {formatRelative(agent.last_used)}
+                      </div>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Right: Recent Invocations */}
+        <div>
+          <div className="text-2xs font-semibold text-gh-fg-subtle uppercase tracking-wider mb-2">
+            Recent Invocations
+          </div>
+          {calls.length === 0 ? (
+            <div className="py-6 text-center text-xs text-gh-fg-subtle">
+              No invocations yet. Run the agent on a task to trigger sub-agent dispatch.
+            </div>
+          ) : (
+            <div className="space-y-0.5 max-h-72 overflow-y-auto">
+              {calls.map((call, i) => {
+                const ok = call.success === 1 || (call.success as unknown as boolean) === true;
+                return (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, x: 8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.2, delay: i * 0.02 }}
+                    className="flex items-start gap-2 p-2 rounded-md hover:bg-gh-canvas-subtle/50 transition-colors"
+                  >
+                    {ok ? (
+                      <CheckCircle size={12} className="text-gh-success-fg shrink-0 mt-0.5" />
+                    ) : (
+                      <XCircle size={12} className="text-gh-danger-fg shrink-0 mt-0.5" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-2xs font-medium text-gh-accent-fg shrink-0">{call.name}</span>
+                        {call.task_type && (
+                          <span className="text-2xs text-gh-fg-muted truncate">{truncate(call.task_type, 55)}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {call.duration_ms != null && (
+                          <span className="text-2xs font-mono text-gh-fg-subtle">{call.duration_ms}ms</span>
+                        )}
+                        {call.timestamp && (
+                          <span className="text-2xs text-gh-fg-subtle">{formatRelative(call.timestamp)}</span>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
   );
 }

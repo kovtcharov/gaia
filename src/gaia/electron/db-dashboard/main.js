@@ -689,14 +689,7 @@ function createWindow() {
     const devUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
     mainWindow.loadURL(devUrl);
   } else {
-    // Try dist/ first (React + Vite build), fall back to renderer/ (legacy vanilla JS)
-    const distIndex = path.join(__dirname, 'dist', 'index.html');
-    const rendererIndex = path.join(__dirname, 'renderer', 'index.html');
-    if (fs.existsSync(distIndex)) {
-      mainWindow.loadFile(distIndex);
-    } else {
-      mainWindow.loadFile(rendererIndex);
-    }
+    mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
   }
 
   // Build menu

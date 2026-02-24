@@ -266,6 +266,27 @@ export interface AgentEntry {
   last_used: string | null;
 }
 
+/** Full specialist entry from agents.db with confidence + success metrics */
+export interface AgentSpecialistEntry {
+  name: string;
+  description: string;
+  confidence: number | null;
+  use_count: number;
+  success_count: number | null;
+  failure_count: number | null;
+  created_at: string;
+  last_used: string | null;
+}
+
+/** Single sub-agent dispatch record from agent_usage JOIN agents */
+export interface AgentCallEntry {
+  name: string;           // specialist name
+  timestamp: string;
+  success: number;        // SQLite boolean: 0 | 1
+  task_type: string | null;
+  duration_ms: number | null;
+}
+
 export interface SkillEntry {
   name: string;
   description: string;
@@ -388,6 +409,10 @@ export interface DashboardData {
   activePlan: ActivePlan | null;
   /** Recent plan history (last 20 plans) */
   planHistory: PlanHistoryEntry[];
+  /** Specialist registry from agents.db with confidence + success metrics */
+  agentSpecialists: AgentSpecialistEntry[];
+  /** Recent sub-agent dispatch records from agents.db.agent_usage */
+  recentAgentCalls: AgentCallEntry[];
 }
 
 // ============================================================================
