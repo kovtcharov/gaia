@@ -343,6 +343,211 @@ class TestGate(QualityGate):
         return errors
 
 
+class FileCompletenessGate(QualityGate):
+    """
+    File Completeness Gate: Verify all tracked files exist on disk and are non-trivial.
+
+    Catches stub/empty files regardless of programming language.
+    A file is considered a stub if it is smaller than MIN_SIZE bytes.
+    """
+
+    MIN_SIZE = 20  # bytes — anything smaller is almost certainly a placeholder
+
+    def check(self, context: Dict) -> GateResult:
+        """Check every tracked file exists and has meaningful content."""
+        files = context.get("files", [])
+        if not files:
+            logger.debug("[CompletenessGate] no files to check")
+            return GateResult(
+                gate_name="Completeness",
+                passed=True,
+                message="No files to check",
+            )
+
+        missing, stubs = [], []
+        for file_path in files:
+            p = Path(file_path)
+            if not p.exists():
+                missing.append(file_path)
+                logger.debug("[CompletenessGate] missing: %s", file_path)
+            elif p.stat().st_size < self.MIN_SIZE:
+                stubs.append(f"{file_path} ({p.stat().st_size}B)")
+                logger.debug("[CompletenessGate] stub: %s (%dB)", file_path, p.stat().st_size)
+
+        errors = [f"Missing: {f}" for f in missing] + [f"Stub/empty: {f}" for f in stubs]
+
+        if errors:
+            logger.warning(
+                "[CompletenessGate] failed: %d missing, %d stubs",
+                len(missing),
+                len(stubs),
+            )
+            return GateResult(
+                gate_name="Completeness",
+                passed=False,
+                message=f"{len(missing)} file(s) missing, {len(stubs)} stub(s) found",
+                errors=errors,
+            )
+
+        logger.info("[CompletenessGate] passed files=%d", len(files))
+        return GateResult(
+            gate_name="Completeness",
+            passed=True,
+            message=f"All {len(files)} file(s) exist and are non-empty",
+        )
+
+
+class CppCompilationGate(QualityGate):
+    """
+    C++ Compilation Gate: Attempt cmake configure + build when C++ files are present.
+
+    Only activates when .cpp, .hpp, .h, .cc, or .cxx files are tracked AND a
+    CMakeLists.txt exists in the project directory.  Skips silently if no C++
+    files or no CMakeLists.
+
+    Build directory: <cmake_root>/build/
+    Steps:
+      1. cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug
+      2. cmake --build build --parallel
+    Timeout: 120 seconds each step.
+    """
+
+    CPP_EXTENSIONS = {".cpp", ".hpp", ".h", ".cc", ".cxx"}
+    TIMEOUT = 120  # seconds per cmake step
+
+    def check(self, context: Dict) -> GateResult:
+        """Run cmake configure + build if C++ files are present."""
+        files = context.get("files", [])
+
+        # --- skip if no C++ files in the tracked list ---
+        cpp_files = [f for f in files if Path(f).suffix in self.CPP_EXTENSIONS]
+        if not cpp_files:
+            logger.debug("[CppCompilationGate] no C++ files in tracked list, skipping")
+            return GateResult(
+                gate_name="CppCompilation",
+                passed=True,
+                message="No C++ files to compile (skipping)",
+            )
+
+        # --- locate CMakeLists.txt ---
+        cmake_root = self._find_cmake_root(cpp_files)
+        if cmake_root is None:
+            logger.debug("[CppCompilationGate] no CMakeLists.txt found, skipping")
+            return GateResult(
+                gate_name="CppCompilation",
+                passed=True,
+                message="No CMakeLists.txt found (skipping)",
+            )
+
+        # --- cmake configure ---
+        configure_result = self._run_step(
+            ["cmake", "-B", "build", "-S", ".", "-DCMAKE_BUILD_TYPE=Debug"],
+            cwd=cmake_root,
+            step_name="configure",
+        )
+        if configure_result is not None:
+            return configure_result
+
+        # --- cmake build ---
+        build_result = self._run_step(
+            ["cmake", "--build", "build", "--parallel"],
+            cwd=cmake_root,
+            step_name="build",
+        )
+        if build_result is not None:
+            return build_result
+
+        logger.info(
+            "[CppCompilationGate] passed cpp_files=%d cmake_root=%s",
+            len(cpp_files),
+            cmake_root,
+        )
+        return GateResult(
+            gate_name="CppCompilation",
+            passed=True,
+            message=f"C++ compilation succeeded ({len(cpp_files)} source file(s))",
+        )
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _find_cmake_root(self, cpp_files: List[str]) -> Optional[str]:
+        """Walk up from the common ancestor of *cpp_files* (max 3 levels) to
+        find a directory containing CMakeLists.txt."""
+        parents = [str(Path(f).parent) for f in cpp_files]
+        try:
+            common = Path(os.path.commonpath(parents))
+        except ValueError:
+            # Files on different drives / no common path
+            return None
+
+        for _ in range(4):  # common dir + 3 levels up
+            if (common / "CMakeLists.txt").exists():
+                return str(common)
+            parent = common.parent
+            if parent == common:
+                break  # reached filesystem root
+            common = parent
+        return None
+
+    def _run_step(
+        self, cmd: List[str], cwd: str, step_name: str
+    ) -> Optional[GateResult]:
+        """Run a single cmake step.  Returns a *failure* GateResult on error,
+        or ``None`` when the step succeeds (caller continues)."""
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=self.TIMEOUT,
+            )
+            if result.returncode != 0:
+                combined = (result.stdout + "\n" + result.stderr).strip()
+                error_lines = combined.splitlines()[:20]
+                logger.warning(
+                    "[CppCompilationGate] %s failed (rc=%d)",
+                    step_name,
+                    result.returncode,
+                )
+                return GateResult(
+                    gate_name="CppCompilation",
+                    passed=False,
+                    message=f"cmake {step_name} failed (exit {result.returncode})",
+                    details=combined,
+                    errors=error_lines,
+                )
+        except FileNotFoundError:
+            logger.warning("[CppCompilationGate] cmake not found on PATH")
+            return GateResult(
+                gate_name="CppCompilation",
+                passed=False,
+                message="cmake not found on PATH",
+                errors=["cmake executable not found; install CMake and add to PATH"],
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "[CppCompilationGate] %s timed out after %ds",
+                step_name,
+                self.TIMEOUT,
+            )
+            return GateResult(
+                gate_name="CppCompilation",
+                passed=False,
+                message=f"cmake {step_name} timed out (>{self.TIMEOUT}s)",
+            )
+        except Exception as e:
+            logger.error("[CppCompilationGate] %s exception: %s", step_name, e)
+            return GateResult(
+                gate_name="CppCompilation",
+                passed=False,
+                message=f"Error during cmake {step_name}: {e}",
+            )
+        return None  # success — caller continues
+
+
 class QualityGateRunner:
     """
     Runs all quality gates and enforces gate-driven completion.
@@ -352,9 +557,11 @@ class QualityGateRunner:
 
     def __init__(self):
         self.gates = {
+            "completeness": FileCompletenessGate(),
             "syntax": SyntaxGate(),
             "imports": ImportGate(),
             "tests": TestGate(),
+            "cpp_compilation": CppCompilationGate(),
         }
 
     def run_all(self, paths: List[str], **kwargs) -> Dict[str, "GateResult"]:

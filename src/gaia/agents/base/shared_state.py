@@ -725,6 +725,54 @@ class LogsDB:
                 END
             """)
 
+            # Conversation turns table — stores full LLM inputs/outputs per step
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_turns (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp   TEXT NOT NULL,
+                    session_id  TEXT,
+                    agent_name  TEXT,
+                    step_number INTEGER,
+                    role        TEXT NOT NULL,  -- 'user' | 'assistant' | 'tool_call' | 'tool_result'
+                    content     TEXT NOT NULL,
+                    token_count INTEGER,
+                    model_id    TEXT
+                )
+            """)
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_conv_session
+                ON conversation_turns(session_id, step_number)
+            """)
+
+            self.conn.commit()
+
+    def log_conversation_turn(
+        self,
+        role: str,
+        content: str,
+        step_number: int = None,
+        session_id: str = None,
+        agent_name: str = None,
+        token_count: int = None,
+        model_id: str = None,
+    ):
+        """Store one LLM conversation turn (user prompt or assistant response)."""
+        with self.lock:
+            self.conn.execute(
+                """INSERT INTO conversation_turns
+                   (timestamp, session_id, agent_name, step_number, role, content, token_count, model_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    datetime.now().isoformat(),
+                    session_id,
+                    agent_name,
+                    step_number,
+                    role,
+                    content,
+                    token_count,
+                    model_id,
+                ),
+            )
             self.conn.commit()
 
     def log(

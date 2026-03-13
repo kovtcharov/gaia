@@ -129,6 +129,9 @@ class Agent(abc.ABC):
         """
         # Context management
         self.max_input_tokens = max_input_tokens or self.DEFAULT_MAX_INPUT_TOKENS
+        # Proportional thresholds (override class constants when max_input_tokens is customized)
+        self.WARNING_INPUT_TOKENS = int(self.max_input_tokens * 0.75)
+        self.EMERGENCY_INPUT_TOKENS = int(self.max_input_tokens * 0.9375)
         self._context_warnings_shown = set()  # Track which warnings we've shown
 
         self.error_history = []  # Store error history for learning
@@ -259,13 +262,17 @@ You must respond ONLY in valid JSON. No text before { or after }.
                 agent_name=self.__class__.__name__
             )
 
-            # Attach to all gaia.* loggers to capture everything
-            for logger_name in ["gaia", "gaia.agents", "gaia.chat", "gaia.llm", "gaia.rag", "gaia.mcp"]:
-                lg = logging.getLogger(logger_name)
-                lg.addHandler(self.db_log_handler)
-                # Ensure DEBUG level is captured (console handler may filter, but DB gets all)
-                if lg.level > logging.DEBUG:
-                    lg.setLevel(logging.DEBUG)
+            # Attach ONLY to the root "gaia" logger.  All child loggers
+            # (gaia.agents.*, gaia.chat, etc.) propagate up to it automatically,
+            # so a single handler here captures everything without duplicates.
+            # Sub-agents replace any previous DatabaseLogHandler so only the
+            # active agent's session_id/step number is used for attribution.
+            root_gaia_logger = logging.getLogger("gaia")
+            for old_h in [h for h in root_gaia_logger.handlers if isinstance(h, DatabaseLogHandler)]:
+                root_gaia_logger.removeHandler(old_h)
+            root_gaia_logger.addHandler(self.db_log_handler)
+            if root_gaia_logger.level > logging.DEBUG:
+                root_gaia_logger.setLevel(logging.DEBUG)
 
             logger.info("[Agent] Database logging enabled for session %s", self.session_id)
 
@@ -753,6 +760,9 @@ You must respond ONLY in valid JSON. No text before { or after }.
             for match in matches:
                 try:
                     result = json.loads(match)
+                    # Only accept dict results — JSON arrays are not valid agent responses
+                    if not isinstance(result, dict):
+                        continue
                     # Ensure tool_args exists if tool is present
                     if "tool" in result and "tool_args" not in result:
                         result["tool_args"] = {}
@@ -789,6 +799,9 @@ You must respond ONLY in valid JSON. No text before { or after }.
                                 fixed = re.sub(r",\s*}", "}", extracted)
                                 fixed = re.sub(r",\s*]", "]", fixed)
                                 result = json.loads(fixed)
+                                # Only accept dict results
+                                if not isinstance(result, dict):
+                                    break
                                 # Ensure tool_args exists if tool is present
                                 if "tool" in result and "tool_args" not in result:
                                     result["tool_args"] = {}
@@ -2011,11 +2024,27 @@ You must respond ONLY in valid JSON. No text before { or after }.
                     # Start progress indicator for tool execution
                     self.console.start_progress(f"Executing {tool_name}")
 
+                    # Log tool call to DB for dashboard Execution Steps panel
+                    if self.db_log_handler:
+                        args_summary = json.dumps(tool_args, default=str)[:200] if tool_args else "{}"
+                        logger.info(f"[STEP_TOOL] tool={tool_name} args={args_summary}")
+
                     # Execute the tool
                     tool_result = self._execute_tool(tool_name, tool_args)
 
                     # Stop progress indicator
                     self.console.stop_progress()
+
+                    # Log tool result to DB for dashboard Execution Steps panel
+                    if self.db_log_handler:
+                        is_err = isinstance(tool_result, dict) and (
+                            tool_result.get("status") == "error"
+                            or tool_result.get("success") is False
+                            or tool_result.get("has_errors") is True
+                            or tool_result.get("return_code", 0) != 0
+                        )
+                        result_summary = str(tool_result)[:300] if tool_result else "no result"
+                        logger.info(f"[STEP_RESULT] tool={tool_name} success={not is_err} result={result_summary}")
 
                     # Handle domain-specific post-processing
                     self._post_process_tool_result(tool_name, tool_args, tool_result)
@@ -2420,10 +2449,52 @@ You must respond ONLY in valid JSON. No text before { or after }.
             if self.show_prompts:
                 self.console.print_response(response, "LLM Response")
 
+            # Log conversation turns to logs.db for the dashboard history panel
+            if (
+                hasattr(self, "shared_state")
+                and self.shared_state
+                and hasattr(self.shared_state, "logs")
+            ):
+                try:
+                    last_user_content = next(
+                        (m.get("content", "") for m in reversed(messages) if m.get("role") == "user"),
+                        "",
+                    )
+                    _session_id = getattr(self, "_session_id", None) or getattr(self, "session_id", None)
+                    _agent_name = self.__class__.__name__
+                    _model = getattr(self, "model_id", None)
+                    self.shared_state.logs.log_conversation_turn(
+                        role="user",
+                        content=str(last_user_content)[:3000],
+                        step_number=steps_taken,
+                        session_id=_session_id,
+                        agent_name=_agent_name,
+                        model_id=_model,
+                    )
+                    self.shared_state.logs.log_conversation_turn(
+                        role="assistant",
+                        content=str(response)[:3000],
+                        step_number=steps_taken,
+                        session_id=_session_id,
+                        agent_name=_agent_name,
+                        model_id=_model,
+                    )
+                except Exception:
+                    pass
+
             # Parse the response
             parsed = self._parse_llm_response(response)
             logger.debug(f"Parsed response: {parsed}")
             conversation.append({"role": "assistant", "content": parsed})
+
+            # Log LLM reasoning to DB for dashboard Execution Steps panel
+            if self.db_log_handler:
+                reasoning_text = parsed.get("thought", "")
+                goal_text = parsed.get("goal", "")
+                if reasoning_text:
+                    logger.info(f"[STEP_REASONING] {str(reasoning_text)[:500]}")
+                if goal_text:
+                    logger.info(f"[STEP_GOAL] {str(goal_text)[:300]}")
 
             # Add assistant response to messages for chat history
             messages.append({"role": "assistant", "content": response})
@@ -2653,6 +2724,8 @@ You must respond ONLY in valid JSON. No text before { or after }.
                 logger.debug(
                     f"New plan created with {self.total_plan_steps} steps"
                 )
+                # Notify subclasses so they can pre-register future plan steps
+                self._on_plan_created(self.current_plan)
 
                 # Display the plan to the user before execution starts
                 if self.plan_iterations > 0:
@@ -2734,11 +2807,27 @@ You must respond ONLY in valid JSON. No text before { or after }.
                     self.console.print_repeated_tool_warning()
                     break
 
+                # Log tool call to DB for dashboard Execution Steps panel
+                if self.db_log_handler:
+                    args_summary = json.dumps(tool_args, default=str)[:200] if tool_args else "{}"
+                    logger.info(f"[STEP_TOOL] tool={tool_name} args={args_summary}")
+
                 # Execute the tool
                 tool_result = self._execute_tool(tool_name, tool_args)
 
                 # Stop progress indicator
                 self.console.stop_progress()
+
+                # Log tool result to DB for dashboard Execution Steps panel
+                if self.db_log_handler:
+                    is_err = isinstance(tool_result, dict) and (
+                        tool_result.get("status") == "error"
+                        or tool_result.get("success") is False
+                        or tool_result.get("has_errors") is True
+                        or tool_result.get("return_code", 0) != 0
+                    )
+                    result_summary = str(tool_result)[:300] if tool_result else "no result"
+                    logger.info(f"[STEP_RESULT] tool={tool_name} success={not is_err} result={result_summary}")
 
                 # Handle domain-specific post-processing
                 self._post_process_tool_result(tool_name, tool_args, tool_result)
@@ -2971,6 +3060,18 @@ You must respond ONLY in valid JSON. No text before { or after }.
             _tool_result: Result returned by the tool
         """
         ...
+
+    def _on_plan_created(self, plan_steps: list) -> None:
+        """
+        Hook called when a new execution plan is created by the LLM.
+
+        Override in subclasses to pre-register future plan steps (e.g. as
+        'pending' tasks in a database) so they are visible before execution.
+
+        Args:
+            plan_steps: List of plan step dicts with 'tool' and 'tool_args' keys
+        """
+        pass
 
     def display_result(
         self,

@@ -203,6 +203,25 @@ function setupIpcHandlers() {
       return { success: false, error: `Workspace not found: ${dir}`, databases: [] };
     }
 
+    // Helper: get the effective mtime for a SQLite db, accounting for WAL files.
+    // In WAL mode, the .db-wal file receives all recent writes and the main .db
+    // mtime is only updated on checkpoint, which can be minutes later. We use
+    // the most recent mtime across .db, .db-wal, and .db-shm to show accurate
+    // "last modified" timestamps.
+    function dbLastModified(dbPath) {
+      let latest = null;
+      for (const suffix of ['', '-wal', '-shm']) {
+        const p = dbPath + suffix;
+        try {
+          if (fs.existsSync(p)) {
+            const t = fs.statSync(p).mtime;
+            if (!latest || t > latest) latest = t;
+          }
+        } catch { /* ignore */ }
+      }
+      return latest ? latest.toISOString() : null;
+    }
+
     const databases = [];
     for (const known of KNOWN_DATABASES) {
       const fullPath = path.join(dir, known.name);
@@ -212,7 +231,7 @@ function setupIpcHandlers() {
       if (exists) {
         const stat = fs.statSync(fullPath);
         sizeBytes = stat.size;
-        lastModified = stat.mtime.toISOString();
+        lastModified = dbLastModified(fullPath);
       }
       databases.push({
         ...known,
@@ -237,7 +256,7 @@ function setupIpcHandlers() {
             path: fullPath,
             exists: true,
             sizeBytes: stat.size,
-            lastModified: stat.mtime.toISOString(),
+            lastModified: dbLastModified(fullPath),
           });
         }
       }

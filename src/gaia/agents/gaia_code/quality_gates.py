@@ -10,6 +10,7 @@ This module re-exports everything for backward compatibility.
 # Re-export everything from the base module
 from gaia.agents.base.quality_gates import (
     EscalationLadder,
+    FileCompletenessGate,
     GateResult,
     ImportGate,
     QualityGate,
@@ -21,6 +22,7 @@ from gaia.agents.base.quality_gates import (
 __all__ = [
     "GateResult",
     "QualityGate",
+    "FileCompletenessGate",
     "SyntaxGate",
     "ImportGate",
     "TestGate",

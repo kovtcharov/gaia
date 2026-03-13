@@ -2165,7 +2165,7 @@ class SilentConsole(OutputHandler):
     ):
         """No-op implementation."""
 
-    def start_file_preview(self, filename: str, max_lines: int = 15):
+    def start_file_preview(self, filename: str, max_lines: int = 15, title_prefix: str = "📄"):
         """No-op implementation."""
 
     def update_file_preview(self, content_chunk: str) -> None:

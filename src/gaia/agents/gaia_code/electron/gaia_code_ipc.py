@@ -409,12 +409,15 @@ class GaiaCodeIPCHandler(BaseHTTPRequestHandler):
             "in_progress", 0
         )
 
+        # Get live specialist data (reuse handler)
+        specialist_data = self.handle_specialists(request)
+
         return {
             "connected": True,
             "progress": progress,
             "tasks": tasks,
             "quality_gates": {},
-            "specialists": SPECIALIST_INFO,
+            "specialists": specialist_data.get("specialists", SPECIALIST_INFO),
         }
 
     def handle_chat(self, request: Dict) -> Dict:
@@ -557,8 +560,47 @@ class GaiaCodeIPCHandler(BaseHTTPRequestHandler):
         }
 
     def handle_specialists(self, request: Dict) -> Dict:
-        """Get specialist agent information."""
-        return {"specialists": SPECIALIST_INFO}
+        """Get specialist agent information from agents.db."""
+        try:
+            db_path = get_db_path("agents")
+            if not db_path:
+                return {"specialists": SPECIALIST_INFO}
+
+            conn = sqlite3.connect(str(db_path))
+            rows = conn.execute(
+                """SELECT name, description, confidence, use_count, success_count,
+                          failure_count, last_used, created_at
+                   FROM agents ORDER BY use_count DESC"""
+            ).fetchall()
+            conn.close()
+
+            if not rows:
+                return {"specialists": SPECIALIST_INFO}
+
+            from datetime import timedelta
+
+            five_min_ago = (datetime.now() - timedelta(minutes=5)).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+            specialists = []
+            for r in rows:
+                name, desc, conf, use_count, ok, fail, last_used, created_at = r
+                active = bool(last_used and last_used > five_min_ago)
+                specialists.append(
+                    {
+                        "name": name,
+                        "description": desc or "",
+                        "confidence": conf or 0.5,
+                        "active": active,
+                        "tasks_completed": use_count or 0,
+                        "success_count": ok or 0,
+                        "failure_count": fail or 0,
+                        "last_used": last_used,
+                    }
+                )
+            return {"specialists": specialists}
+        except Exception:
+            return {"specialists": SPECIALIST_INFO}
 
     def handle_metrics(self, request: Dict) -> Dict:
         """Get performance metrics."""
@@ -592,6 +634,32 @@ class GaiaCodeIPCHandler(BaseHTTPRequestHandler):
             if "QUALITY" in (e.get("action_type", "") or "").upper()
         )
 
+        # Count agent calls from agents.db
+        agent_calls = 0
+        try:
+            agents_db_path = get_db_path("agents")
+            if agents_db_path:
+                conn = sqlite3.connect(str(agents_db_path))
+                agent_calls = (
+                    conn.execute("SELECT COUNT(*) FROM agent_usage").fetchone()[0] or 0
+                )
+                conn.close()
+        except Exception:
+            pass
+
+        # Count insights from knowledge.db
+        insights_stored = 0
+        try:
+            knowledge_db_path = get_db_path("knowledge")
+            if knowledge_db_path:
+                conn = sqlite3.connect(str(knowledge_db_path))
+                insights_stored = (
+                    conn.execute("SELECT COUNT(*) FROM insights").fetchone()[0] or 0
+                )
+                conn.close()
+        except Exception:
+            pass
+
         return {
             "session_time": session_time,
             "task_time": task_time,
@@ -599,8 +667,8 @@ class GaiaCodeIPCHandler(BaseHTTPRequestHandler):
             "gate_runs": gate_runs,
             "retries": retries,
             "escalations": escalations,
-            "agent_calls": 0,
-            "insights_stored": 0,
+            "agent_calls": agent_calls,
+            "insights_stored": insights_stored,
         }
 
     def handle_checkpoint_list(self, request: Dict) -> Dict:

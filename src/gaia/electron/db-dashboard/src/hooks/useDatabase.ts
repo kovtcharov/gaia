@@ -19,6 +19,12 @@ import type {
   WorkingMemoryEntry,
   PlanTask,
   PlanHistoryEntry,
+  RuntimeLogEntry,
+  ReasoningStepEntry,
+  ConversationTurnEntry,
+  PlanTreeTask,
+  DispatchActivityEntry,
+  AgentDetailStats,
 } from '../types/database';
 
 const api = () => window.dbAPI;
@@ -281,6 +287,12 @@ export function useDashboardData(
         planHistory: [],
         agentSpecialists: [],
         recentAgentCalls: [],
+        executionLog: [],
+        planTreeTasks: [],
+        dispatchActivity: [],
+        reasoningSteps: [],
+        conversationTurns: [],
+        agentDetailStats: [],
       };
 
       // Gather per-database stats
@@ -348,8 +360,27 @@ export function useDashboardData(
             `SELECT step_number, context_tokens, max_context_tokens, timestamp FROM runtime_logs WHERE context_tokens IS NOT NULL ORDER BY step_number ASC LIMIT 100`,
             true,
           );
-          if (usageResult.success && 'rows' in usageResult) {
+          if (usageResult.success && 'rows' in usageResult && usageResult.rows.length > 0) {
             data.contextUsage = usageResult.rows as DashboardData['contextUsage'];
+          } else {
+            // Fallback: context_tokens is always NULL, show step progression instead
+            // Filter to STEP_ messages only (not tool registration noise at step_number=0)
+            const stepResult = await api().executeSQL(
+              logsDb.path,
+              `SELECT step_number, message, level, timestamp, agent_name FROM runtime_logs WHERE message LIKE '[STEP_%' ORDER BY id ASC LIMIT 200`,
+              true,
+            );
+            if (stepResult.success && 'rows' in stepResult && stepResult.rows.length > 0) {
+              // Map step progression as synthetic context data so the chart still renders
+              data.contextUsage = (stepResult.rows as Record<string, unknown>[]).map((r) => ({
+                step_number: r.step_number as number,
+                context_tokens: r.step_number as number,  // use step_number as Y-axis proxy
+                max_context_tokens: 0,
+                timestamp: r.timestamp as string,
+              })) as DashboardData['contextUsage'];
+              // Signal to the UI that this is step-based data, not token data
+              (data as Record<string, unknown>)._contextFallback = 'steps';
+            }
           }
         } catch { /* ignore */ }
 
@@ -370,6 +401,45 @@ export function useDashboardData(
             }
           } catch { /* ignore */ }
         }
+
+        // Execution Log: last 50 runtime_logs for the scrollable log panel
+        try {
+          const execLogResult = await api().executeSQL(
+            logsDb.path,
+            `SELECT step_number, level, message, timestamp, agent_name FROM runtime_logs ORDER BY id DESC LIMIT 50`,
+            true,
+          );
+          if (execLogResult.success && 'rows' in execLogResult) {
+            data.executionLog = execLogResult.rows as RuntimeLogEntry[];
+          }
+        } catch { /* ignore */ }
+
+        // Reasoning Steps: [STEP_REASONING], [STEP_GOAL], [STEP_TOOL], [STEP_RESULT] entries
+        // for the Execution Steps panel, ordered chronologically (ASC) so steps read top-to-bottom
+        try {
+          const stepsResult = await api().executeSQL(
+            logsDb.path,
+            `SELECT step_number, level, message, timestamp, agent_name FROM runtime_logs WHERE message LIKE '[STEP_%' ORDER BY id ASC LIMIT 500`,
+            true,
+          );
+          if (stepsResult.success && 'rows' in stepsResult) {
+            data.reasoningSteps = stepsResult.rows as ReasoningStepEntry[];
+          }
+        } catch { /* ignore */ }
+
+        // Conversation turns (full LLM input/output per step)
+        try {
+          const convResult = await api().executeSQL(
+            logsDb.path,
+            `SELECT id, timestamp, session_id, agent_name, step_number, role, content, token_count, model_id
+             FROM conversation_turns
+             ORDER BY id ASC LIMIT 300`,
+            true,
+          );
+          if (convResult.success && 'rows' in convResult) {
+            data.conversationTurns = convResult.rows as ConversationTurnEntry[];
+          }
+        } catch { /* ignore */ }
       }
 
       // Query memory.db — active plan + full task tree (plans/plan_tasks live here)
@@ -472,6 +542,18 @@ export function useDashboardData(
             data.planHistory = historyResult.rows as PlanHistoryEntry[];
           }
         } catch { /* ignore */ }
+
+        // Plan Tree: flat task list for the dedicated Plan Tree panel
+        try {
+          const planTreeResult = await api().executeSQL(
+            memoryDb.path,
+            `SELECT id, title, status, depth, parent_id, created_at, started_at, completed_at FROM plan_tasks ORDER BY rowid`,
+            true,
+          );
+          if (planTreeResult.success && 'rows' in planTreeResult) {
+            data.planTreeTasks = planTreeResult.rows as PlanTreeTask[];
+          }
+        } catch { /* ignore */ }
       }
 
       // Query knowledge.db
@@ -495,7 +577,7 @@ export function useDashboardData(
         try {
           const toolResult = await api().executeSQL(
             toolsDb.path,
-            `SELECT t.name, COUNT(tu.id) as usage_count, SUM(CASE WHEN tu.success THEN 1 ELSE 0 END) as success_count, AVG(tu.duration_ms) as avg_duration_ms FROM tools t LEFT JOIN tool_usage tu ON t.id = tu.tool_id GROUP BY t.id ORDER BY usage_count DESC, t.name ASC LIMIT 10`,
+            `SELECT name, use_count as usage_count, error_count, avg_duration_ms, last_used, category FROM tools WHERE use_count > 0 ORDER BY use_count DESC, name ASC LIMIT 10`,
             true,
           );
           if (toolResult.success && 'rows' in toolResult) {
@@ -565,6 +647,61 @@ export function useDashboardData(
             data.recentAgentCalls = callResult.rows as DashboardData['recentAgentCalls'];
           }
         } catch { /* ignore */ }
+
+        // Per-agent aggregate performance stats
+        try {
+          const detailResult = await api().executeSQL(
+            agentsDb.path,
+            `SELECT a.name,
+                    COUNT(au.id) as invocations,
+                    SUM(CASE WHEN au.success = 1 THEN 1 ELSE 0 END) as successes,
+                    SUM(CASE WHEN au.success = 0 THEN 1 ELSE 0 END) as failures,
+                    CAST(AVG(au.duration_ms) AS INTEGER) as avg_duration_ms,
+                    SUM(au.duration_ms) as total_duration_ms
+             FROM agent_usage au
+             JOIN agents a ON au.agent_id = a.id
+             GROUP BY a.id, a.name
+             ORDER BY COUNT(au.id) DESC`,
+            true,
+          );
+          if (detailResult.success && 'rows' in detailResult) {
+            data.agentDetailStats = detailResult.rows as AgentDetailStats[];
+          }
+        } catch { /* ignore */ }
+      }
+
+      // Dispatch activity fallback: when agent_usage is empty, use agent_query tool from tools.db
+      if (data.recentAgentCalls.length === 0) {
+        const toolsDbForDispatch = existingDbs.find((d) => d.name === 'tools.db');
+        if (toolsDbForDispatch) {
+          try {
+            const dispatchResult = await api().executeSQL(
+              toolsDbForDispatch.path,
+              `SELECT name, use_count, avg_duration_ms FROM tools WHERE name = 'agent_query' AND use_count > 0`,
+              true,
+            );
+            if (dispatchResult.success && 'rows' in dispatchResult) {
+              data.dispatchActivity = dispatchResult.rows as DispatchActivityEntry[];
+            }
+          } catch { /* ignore */ }
+        }
+
+        // Also try conversation_turns for individual agent_query invocations
+        if (logsDb) {
+          try {
+            const turnResult = await api().executeSQL(
+              logsDb.path,
+              `SELECT ct.agent_name as name, ct.timestamp, 1 as success, ct.content as task_type, NULL as duration_ms
+               FROM conversation_turns ct
+               WHERE ct.role = 'tool_call' AND ct.content LIKE '%agent_query%'
+               ORDER BY ct.id DESC LIMIT 20`,
+              true,
+            );
+            if (turnResult.success && 'rows' in turnResult && (turnResult.rows as unknown[]).length > 0) {
+              data.recentAgentCalls = turnResult.rows as DashboardData['recentAgentCalls'];
+            }
+          } catch { /* ignore */ }
+        }
       }
 
       // Query skills.db

@@ -194,6 +194,11 @@ class GaiaCodeAgent(
             # Allow many plan iterations for complex tasks
             kwargs["max_plan_iterations"] = 100
 
+        # Claude Sonnet supports 200K context — give GaiaCodeAgent 100K input budget
+        # (keeps 84K reserve for output tokens and API overhead)
+        if "max_input_tokens" not in kwargs:
+            kwargs["max_input_tokens"] = 100000
+
         # Override model_id AFTER defaults to ensure Claude model is used
         if kwargs.get("use_claude"):
             kwargs["model_id"] = kwargs.get("claude_model", "claude-sonnet-4-6")
@@ -243,11 +248,13 @@ class GaiaCodeAgent(
         ) else None
         initialize_workspace(_ws)
 
-        # Suppress noisy warnings from base framework unless debug mode
-        # Must be AFTER super().__init__() since Agent.__init__ calls basicConfig
+        # Suppress noisy warnings from chat/LLM subsystems unless debug mode.
+        # Must be AFTER super().__init__() since Agent.__init__ calls basicConfig.
+        # NOTE: do NOT suppress gaia.agents — that namespace includes agent.py
+        # itself, and silencing it prevents execution logs from reaching the DB handler.
         if not kwargs.get("debug"):
             for name in ["gaia.chat", "gaia.chat.prompts", "gaia.chat.sdk",
-                         "gaia.llm", "gaia.agents"]:
+                         "gaia.llm"]:
                 logging.getLogger(name).setLevel(logging.ERROR)
             # Also suppress via GAIA's custom logger system
             try:
@@ -259,7 +266,11 @@ class GaiaCodeAgent(
         # Capture the project directory (where gaia-code was invoked from).
         # This is used to namespace active_state facts and other per-project data
         # so that facts from project-a don't pollute context when working in project-b.
-        self.project_dir = str(Path.cwd())
+        _cwd = str(Path.cwd())
+        self.project_dir = _cwd
+        # Track whether the caller explicitly set project_dir (not just the default CWD).
+        # Used to suppress reconnaissance hints that would otherwise scan the wrong dir.
+        self._project_dir_explicit = False
 
         # target_dir: where generated/translated code is written.
         # Defaults to project_dir — only differs for tasks like code translation
@@ -687,6 +698,7 @@ class GaiaCodeAgent(
             self.tui.start(query)
 
         # Create plan + root milestone in master plan
+        self._current_task_id = None
         if create_plan:
             plan_id = self.shared_state.plan.create_plan(
                 query[:200],
@@ -695,7 +707,14 @@ class GaiaCodeAgent(
             )
             task_id = self.shared_state.plan.create_task(plan_id, title=query[:200], depth=0)
             self._current_plan_id = plan_id
+            self._current_task_id = task_id
             self._log_audit("PLAN_CREATE", {"plan_id": plan_id, "task_id": task_id})
+
+            # Mark root task as in-progress so the dashboard shows activity
+            try:
+                self.shared_state.plan.start_task(task_id)
+            except Exception:
+                pass
 
             # Show plan in TUI if available
             if self.tui and hasattr(self.tui, 'show_plan'):
@@ -703,6 +722,27 @@ class GaiaCodeAgent(
                 plan_data = [{"description": t["title"], "status": t["status"]} for t in tasks]
                 self.tui.show_plan(plan_data)
         root_task = None  # kept for API compat with _execute_with_quality_gates
+
+        # Detect tasks that involve an existing codebase and prepend a
+        # reconnaissance reminder so the agent reads source files before planning.
+        _recon_keywords = (
+            "convert", "migrate", "port", "translate",
+            "refactor", "rewrite", "update", "fix", "improve",
+            "analyze", "review", "audit",
+        )
+        _query_lower = query.lower()
+        _needs_recon = any(kw in _query_lower for kw in _recon_keywords)
+        # Only add recon hint when project_dir was explicitly set by the user.
+        # If it's just the default CWD, scanning it would glob the wrong directory
+        # (e.g. the GAIA source tree instead of the user's project).
+        if _needs_recon and self._project_dir_explicit:
+            _recon_hint = (
+                "\n\n⚠️  RECONNAISSANCE REQUIRED BEFORE PLANNING:\n"
+                f"1. Call `glob_search('**/*')` to discover ALL files in `{self.project_dir}`\n"
+                "2. Call `read_file` on every source file you will work with\n"
+                "3. ONLY THEN create your plan — no guessing at file names or APIs\n"
+            )
+            query = query + _recon_hint
 
         try:
             # Execute the task
@@ -714,6 +754,22 @@ class GaiaCodeAgent(
                 "TASK_COMPLETE",
                 {"elapsed_seconds": elapsed, "success": result["success"]},
             )
+
+            # Update plan task status to match execution outcome
+            if self._current_task_id:
+                try:
+                    if result.get("success"):
+                        self.shared_state.plan.complete_task(
+                            self._current_task_id,
+                            result=result.get("result", "")[:500],
+                        )
+                    else:
+                        self.shared_state.plan.fail_task(
+                            self._current_task_id,
+                            error=result.get("error", "Task did not succeed"),
+                        )
+                except Exception:
+                    pass
 
             # Auto-register a skill pattern for successful tasks
             if result.get("success"):
@@ -733,6 +789,12 @@ class GaiaCodeAgent(
             # Handle Ctrl+C gracefully
             self._log_audit("TASK_INTERRUPTED", {"query": query})
 
+            if self._current_task_id:
+                try:
+                    self.shared_state.plan.fail_task(self._current_task_id, error="Interrupted by user")
+                except Exception:
+                    pass
+
             if self.tui:
                 self.tui.complete(success=False, message="Interrupted by user")
 
@@ -743,6 +805,12 @@ class GaiaCodeAgent(
 
         except Exception as e:
             self._log_audit("TASK_ERROR", {"error": str(e)})
+
+            if self._current_task_id:
+                try:
+                    self.shared_state.plan.fail_task(self._current_task_id, error=str(e))
+                except Exception:
+                    pass
 
             if self.tui:
                 self.tui.complete(success=False, message=f"Error: {str(e)}")
@@ -786,6 +854,17 @@ class GaiaCodeAgent(
         attempt = 0
         max_attempts = 10  # Safety limit
 
+        # Directories to skip — build artifacts, cache, and downloaded deps
+        # are not authored files and would cause false completeness failures.
+        _SKIP_DIRS = {
+            "build", ".build", "_build",
+            ".pytest_cache", ".benchmarks", "__pycache__",
+            "node_modules", ".git",
+            "_deps",          # CMake FetchContent deps
+            "CMakeFiles",     # CMake internal dir
+            ".cache",
+        }
+
         while attempt < max_attempts:
             attempt += 1
 
@@ -793,8 +872,51 @@ class GaiaCodeAgent(
             if self.tui:
                 self.tui.update(stage="Executing", current=query[:50], percent=attempt * 10)
 
+            # Snapshot files that already exist BEFORE this attempt executes.
+            # Quality gates only apply to NEW files written in THIS attempt — not
+            # pre-existing files from earlier steps which have already been verified.
+            pre_existing: set = set()
+            if self.target_dir and self.target_dir != self.project_dir:
+                try:
+                    _target_pre = Path(self.target_dir)
+                    if _target_pre.exists():
+                        for _p in _target_pre.rglob("*"):
+                            if _p.is_file() and _p.suffix not in (".db",):
+                                if not any(part in _SKIP_DIRS for part in _p.parts):
+                                    pre_existing.add(str(_p))
+                except Exception:
+                    pass
+
             # Execute the task
             result = self._execute_task(query, root_task)
+
+            # Check if files were written to target_dir (more reliable than manifest tracking).
+            # Only scan when target_dir was explicitly set to a different location than project_dir
+            # (e.g. code-translation tasks).  Scanning the default project_dir (cwd) would walk
+            # the entire repo on every call, causing unacceptable latency.
+            # IMPORTANT: only include files that are NEW since this attempt started — pre-existing
+            # files were verified in earlier steps and must not trigger a full retry here.
+            if not result.get("files") and self.target_dir and self.target_dir != self.project_dir:
+                try:
+                    target = Path(self.target_dir)
+                    if target.exists():
+                        on_disk = []
+                        for p in target.rglob("*"):
+                            if not p.is_file():
+                                continue
+                            if p.suffix in (".db",):
+                                continue
+                            # Skip any path that contains a build/cache directory
+                            if any(part in _SKIP_DIRS for part in p.parts):
+                                continue
+                            # Only include files that are NEW in this attempt
+                            if str(p) not in pre_existing:
+                                on_disk.append(str(p))
+                        if on_disk:
+                            result["files"] = on_disk
+                            logger.info("[GaiaCode] found %d NEW files in target_dir this attempt", len(on_disk))
+                except Exception:
+                    pass
 
             # Skip quality gates if no files were created
             if not result.get("files"):
@@ -903,9 +1025,27 @@ class GaiaCodeAgent(
             # This is the REAL execution method that handles tools
             base_result = super().process_query(user_input=query)
 
-            # base_result is a dict with keys: status, result, conversation, steps_taken, etc.
-            success = base_result.get("status") == "success"
-            result_text = base_result.get("result", str(base_result))
+            # base_result should be a dict, but guard against edge cases
+            # (e.g. if the LLM returned a JSON array instead of an object the
+            # base agent may propagate it as a list).
+            if isinstance(base_result, dict):
+                # The base Agent returns {"result": "...", "steps_taken": N, ...}
+                # It does NOT include a "status": "success" key.  Checking for
+                # that key means success is ALWAYS False, which breaks plan
+                # tracking and the benchmark runner.  Use "result" non-empty as
+                # the success signal instead, and only treat "status": "error"
+                # as an explicit failure.
+                result_text = base_result.get("result", str(base_result))
+                success = bool(result_text) and base_result.get("status") != "error"
+            elif isinstance(base_result, list):
+                # Extract the last string item as the result (conversation history)
+                result_text = next(
+                    (str(item) for item in reversed(base_result) if item), ""
+                )
+                success = bool(result_text)
+            else:
+                result_text = str(base_result) if base_result else ""
+                success = bool(result_text)
 
             # Check what files were created
             files_after = set(self.shared_state.manifest.list_files())
@@ -930,6 +1070,42 @@ class GaiaCodeAgent(
             }
 
 
+    def _on_plan_created(self, plan_steps: list) -> None:
+        """
+        Pre-register future plan steps as 'pending' tasks in memory.db.
+
+        This ensures the planning panel shows queued/upcoming work, not just
+        past and current tasks. Only agent_query steps are pre-registered since
+        those represent meaningful sub-agent dispatches; low-level tool calls
+        (write_file, run_cli_command etc.) are not tracked at task level.
+        """
+        if not self._current_plan_id:
+            return
+        try:
+            state = self.shared_state
+            root = state.memory.conn.execute(
+                "SELECT id FROM plan_tasks WHERE plan_id=? AND depth=0 LIMIT 1",
+                (self._current_plan_id,),
+            ).fetchone()
+            parent_id = root[0] if root else None
+            for step in plan_steps:
+                tool_name = step.get("tool", "")
+                if tool_name not in ("agent_query",):
+                    continue
+                task_desc = (
+                    step.get("description")
+                    or step.get("tool_args", {}).get("task", "")[:120]
+                    or f"agent_query"
+                )
+                state.plan.create_task(
+                    self._current_plan_id,
+                    title=task_desc[:160],
+                    depth=1,
+                    parent_id=parent_id,
+                )
+        except Exception as e:
+            logger.debug("[GaiaCode] _on_plan_created: %s", e)
+
     def _decompose_task(
         self, query: str, gate_results: List["GateResult"]
     ) -> Dict[str, Any]:
@@ -946,6 +1122,7 @@ class GaiaCodeAgent(
 
         # Map gate failures to specialist agents
         gate_to_specialist = {
+            "completeness": "ArchitectureAgent",
             "syntax":  "DebuggerAgent",
             "imports": "DebuggerAgent",
             "tests":   "TestingAgent",
@@ -954,9 +1131,16 @@ class GaiaCodeAgent(
         # Create subtasks for each failed gate, with specialist routing
         subtasks = []
         for gate in failed_gates:
-            gate_name = getattr(gate, 'gate_name', getattr(gate, 'name', 'unknown'))
+            gate_name = getattr(gate, 'gate_name', getattr(gate, 'name', 'unknown')).lower()
             specialist = gate_to_specialist.get(gate_name)
-            if gate_name == "syntax":
+            errors = getattr(gate, 'errors', [])
+            error_summary = "; ".join(errors[:5]) if errors else ""
+            if gate_name == "completeness":
+                subtasks.append((
+                    f"The following files are missing or empty — rewrite them with full content: {error_summary}",
+                    specialist,
+                ))
+            elif gate_name == "syntax":
                 subtasks.append(("Fix all syntax errors in the files you just created", specialist))
             elif gate_name == "imports":
                 subtasks.append(("Fix all import errors in the files you just created", specialist))
@@ -1026,6 +1210,45 @@ class GaiaCodeAgent(
         """
         start_ms = int(time.time() * 1000)
 
+        # --- Normalize path aliases: LLMs sometimes use "path" instead of "file_path" ---
+        if tool_name in ("write_file", "edit_file", "read_file") and "path" in tool_args and "file_path" not in tool_args:
+            tool_args = dict(tool_args)
+            tool_args["file_path"] = tool_args.pop("path")
+
+        # --- Normalize list_files: LLMs call it with dir_path= or directory= instead of path= ---
+        if tool_name == "list_files":
+            if "dir_path" in tool_args and "path" not in tool_args:
+                tool_args = dict(tool_args)
+                tool_args["path"] = tool_args.pop("dir_path")
+            elif "directory" in tool_args and "path" not in tool_args:
+                tool_args = dict(tool_args)
+                tool_args["path"] = tool_args.pop("directory")
+
+        # --- Normalize tool name aliases: tools.db recipes vs actual registered functions ---
+        # LLMs commonly use "run_shell_command" (from tools.db recipes) but the callable is run_cli_command
+        _TOOL_NAME_ALIASES = {
+            "run_shell_command": "run_cli_command",
+            "shell_command": "run_cli_command",
+            "execute_command": "run_cli_command",
+            "bash": "run_cli_command",
+        }
+        if tool_name in _TOOL_NAME_ALIASES:
+            tool_name = _TOOL_NAME_ALIASES[tool_name]
+
+        # --- Normalize kwarg aliases for run_cli_command (LLMs use 'cwd', actual param is 'working_dir') ---
+        if tool_name == "run_cli_command" and "cwd" in tool_args and "working_dir" not in tool_args:
+            tool_args = dict(tool_args)
+            tool_args["working_dir"] = tool_args.pop("cwd")
+
+        # --- Redirect read_file(directory) to list_files to avoid "is a directory" error ---
+        if tool_name in ("read_file", "read"):
+            fp = tool_args.get("file_path") or tool_args.get("path") or tool_args.get("filename", "")
+            if fp:
+                import os
+                if os.path.isdir(fp):
+                    logger.debug("[GaiaCode] read_file on directory → redirecting to list_files: %s", fp)
+                    return self._execute_tool("list_files", {"path": fp})
+
         # --- Pre-execution: serve read_file from file cache if available ---
         if self.shared_state and tool_name in ("read_file", "read"):
             file_path = (
@@ -1086,6 +1309,21 @@ class GaiaCodeAgent(
                 content = result if isinstance(result, str) else str(result)
                 try:
                     self.shared_state.memory.cache_file(file_path, content[:50000])
+                except Exception:
+                    pass
+
+        # --- manifest: register written files so quality gates can inspect them ---
+        if tool_name in ("write_file", "edit_file") and success:
+            file_path = (
+                tool_args.get("file_path")
+                or tool_args.get("path")
+                or tool_args.get("filename", "")
+            )
+            content = tool_args.get("content", "")
+            if file_path:
+                try:
+                    self.shared_state.manifest.add_file(file_path, content[:5000])
+                    logger.debug("[GaiaCode] registered in manifest: %s", file_path)
                 except Exception:
                     pass
 

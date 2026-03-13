@@ -234,6 +234,9 @@ export interface ToolEntry {
   usage_count: number;
   success_count: number | null;
   avg_duration_ms: number | null;
+  error_count: number | null;
+  last_used: string | null;
+  category: string | null;
 }
 
 export interface HourlyActivityEntry {
@@ -329,6 +332,65 @@ export interface WorkingMemoryEntry {
   last_accessed: string;
 }
 
+/** Runtime log entry from logs.db runtime_logs for the Execution Log panel */
+export interface RuntimeLogEntry {
+  step_number: number | null;
+  level: string;
+  message: string;
+  timestamp: string;
+  agent_name: string | null;
+}
+
+/** Flat plan task entry from memory.db plan_tasks for the Plan Tree panel */
+export interface PlanTreeTask {
+  id: string;
+  title: string;
+  status: string;
+  depth: number;
+  parent_id: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+/** Dispatch activity fallback from tools.db when agent_usage is empty */
+export interface DispatchActivityEntry {
+  name: string;
+  use_count: number;
+  avg_duration_ms: number | null;
+}
+
+/** Per-agent aggregate performance stats derived from agent_usage */
+export interface AgentDetailStats {
+  name: string;
+  invocations: number;
+  successes: number;
+  failures: number;
+  avg_duration_ms: number | null;
+  total_duration_ms: number | null;
+}
+
+/** Reasoning step entry from logs.db runtime_logs for the Execution Steps panel */
+export interface ReasoningStepEntry {
+  step_number: number;
+  level: string;
+  message: string;
+  timestamp: string;
+  agent_name: string | null;
+}
+
+export interface ConversationTurnEntry {
+  id: number;
+  timestamp: string;
+  session_id: string | null;
+  agent_name: string | null;
+  step_number: number | null;
+  role: string;           // 'user' | 'assistant'
+  content: string;
+  token_count: number | null;
+  model_id: string | null;
+}
+
 export interface PlanTask {
   id: string;
   plan_id: string;
@@ -413,6 +475,18 @@ export interface DashboardData {
   agentSpecialists: AgentSpecialistEntry[];
   /** Recent sub-agent dispatch records from agents.db.agent_usage */
   recentAgentCalls: AgentCallEntry[];
+  /** Execution log entries from logs.db runtime_logs */
+  executionLog: RuntimeLogEntry[];
+  /** Flat plan tasks for the Plan Tree panel from memory.db plan_tasks */
+  planTreeTasks: PlanTreeTask[];
+  /** Dispatch activity fallback from tools.db agent_query tool */
+  dispatchActivity: DispatchActivityEntry[];
+  /** Reasoning steps (STEP_REASONING/STEP_TOOL/STEP_RESULT) from logs.db runtime_logs */
+  reasoningSteps: ReasoningStepEntry[];
+  /** Full LLM conversation turns (user prompt + assistant response) from logs.db */
+  conversationTurns: ConversationTurnEntry[];
+  /** Per-agent aggregate stats from agent_usage (invocations, duration, success rate) */
+  agentDetailStats: AgentDetailStats[];
 }
 
 // ============================================================================

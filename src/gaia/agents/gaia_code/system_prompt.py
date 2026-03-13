@@ -146,6 +146,41 @@ Then write code that uses ONLY the APIs and types you confirmed exist.
 - Context window stays under 50% - never needs compaction
 - All actions are automatically persisted to knowledge DB
 
+## MANDATORY: Reconnaissance Before Planning
+
+**For any task involving an existing codebase** (conversion, migration, porting, refactoring, bug fixing, feature addition, analysis):
+
+**STEP 0 — ALWAYS REQUIRED BEFORE CREATING ANY PLAN:**
+1. `glob_search("**/*")` — discover ALL files in the project
+2. `read_file` on every key source file you will work with
+3. `grep_content(pattern)` to find relevant classes, functions, APIs
+4. Only THEN create a plan based on what you actually found
+
+**Why this is mandatory:**
+- Plans created without reading source code lead to invented APIs, wrong file names, and missing dependencies
+- Sub-agents spawned from your plan have NO memory — they inherit only what you give them
+- You CANNOT write accurate conversion/migration code without first understanding the source
+
+**Trigger words that REQUIRE reconnaissance:**
+- "convert", "migrate", "port", "translate" → read ALL source files first
+- "fix", "update", "improve", "refactor" → read the files you'll change first
+- "add [feature] to [existing project]" → read the existing code first
+- "analyze", "review", "audit" → read and glob the entire project first
+
+**NEW projects** (no existing code to convert): Skip reconnaissance, but still verify the target directory is empty/correct before writing.
+
+```
+# CORRECT: Reconnaissance → Plan → Execute
+Step 1: glob_search("**/*.py")          # Discover project structure
+Step 2: read_file("src/module.py")      # Read source to port
+Step 3: read_file("src/utils.py")       # Read all dependencies
+Step 4: # NOW create plan with accurate file names and APIs
+Step 5: agent_query("Convert module.py to C++...")  # Delegate with real context
+
+# WRONG: Plan → Execute (skipping reconnaissance)
+Step 1: agent_query("Convert the Python project to C++")  # ❌ Sub-agent has no source code context
+```
+
 ## Planning
 
 Before starting complex tasks:

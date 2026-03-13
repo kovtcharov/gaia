@@ -188,3 +188,84 @@ class TestGaiaCodeAgent:
             assert "QUALITY-FIRST" in prompt
             assert "agent_query()" in prompt
             assert "recall()" in prompt
+
+    @patch(_PATCH_INIT_WORKSPACE)
+    @patch(_PATCH_CREDENTIALS, return_value=(True, None))
+    @patch(_PATCH_CHAT_SDK)
+    @patch(_PATCH_SHARED_STATE)
+    def test_plan_task_status_progresses(
+        self, mock_get_shared_state, mock_chat_sdk, mock_creds, mock_init_ws
+    ):
+        """Plan root task transitions pending→in_progress→completed during process_query."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            agent, mock_state = _make_agent(tmpdir, mock_get_shared_state)
+
+            # Set up plan mock to return predictable IDs
+            mock_state.plan.create_plan.return_value = "plan-1"
+            mock_state.plan.create_task.return_value = "task-1"
+
+            # Stub _execute_with_quality_gates so we never hit the LLM
+            with patch.object(
+                agent,
+                "_execute_with_quality_gates",
+                return_value={"success": True, "result": "done", "files": []},
+            ):
+                agent.process_query("do something", create_plan=True)
+
+            # start_task called once with task-1 (pending → in_progress)
+            mock_state.plan.start_task.assert_called_once_with("task-1")
+            # complete_task called once with task-1 (in_progress → completed)
+            mock_state.plan.complete_task.assert_called_once()
+            args = mock_state.plan.complete_task.call_args[0]
+            assert args[0] == "task-1"
+
+    @patch(_PATCH_INIT_WORKSPACE)
+    @patch(_PATCH_CREDENTIALS, return_value=(True, None))
+    @patch(_PATCH_CHAT_SDK)
+    @patch(_PATCH_SHARED_STATE)
+    def test_plan_task_marked_failed_on_error(
+        self, mock_get_shared_state, mock_chat_sdk, mock_creds, mock_init_ws
+    ):
+        """Plan root task is marked failed when execution returns success=False."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            agent, mock_state = _make_agent(tmpdir, mock_get_shared_state)
+
+            mock_state.plan.create_plan.return_value = "plan-x"
+            mock_state.plan.create_task.return_value = "task-x"
+
+            with patch.object(
+                agent,
+                "_execute_with_quality_gates",
+                return_value={"success": False, "result": None, "error": "boom"},
+            ):
+                agent.process_query("fail please", create_plan=True)
+
+            mock_state.plan.fail_task.assert_called_once()
+            args = mock_state.plan.fail_task.call_args[0]
+            assert args[0] == "task-x"
+
+    @patch(_PATCH_INIT_WORKSPACE)
+    @patch(_PATCH_CREDENTIALS, return_value=(True, None))
+    @patch(_PATCH_CHAT_SDK)
+    @patch(_PATCH_SHARED_STATE)
+    def test_write_file_registers_in_manifest(
+        self, mock_get_shared_state, mock_chat_sdk, mock_creds, mock_init_ws
+    ):
+        """write_file calls manifest.add_file() so quality gates see the output."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            agent, mock_state = _make_agent(tmpdir, mock_get_shared_state)
+
+            # Patch the base _execute_tool to return a successful write result
+            with patch(
+                "gaia.agents.base.agent.Agent._execute_tool",
+                return_value={"status": "success", "written": True},
+            ):
+                agent._execute_tool(
+                    "write_file",
+                    {"file_path": "/tmp/test.cpp", "content": "int main() { return 0; }"},
+                )
+
+            # manifest.add_file should have been called with the written path
+            mock_state.manifest.add_file.assert_called_once()
+            call_args = mock_state.manifest.add_file.call_args[0]
+            assert call_args[0] == "/tmp/test.cpp"

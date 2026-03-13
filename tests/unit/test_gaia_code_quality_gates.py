@@ -18,6 +18,7 @@ import pytest
 
 from gaia.agents.gaia_code.quality_gates import (
     EscalationLadder,
+    FileCompletenessGate,
     ImportGate,
     QualityGateRunner,
     SyntaxGate,
@@ -129,13 +130,73 @@ def test_example():
             assert gate._has_pytest(test_files) is True
 
 
+class TestFileCompletenessGate:
+    """Test FileCompletenessGate."""
+
+    def test_all_files_present_and_non_empty(self):
+        """Gate passes when all files exist and are larger than MIN_SIZE."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            f1 = Path(tmpdir) / "file.cpp"
+            f1.write_text("#include <iostream>\nint main() { return 0; }")
+            f2 = Path(tmpdir) / "header.hpp"
+            f2.write_text("#pragma once\nclass Foo {};\n")
+
+            gate = FileCompletenessGate()
+            result = gate.check({"files": [str(f1), str(f2)]})
+
+            assert result.passed is True
+            assert "non-empty" in result.message
+
+    def test_missing_file_fails(self):
+        """Gate fails when a tracked file does not exist on disk."""
+        gate = FileCompletenessGate()
+        result = gate.check({"files": ["/nonexistent/path/file.cpp"]})
+
+        assert result.passed is False
+        assert any("Missing" in e for e in result.errors)
+
+    def test_stub_file_fails(self):
+        """Gate fails when a file is smaller than MIN_SIZE bytes."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            stub = Path(tmpdir) / "stub.cpp"
+            stub.write_text("// TODO")  # 7 bytes — well below MIN_SIZE
+
+            gate = FileCompletenessGate()
+            result = gate.check({"files": [str(stub)]})
+
+            assert result.passed is False
+            assert any("Stub" in e or "empty" in e for e in result.errors)
+
+    def test_no_files_passes(self):
+        """Gate passes trivially when no files are provided."""
+        gate = FileCompletenessGate()
+        result = gate.check({"files": []})
+
+        assert result.passed is True
+        assert "no files" in result.message.lower()
+
+    def test_cpp_files_checked(self):
+        """Gate checks non-Python files (C++, TypeScript, etc.)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a real C++ file (not Python)
+            cpp = Path(tmpdir) / "agent.cpp"
+            cpp.write_text(
+                '#include "agent.hpp"\nstd::string Agent::run(std::string q) { return q; }\n'
+            )
+
+            gate = FileCompletenessGate()
+            result = gate.check({"files": [str(cpp)]})
+
+            assert result.passed is True
+
+
 class TestQualityGateRunner:
     """Test QualityGateRunner."""
 
     def test_all_gates_pass(self):
         """Test when all gates pass."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Create valid file
+            # Create valid file — content must be > MIN_SIZE (20 bytes)
             file_path = Path(tmpdir) / "valid.py"
             file_path.write_text("import os\n\ndef hello():\n    print('hello')")
 
@@ -144,7 +205,7 @@ class TestQualityGateRunner:
             all_passed = runner.all_passed(results)
 
             assert all_passed is True
-            assert len(results) >= 2  # At least syntax and imports
+            assert len(results) >= 3  # completeness, syntax, imports
 
     def test_some_gates_fail(self):
         """Test when some gates fail."""

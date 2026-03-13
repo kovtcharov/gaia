@@ -562,6 +562,63 @@ def validate_header_guard(path: str) -> dict:
                 "errors": ["Failed to push call frame (max depth exceeded)"],
             }
 
+        # Record sub-task in memory.db so the dashboard shows the breakdown.
+        # NOTE: Do NOT use getattr(self, "_current_plan_id") here — _TOOL_REGISTRY is a
+        # module-level global that sub-agents overwrite with their own self bindings.
+        # After the first sub-agent runs, subsequent agent_query closures hold the
+        # sub-agent's self (which has _current_plan_id=None). Instead, always query the
+        # shared state DB directly so all agent_query calls track correctly.
+        sub_task_id = None
+        plan_id = None
+        parent_task_id = None
+        try:
+            row = state.memory.conn.execute(
+                "SELECT id FROM plans WHERE status='active' ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
+            if row:
+                plan_id = row[0]
+                # Find the depth-0 root task for this plan (the parent)
+                root = state.memory.conn.execute(
+                    "SELECT id FROM plan_tasks WHERE plan_id=? AND depth=0 LIMIT 1",
+                    (plan_id,),
+                ).fetchone()
+                if root:
+                    parent_task_id = root[0]
+        except Exception:
+            pass
+
+        if plan_id:
+            try:
+                label = f"[{specialist}] {task[:150]}" if specialist else task[:160]
+                # Reuse the oldest pending task in this plan if one was pre-created
+                # by _on_plan_created() — this avoids duplicate rows and ensures
+                # pre-registered future tasks transition to in_progress properly.
+                pending_row = state.memory.conn.execute(
+                    """SELECT id FROM plan_tasks
+                       WHERE plan_id=? AND status='pending' AND depth > 0
+                       ORDER BY order_index ASC, rowid ASC LIMIT 1""",
+                    (plan_id,),
+                ).fetchone()
+                if pending_row:
+                    sub_task_id = pending_row[0]
+                    state.memory.conn.execute(
+                        "UPDATE plan_tasks SET title=?, status='in_progress', "
+                        "started_at=strftime('%Y-%m-%d %H:%M:%S','now','localtime') "
+                        "WHERE id=?",
+                        (label, sub_task_id),
+                    )
+                    state.memory.conn.commit()
+                else:
+                    sub_task_id = state.plan.create_task(
+                        plan_id,
+                        title=label,
+                        depth=current_depth + 1,
+                        parent_id=parent_task_id,
+                    )
+                    state.plan.start_task(sub_task_id)
+            except Exception:
+                sub_task_id = None
+
         try:
             result = self._execute_subtask(task, specialist)
 
@@ -569,10 +626,46 @@ def validate_header_guard(path: str) -> dict:
             state.call_stack.pop()
 
             success = not result.startswith("[FAILED]")
+
+            # Update sub-task status in DB
+            if sub_task_id:
+                try:
+                    if success:
+                        state.plan.complete_task(sub_task_id, result=result[:300])
+                    else:
+                        state.plan.fail_task(sub_task_id, error=result[:300])
+                except Exception:
+                    pass
+
+            # Store a project-specific insight when the subtask succeeds.
+            # This makes key decisions discoverable across sessions via recall().
+            if success and result:
+                try:
+                    parent_agent = getattr(self, "_agent", None)
+                    project_dir = getattr(parent_agent, "project_dir", None) or ""
+                    # Brief, memorable summary of what this subtask produced
+                    insight_content = (
+                        f"Subtask completed: {task[:120]}. "
+                        f"Result summary: {result[:200].strip()}"
+                    )
+                    state.knowledge.store_insight(
+                        category="subtask_result",
+                        domain=Path(project_dir).name if project_dir else "unknown",
+                        content=insight_content,
+                        triggers=[specialist] if specialist else None,
+                    )
+                except Exception:
+                    pass  # Knowledge storage is best-effort
+
             return {"success": success, "result": result, "errors": []}
 
         except Exception as e:
             state.call_stack.pop()
+            if sub_task_id:
+                try:
+                    state.plan.fail_task(sub_task_id, error=str(e))
+                except Exception:
+                    pass
             return {
                 "success": False,
                 "result": None,
@@ -606,16 +699,25 @@ def validate_header_guard(path: str) -> dict:
             from gaia.agents.gaia_code.agent import GaiaCodeAgent
 
             workspace_dir = Path(state.workspace_dir) if state.workspace_dir else None
+            parent = getattr(self, "_agent", None)
+            # Sub-agents get a focused step budget (not the parent's 1000).
+            # 50 steps is generous for a focused subtask; prevents sub-agents from
+            # wandering when tools fail (e.g. list_files errors triggering re-writes).
             sub_agent = GaiaCodeAgent(
                 workspace_dir=workspace_dir,
                 specialist_name=specialist,
                 silent_mode=True,
                 tui_mode="off",
+                max_steps=50,
+                max_input_tokens=60000,  # Sub-agents get 60K budget to prevent context overflow
             )
-            # Inherit project_dir from parent so paths stay consistent
-            project_dir = getattr(self, "project_dir", None)
+            # Inherit project_dir and target_dir from parent so paths stay consistent
+            project_dir = getattr(parent, "project_dir", None) or getattr(self, "project_dir", None)
             if project_dir:
                 sub_agent.project_dir = project_dir
+            target_dir = getattr(parent, "target_dir", None) or getattr(self, "target_dir", None)
+            if target_dir:
+                sub_agent.target_dir = target_dir
 
             result = sub_agent.process_query(task, create_plan=False)
             success = result.get("success", False)
@@ -737,10 +839,19 @@ def validate_header_guard(path: str) -> dict:
         state = get_shared_state()
         tools = state.tools.find_tools(query, top_k=top_k)
 
+        # Truncate descriptions to keep response compact and avoid context blowout
+        compact_tools = []
+        for t in tools:
+            compact_tools.append({
+                "name": t.get("name"),
+                "category": t.get("category"),
+                "description": (t.get("description") or "")[:120],
+            })
+
         return {
             "query": query,
-            "count": len(tools),
-            "tools": tools,
+            "count": len(compact_tools),
+            "tools": compact_tools,
         }
 
     def tool_store_insight(

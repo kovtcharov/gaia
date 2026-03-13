@@ -276,6 +276,7 @@ class CLIToolsMixin:
         def run_cli_command(
             command: str,
             working_dir: str = None,
+            cwd: str = None,  # alias for working_dir — LLMs sometimes use 'cwd'
             background: bool = False,
             timeout: Optional[int] = None,
             startup_timeout: int = 5,
@@ -288,6 +289,7 @@ class CLIToolsMixin:
             Args:
                 command: Command to execute
                 working_dir: Directory to run command in (default: current directory)
+                cwd: Alias for working_dir
                 background: Run as background process
                 timeout: Timeout for foreground commands (default: 120s)
                 startup_timeout: Timeout for error detection (default: 5s)
@@ -298,6 +300,10 @@ class CLIToolsMixin:
                 Dict with execution status, output, and errors
             """
             try:
+                # Accept 'cwd' as alias for 'working_dir'
+                if working_dir is None and cwd is not None:
+                    working_dir = cwd
+
                 # Use workspace_root if available, else current directory
                 if working_dir is None:
                     if hasattr(self, "workspace_root") and self.workspace_root:
