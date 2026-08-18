@@ -524,6 +524,68 @@ scanning tab as SARIF; the PR comment carries verdicts, tiers, and counts only.
 lane and its maintainer sign-off workflow are
 [#2675](https://github.com/amd/gaia/issues/2675).
 
+### Pre-publish behaviour validation
+
+The audit answers *is this skill safe to run*. It never executes anything, so it
+cannot answer the question users actually care about: **does it work.** A skill
+whose instructions the model quietly ignores still produces a fluent, confident
+reply — it passes every static check and ships broken
+([#1428](https://github.com/amd/gaia/issues/1428) is that failure class).
+
+So publish requires a second artifact: a **behaviour record** proving the skill
+was driven against a real model and its declared tools left a real side effect.
+
+```bash
+# Produce a record (needs a live Lemonade backend)
+python -m gaia.eval.skill_behavior --skill rss-digest --output records.json
+
+# Check what the publish gate would say, without publishing
+python -m gaia.skills.behavior_gate --skill-dir hub/skills/rss-digest
+
+gaia skill publish ./my-skill/ --behavior-report records.json
+```
+
+**Two kinds of evidence, both required.** The harness reads the agent's own tool
+transcript to confirm the skill's declared tools ran at all, then asserts the
+artifact they should have produced — a file on disk, a row in the scratchpad DB,
+a request the fixture server actually served, a planted token that came *back*
+out of a tool result. Never the prose. Each run plants an unguessable token, so a
+cached or invented answer cannot pass.
+
+| Recorded status | Meaning |
+|---|---|
+| `validated` | Every repeat ran the skill's tools and left the expected side effect. The only status that publishes. |
+| `failed` | The harness ran and the skill did not clear the bar. A *false success* — success claimed, no side effect — is called out separately; it is the worst outcome, not a flaky run. |
+| `blocked` | A prerequisite was missing, so the scenario never ran. **Not a pass.** A skipped validation must never read as a validation. |
+| `unvalidated` | No run has produced a verdict yet. |
+
+**Hermetic by construction.** A skill declaring `network:read` is validated
+against a localhost fixture server, and one needing a search engine gets the same
+eval-seam treatment the email agent gives Gmail. The tools still run for real;
+only the egress is faked. A live page cannot carry a token minted a second ago,
+and a flaky network and a skill regression would otherwise be the same red build.
+
+**An edit re-earns the verdict.** Records carry the skill's `content_digest` and
+version — the same digest the audit binds to — so changing a skill makes its
+record stale and publish refuses until the harness runs again. There is no bypass
+flag: treating "no record" as "fine" is exactly how every unvalidated skill would
+ship.
+
+Records live in a manifest the wheel ships
+(`src/gaia/skills/data/skill_behavior_validation.json`), written by the
+[`Skill Behavior E2E`](https://github.com/amd/gaia/blob/main/.github/workflows/test_skill_behavior_e2e.yml)
+workflow on Strix Halo hardware. Third-party authors pass their own with
+`--behavior-report`; `$GAIA_SKILL_BEHAVIOR_MANIFEST` points the gate at a
+manifest built elsewhere.
+
+<Note>
+**This gate and the tier gate are independent, and both apply.** A skill can be
+behaviour-validated and still be unpublishable: `hub/skills/coding` and
+`gaia-voice` claim `security_tier: verified`, which the automated audit never
+grants, so they wait on a human audit regardless of how their behaviour run went.
+Passing one gate is not a shortcut through the other.
+</Note>
+
 ### Tool registration
 
 A skill's `tools` map onto the existing decorator and registry. On load, the

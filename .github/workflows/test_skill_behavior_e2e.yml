@@ -1,0 +1,117 @@
+# Skill behaviour validation — the run that decides which skills may ship.
+#
+# `skill_audit.yml` asks whether a skill is safe to run. This asks whether it
+# actually works: each skill is loaded into a real agent, driven against a real
+# model, and judged on whether its declared tools left a real side effect. A
+# skill that produces confident prose while calling nothing (#1428) passes every
+# static check and still reaches users broken; this is what catches it.
+#
+# The output is not just a green tick — it is the behaviour manifest
+# (`src/gaia/skills/data/skill_behavior_validation.json`) that
+# `gaia skill publish` reads. A skill missing from it, or stale in it, cannot be
+# published. So this workflow is the PRODUCER for the publish gate, and the
+# manifest it uploads is meant to be committed.
+#
+# Runner notes, copied from test_agent_behavior_e2e.yml because both are
+# load-bearing and both were learned the hard way:
+#   * Lemonade is started AND the tests run in a SINGLE PowerShell session. The
+#     detached Start-Process child does not survive a GitHub Actions step
+#     boundary, so splitting them made the harness skip with "Lemonade server not
+#     reachable" even though the model had loaded.
+#   * NO_PROXY covers loopback so Python's requests reaches both the Lemonade
+#     server and the harness's own fixture HTTP server through the runner proxy.
+#
+# SERIAL BY CONSTRUCTION: concurrency cancels an in-flight run, and the harness
+# itself runs scenarios one at a time. The Lemonade backend is single-tenant per
+# model slot — two concurrent runs race-evict each other's model and produce
+# failures that read as skill regressions.
+name: Skill Behavior E2E
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'hub/skills/**'
+      - 'hub/agents/gaia/python/gaia_agent/skills/**'
+      - 'hub/agents/email/python/gaia_agent_email/skills/**'
+      - 'src/gaia/eval/skill_behavior.py'
+      - 'src/gaia/eval/skill_scenarios.py'
+      - 'src/gaia/eval/skill_scenarios_email.py'
+      - 'src/gaia/skills/behavior_gate.py'
+      - 'tests/integration/eval/test_skill_behavior_e2e.py'
+      - '.github/workflows/test_skill_behavior_e2e.yml'
+
+concurrency:
+  group: skill-behavior-e2e
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  skill-behavior-e2e:
+    runs-on: [self-hosted, strix-halo]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Python environment
+        uses: ./.github/actions/setup-venv
+        with:
+          # [ui] carries the RAG deps the flagship agent imports at construction;
+          # [dev] alone fails at import for the document-brief scenario.
+          install-package: ".[dev,ui]"
+
+      # The flagship agent hosts the starter pack; the email agent hosts its own
+      # six skills. Without these, both sets record as `blocked` — which is
+      # honest, but validates nothing.
+      - name: Install the agents that host the skills
+        shell: powershell
+        run: |
+          python -m pip install -e hub/agents/chat/python
+          if ($LASTEXITCODE -ne 0) { throw "chat agent install failed" }
+          python -m pip install -e hub/agents/gaia/python
+          if ($LASTEXITCODE -ne 0) { throw "gaia agent install failed" }
+          python -m pip install -e hub/agents/email/python
+          if ($LASTEXITCODE -ne 0) { throw "email agent install failed" }
+
+      - name: Start Lemonade + validate every shipped skill
+        shell: powershell
+        env:
+          LEMONADE_BASE_URL: http://127.0.0.1:13306/api/v1
+          # Loopback only — both the Lemonade server and the harness's own
+          # fixture HTTP server live here, and a runner proxy would swallow them.
+          NO_PROXY: "localhost,127.0.0.1"
+          # The fixture server is the substitute for the open web; make an
+          # accidental real egress fail fast instead of silently succeeding.
+          GAIA_DYNAMIC_SKILLS: "0"
+        run: |
+          try {
+              .\installer\scripts\start-lemonade.ps1 `
+                  -ModelName "Gemma-4-E4B-it-GGUF" `
+                  -Port 13306 `
+                  -CtxSize 32768 `
+                  -InitWaitTime 15
+
+              python -m pytest tests/integration/eval/test_skill_behavior_e2e.py `
+                  -m real_model -v -rs --tb=short `
+                  --basetemp="${{ runner.temp }}\pytest-skill-behavior"
+              if ($LASTEXITCODE -ne 0) { throw "skill behaviour validation failed" }
+          }
+          finally {
+              if ($env:LEMONADE_PROCESS_ID) {
+                  Write-Host "Stopping Lemonade server (pid $env:LEMONADE_PROCESS_ID)..."
+                  Stop-Process -Id $env:LEMONADE_PROCESS_ID -Force -ErrorAction SilentlyContinue
+              }
+          }
+
+      # Uploaded on success AND failure. On success the manifest is the artifact
+      # to commit; on failure the transcripts are how you find out which run
+      # fabricated what.
+      - name: Upload manifest and transcripts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: skill-behavior-manifest
+          path: ${{ runner.temp }}/pytest-skill-behavior/**/artifacts/**
+          if-no-files-found: warn

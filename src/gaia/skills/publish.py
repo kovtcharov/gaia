@@ -13,14 +13,20 @@ The order matters, and each step gates the next:
    installed and no report was supplied, publish **stops** — it does not proceed
    un-audited. The hub gates ``community``/``verified`` on that report, so
    fabricating one would launder an unscanned skill past the gate.
-4. **Sign** the staged bundle with a publisher Ed25519 key, embedding
+4. **Behaviour-validate** (via :mod:`gaia.skills.behavior_gate`). The audit says
+   the skill is safe to run; this says it actually works. A skill with no record
+   that its tools ever executed against a real model is refused, because a body
+   the model silently ignores passes every static check and still ships broken.
+   The record is bound to the skill's ``content_digest``, so an edit invalidates
+   it — you cannot forget to re-validate.
+5. **Sign** the staged bundle with a publisher Ed25519 key, embedding
    ``SIGNATURE.json``. Signing is what a skill's tier rests on at install time:
    an unsigned bundle installs at ``experimental`` no matter what its front matter
    claims, so publishing ``community`` unsigned would ship a claim nobody honors —
    hence :func:`publish_skill` refuses that combination up front rather than
    letting the publisher find out from a user's install log.
-5. **Package** the signed directory into ``<name>-<version>.zip``.
-6. **Upload** to ``POST /publish/skill`` as multipart (``skill`` / ``artifact`` /
+6. **Package** the signed directory into ``<name>-<version>.zip``.
+7. **Upload** to ``POST /publish/skill`` as multipart (``skill`` / ``artifact`` /
    ``changelog`` / ``audit``) with a Bearer token — the contract from PR #2668.
 
 The Worker re-validates everything server-side; these checks exist so the
@@ -38,6 +44,8 @@ from typing import Any, Optional
 
 from gaia.logger import get_logger
 from gaia.skills.audit_gate import AuditReport, gate_for_publish
+from gaia.skills.behavior_gate import BehaviorRecord
+from gaia.skills.behavior_gate import gate_for_publish as behavior_gate_for_publish
 from gaia.skills.errors import SkillError, SkillValidationError
 from gaia.skills.format import SKILL_FILENAME, Skill, parse_skill_file, validate_skill
 from gaia.skills.hub import PublishRequest, Uploader, publish_url, upload_publish
@@ -75,6 +83,7 @@ class PublishResult:
     signed: bool
     key_id: str = ""
     audit: Optional[AuditReport] = None
+    behavior: Optional[BehaviorRecord] = None
     #: The Worker's JSON response body.
     response: dict[str, Any] = field(default_factory=dict)
     #: The exact multipart body that was sent (tests assert on its shape).
@@ -90,6 +99,7 @@ def publish_skill(
     publisher: str = "",
     unsigned: bool = False,
     audit_report: Optional[Path] = None,
+    behavior_report: Optional[Path] = None,
     keys_root: Optional[Path] = None,
     uploader: Optional[Uploader] = None,
     dry_run: bool = False,
@@ -107,6 +117,9 @@ def publish_skill(
         unsigned: Publish without a signature. Only legal for ``experimental``.
         audit_report: A pre-computed audit report to use instead of running the
             engine (for CI that audits in a separate step).
+        behavior_report: A behaviour-validation record for this skill, instead of
+            the manifest shipped with GAIA. Produced by
+            ``python -m gaia.eval.skill_behavior``.
         keys_root: Where signing keys live; defaults to the user skills root.
         uploader: Injected ``(url, request, token) -> response``.
         dry_run: Run every gate and build the request, but do not upload.
@@ -121,6 +134,7 @@ def publish_skill(
             ``experimental``, no token).
         SkillPermissionError: the skill declares an un-bridged local capability.
         SkillAuditUnavailableError / SkillAuditFailedError: the audit gate.
+        SkillBehaviorError: the skill has no current, passing behaviour record.
     """
     source = Path(directory).expanduser()
     if not source.is_dir():
@@ -157,6 +171,16 @@ def publish_skill(
     # ── The audit gate (#2468) — before signing or packaging, so a BLOCKed skill
     #    never even gets a signature.
     audit = gate_for_publish(source, skill_name=skill.name, report_path=audit_report)
+
+    # ── The behaviour gate — after the audit (a BLOCKed skill should hear about
+    #    the security finding first) and still before signing, so an unvalidated
+    #    skill never gets a signature either.
+    behavior = behavior_gate_for_publish(
+        source,
+        skill_name=skill.name,
+        version=str(skill.version),
+        report_path=behavior_report,
+    )
 
     key: Optional[SigningKey] = None
     if not unsigned:
@@ -201,6 +225,7 @@ def publish_skill(
         signed=key is not None,
         key_id=key.key_id if key is not None else "",
         audit=audit,
+        behavior=behavior,
         request=request,
     )
 

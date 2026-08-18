@@ -108,6 +108,10 @@ setup(
         "gaia.skills.audit",
     ],
     package_data={
+        # The behaviour-validation manifest the publish gate reads. Shipping it
+        # is what lets `gaia skill publish` refuse an unvalidated skill from a
+        # wheel install, not just from a checkout.
+        "gaia.skills": ["data/*.json"],
         "gaia.eval": [
             "webapp/*.json",
             "webapp/*.js",

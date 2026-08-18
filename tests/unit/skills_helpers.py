@@ -252,6 +252,45 @@ def write_audit_report(tmp_path: Path, payload: dict | None = None) -> Path:
     return path
 
 
+def passing_behavior_record(source: Path) -> dict:
+    """A behaviour record that clears the gate for the skill at ``source``.
+
+    Bound to the source's live digest and version on purpose — the gate refuses a
+    record earned on different bytes, so a hardcoded fixture would just fail
+    differently and hide what the gate actually checks.
+    """
+    from gaia.skills.audit.findings import content_digest
+    from gaia.skills.format import parse_skill_metadata
+
+    skill = parse_skill_metadata(Path(source))
+    return {
+        "skill": skill.name,
+        "status": "validated",
+        "reason": "",
+        "version": str(skill.version or ""),
+        "content_digest": content_digest(Path(source)),
+        "harness": "test-skill-behavior/0.1.0",
+        "validated_at": "2026-07-30T00:00:00+00:00",
+        "recorded_at": "2026-07-30T00:00:00+00:00",
+        "counts": {"true_success": 3},
+        "hard_fail": False,
+    }
+
+
+def write_behavior_report(tmp_path: Path, source: Path, payload: dict | None = None):
+    """Write a behaviour record JSON and return its path (``--behavior-report``)."""
+    import json
+
+    directory = Path(tmp_path)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"behavior-{Path(source).name}.json"
+    path.write_text(
+        json.dumps(payload if payload is not None else passing_behavior_record(source)),
+        "utf-8",
+    )
+    return path
+
+
 def make_key(tmp_path: Path, name: str = "publisher"):
     """Generate a publisher signing keypair rooted in ``tmp_path``."""
     from gaia.skills.signing import generate_key

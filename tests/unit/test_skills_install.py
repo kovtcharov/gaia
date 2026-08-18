@@ -37,7 +37,9 @@ from tests.unit.skills_helpers import (
     fake_hub,
     isolated_manager,
     make_key,
+    passing_behavior_record,
     write_audit_report,
+    write_behavior_report,
 )
 
 SKILL_BODY = """# Web Research
@@ -91,6 +93,13 @@ def marketplace(tmp_path):
         def publish(self, source, **kwargs):
             kwargs.setdefault("keys_root", self.skills_root)
             kwargs.setdefault("audit_report", self.audit)
+            # Publish also requires proof the skill's tools actually run
+            # (gaia.skills.behavior_gate). The record is bound to the source's
+            # bytes, so it is built per-source rather than once per fixture.
+            # Built lazily: setdefault would evaluate the default eagerly and
+            # overwrite a report the caller deliberately made fail.
+            if "behavior_report" not in kwargs:
+                kwargs["behavior_report"] = write_behavior_report(tmp_path, source)
             return publish_skill(
                 source,
                 token="test-token",
@@ -296,6 +305,96 @@ def test_publish_attaches_a_report_bound_to_what_it_audited(marketplace, tmp_pat
     assert sent["manifest_digest"].startswith("sha256:")
     # Findings must survive as JSON, not as engine dataclasses.
     assert isinstance(sent["findings"], list)
+
+
+# ---------------------------------------------------------------------------
+# The behaviour gate — GAIA publishes only skills proven to actually work
+# ---------------------------------------------------------------------------
+
+
+def test_publish_refuses_a_skill_with_no_behaviour_record(marketplace, tmp_path):
+    """A skill nobody validated must not reach the catalog.
+
+    The failure mode this closes: a skill whose body the model silently ignores
+    passes the audit (it is safe) and ships broken. "No record" must never be
+    read as "fine".
+    """
+    from gaia.skills.behavior_gate import SkillNotValidatedError
+
+    marketplace.keygen()
+    source = _write_source(tmp_path)
+
+    with pytest.raises(SkillNotValidatedError) as excinfo:
+        marketplace.publish(source, behavior_report=None)
+
+    message = str(excinfo.value)
+    assert "web-research" in message
+    assert (
+        "gaia.eval.skill_behavior" in message
+    ), "The refusal has to name the command that produces a record."
+    assert not marketplace.hub.publishes, "nothing may be uploaded when a gate refuses"
+
+
+@pytest.mark.parametrize("status", ["failed", "blocked", "unvalidated"])
+def test_publish_refuses_every_non_passing_behaviour_status(
+    marketplace, tmp_path, status
+):
+    """Blocked is not a pass. A skipped validation is not a validation."""
+    from gaia.skills.behavior_gate import SkillBehaviorFailedError
+
+    marketplace.keygen()
+    source = _write_source(tmp_path)
+    record = passing_behavior_record(source)
+    record["status"] = status
+    record["reason"] = "the harness could not reach a Gmail connector."
+
+    with pytest.raises(SkillBehaviorFailedError):
+        marketplace.publish(
+            source, behavior_report=write_behavior_report(tmp_path, source, record)
+        )
+    assert not marketplace.hub.publishes
+
+
+def test_publish_refuses_a_record_earned_on_different_bytes(marketplace, tmp_path):
+    """Editing a skill after validation must invalidate its verdict."""
+    from gaia.skills.behavior_gate import SkillBehaviorStaleError
+
+    marketplace.keygen()
+    source = _write_source(tmp_path)
+    report = write_behavior_report(tmp_path, source)
+
+    manifest = source / "SKILL.md"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8") + "\n\nOne more step.\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SkillBehaviorStaleError):
+        marketplace.publish(source, behavior_report=report)
+    assert not marketplace.hub.publishes
+
+
+def test_the_behaviour_gate_runs_before_the_bundle_is_signed(marketplace, tmp_path):
+    """An unvalidated skill must never acquire a signature it could be shipped with."""
+    from gaia.skills.behavior_gate import SkillNotValidatedError
+
+    marketplace.keygen()
+    source = _write_source(tmp_path)
+
+    with pytest.raises(SkillNotValidatedError):
+        marketplace.publish(source, behavior_report=None)
+
+    assert not (source / "SIGNATURE.json").exists()
+
+
+def test_a_validated_record_is_reported_back_to_the_publisher(marketplace, tmp_path):
+    marketplace.keygen()
+    source = _write_source(tmp_path)
+
+    result = marketplace.publish(source)
+
+    assert result.behavior is not None
+    assert result.behavior.validated
 
 
 @pytest.mark.parametrize("verdict", ["BLOCK", "REVIEW"])

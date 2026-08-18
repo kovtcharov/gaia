@@ -348,6 +348,13 @@ def _add_marketplace_subparsers(sub: argparse._SubParsersAction) -> None:
         help="Use this security-audit report JSON instead of running the audit engine",
     )
     p_publish.add_argument(
+        "--behavior-report",
+        default=None,
+        help="Use this behaviour-validation record instead of the manifest shipped "
+        "with GAIA. Produce one with 'python -m gaia.eval.skill_behavior "
+        "--skill <name> --output <file>'.",
+    )
+    p_publish.add_argument(
         "--dry-run",
         action="store_true",
         help="Run every gate and build the upload, but do not send it",
@@ -928,6 +935,7 @@ def _handle_publish(args: argparse.Namespace) -> int:
         publisher=args.publisher,
         unsigned=args.unsigned,
         audit_report=Path(args.audit_report) if args.audit_report else None,
+        behavior_report=(Path(args.behavior_report) if args.behavior_report else None),
         dry_run=args.dry_run,
     )
 
@@ -941,6 +949,11 @@ def _handle_publish(args: argparse.Namespace) -> int:
         print(
             f"   audit       : {result.audit.verdict} "
             f"({result.audit.engine}, {len(result.audit.findings)} finding(s))"
+        )
+    if result.behavior is not None:
+        print(
+            f"   behaviour   : {result.behavior.status} "
+            f"({result.behavior.harness}, validated {result.behavior.validated_at})"
         )
     published = (result.response or {}).get("published") or {}
     if published.get("latest_version"):

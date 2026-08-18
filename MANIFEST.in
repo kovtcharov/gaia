@@ -4,6 +4,9 @@
 # Include all JSON files in the interface directory
 include src/gaia/interface/*.json
 
+# Skill behaviour-validation manifest — the publish gate refuses without it
+include src/gaia/skills/data/*.json
+
 # Include all files in the img directory
 include src/gaia/interface/img/*
 
