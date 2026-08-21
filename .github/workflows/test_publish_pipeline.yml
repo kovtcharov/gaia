@@ -68,11 +68,15 @@ jobs:
       - name: Run the pipeline harness
         run: python util/verify_publish_pipeline.py
 
-      # The publisher's own unit tests: the by-reference lane, the threshold,
+      # The publishers' own unit tests: the by-reference lane, the threshold,
       # and the credential guards. Fast, and they catch a signature change the
-      # harness would only reach at runtime.
+      # harness would only reach at runtime. BOTH copies — email's tests say
+      # nothing about the gaia flagship's separate script, which is the one that
+      # gates the flagship release.
       - name: Publisher unit tests
         run: |
           python -m pip install --upgrade pytest
           PYTHONPATH="hub/agents/email/python:src" \
             python -m pytest hub/agents/email/python/tests/test_publish_to_r2_by_reference.py -q
+          PYTHONPATH="hub/agents/gaia/python:src" \
+            python -m pytest hub/agents/gaia/python/tests/test_publish_to_r2_by_reference.py -q
