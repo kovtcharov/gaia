@@ -266,13 +266,23 @@ against this package's `API_VERSION`. A differing major is a breaking contract
 change and raises `VersionMismatchError`. A higher minor with the same major is a
 backward-compatible addition and is accepted.
 
-### 5.4 No caller-auth token
+### 5.4 Caller-auth token
 
-The email sidecar authenticates callers with a per-session bearer minted into
-`GAIA_EMAIL_SIDECAR_TOKEN`. `gaia_agent` has **no equivalent** at 0.1.0, so
-this package mints and sends nothing. When the sidecar grows one, it lands here as
-a spawn-time env var and a request header — a change to this section, not a new
-subsystem.
+The sidecar authenticates callers the same way the email sidecar does: a
+per-session bearer token, required on every `/v1/gaia/*` request
+(`Authorization: Bearer <token>`) whenever the spawning parent delivered one.
+The daemon mints the token and delivers it via `GAIA_GAIA_SIDECAR_TOKEN_FILE`
+(a 0600, owner-only file — the preferred channel) or `GAIA_GAIA_SIDECAR_TOKEN`
+(legacy, directly in the environment). The attach-handshake probes —
+`/health`, `/version`, `/v1/gaia/version` — are exempt, so a host can probe
+liveness and contract before it holds the token. A sidecar spawned with
+neither env var runs **without** token auth and logs a loud warning — local
+development only; Host/Origin enforcement applies in every mode.
+
+This npm package itself mints and sends nothing: `gaia run` reaches the agent
+through the daemon relay (which holds the sidecar bearer), and `gaia serve`
+spawns the sidecar without a token — the unauthenticated dev posture above,
+protected by loopback binding and Host/Origin checks only.
 
 ---
 

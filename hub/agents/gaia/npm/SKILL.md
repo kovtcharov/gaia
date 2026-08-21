@@ -294,10 +294,13 @@ Rules a client must respect:
 
 Read this before you design a workflow around it.
 
-Three of the agent's 55 tools write to disk or execute a command, and sit in the
-base `TOOLS_REQUIRING_CONFIRMATION` set: **`write_file`**, **`edit_file`**, and
-**`run_shell_command`**. Everything else — reading, indexing, querying, web
-fetching, memory — runs without asking.
+Five of the agent's 67 tools are confirmation-gated. Three write to disk or
+execute a command and sit in the base `TOOLS_REQUIRING_CONFIRMATION` set:
+**`write_file`**, **`edit_file`**, and **`run_shell_command`**. Two more are
+the agent's own additions (`CONFIRMATION_REQUIRED_TOOLS`): **`install_skill`**
+and **`remove_skill`** — installing a skill writes third-party code under
+`~/.gaia/skills` and removing one deletes it. Everything else — reading,
+indexing, querying, web fetching, memory — runs without asking.
 
 Over `/v1/gaia/query` there is **no way to collect an approval**, so the stream
 does not prompt. When the agent reaches one of those tools it emits a
@@ -314,7 +317,8 @@ data: {"type":"needs_confirmation","run_id":"…","action":"write_file","summary
 data: {"type":"final","answer":"I stopped before running 'write_file' because it needs your explicit approval, and this streaming surface cannot collect that yet. …"}
 ```
 
-So: **`/query` cannot write files, edit files, or run shell commands.** If your
+So: **`/query` cannot write files, edit files, run shell commands, or
+install/remove skills.** If your
 integration needs that, drive the agent from a surface that can prompt (the
 terminal UI or the Agent UI), or perform the mutation yourself from your own code
 and let the agent do the reading and reasoning. Treat `needs_confirmation` as an
@@ -339,7 +343,7 @@ from gaia_agent.agent import GaiaAgent, GaiaAgentConfig
 agent = GaiaAgent(config=GaiaAgentConfig(allowed_paths=["/home/me/Documents"]))
 ```
 
-## 10. Skills — opt-in, and empty in 0.1.0
+## 10. Skills — `gaia-voice` always-on, task sets opt-in
 
 The agent is built to host **Agent Skills** (short playbooks loaded into its own
 prompt, grouped into named sets, one set active per launch), and its bundled
@@ -355,17 +359,26 @@ threshold. Manifest `skills:` entries are always-on and never collapse. If the
 embedder is unavailable, selection disables itself for the session and every
 body renders — capability is never silently lost to a failed match.
 
-**Nothing ships enabled in 0.1.0.** The bundled skill library is empty, and
-`gaia-agent.yaml` ships its `skills:` / `skill_sets:` / `default_skill_set:`
-blocks **commented out** — following the email agent's precedent, because skill
-bodies cost prompt tokens and no eval has measured that trade for this agent yet.
-Re-enabling is uncommenting two blocks; no code change.
+**One skill ships always-on: `gaia-voice`.** The bundled library ships it, and
+`gaia-agent.yaml` declares it in a live `skills:` list, so it loads into every
+prompt. It is not a task recipe but the agent's honesty floor — do not claim
+work you did not do, do not present empty output as a result, do not substitute
+a near-miss and report success. It declares no tools, and its measured ~676-token
+body is the only always-on prompt cost.
 
-So today: no skill set loads, and there is nothing for `GAIA_SKILL_SET` to
-select — leave it unset. Once a release declares sets, `GAIA_SKILL_SET` is the
+**Task skill sets stay opt-in.** The manifest's `skill_sets:` /
+`default_skill_set:` blocks remain **commented out** — following the email
+agent's precedent, because task-skill bodies cost prompt tokens and no eval has
+measured that trade for this agent yet. Re-enabling is uncommenting those
+blocks; no code change.
+
+So today: `gaia-voice` is loaded, no task skill set loads, and there is nothing
+for `GAIA_SKILL_SET` to select — leave it unset. Once a release declares sets,
+`GAIA_SKILL_SET` is the
 selection channel for the packaged sidecar (its CLI has no `--skill-set` flag),
 and an undeclared name raises naming the valid sets rather than falling back to a
-default. Do not document or design around skills being on by default.
+default. Do not document or design around task skills being on by default —
+`gaia-voice` is the one deliberate exception.
 
 ## 11. Ports
 
@@ -408,16 +421,22 @@ There is no silent null.
   reachable"** means Lemonade isn't running or isn't reachable — not a bug in
   this package. Start it, or set `LEMONADE_BASE_URL`.
 - **`needs_confirmation` is followed by a refusal and the run ends.** See §8.
-  `write_file` / `edit_file` / `run_shell_command` are unreachable over `/query`.
+  `write_file` / `edit_file` / `run_shell_command` / `install_skill` /
+  `remove_skill` are unreachable over `/query`.
 - **A placeholder hash in `binaries.lock.json` blocks the fetch before any
   network call.** Between releases that is the *expected* state — it is not a
   broken install, and there is no override.
 - **No `linux-arm64` / `win32-arm64` sidecar.** The TUI has both. A `PlatformError`
   on those hosts is the design, not a missing artifact.
-- **There is no caller-auth token at 0.1.0.** Unlike `@amd-gaia/agent-email`, this
-  sidecar mints none and this package sends none — don't add an `Authorization`
-  header looking for one, and don't rely on its absence as a security boundary.
-  Loopback binding is what protects it.
+- **The sidecar enforces a per-session caller-auth token when spawned with
+  one.** Like `@amd-gaia/agent-email`, every `/v1/gaia/*` request needs
+  `Authorization: Bearer <token>` when the spawning parent delivered a token
+  via `GAIA_GAIA_SIDECAR_TOKEN_FILE` (a 0600 file — preferred) or
+  `GAIA_GAIA_SIDECAR_TOKEN`; the daemon always does. Only `/health`,
+  `/version`, and `/v1/gaia/version` are exempt. A sidecar spawned with
+  neither env var (this package's `gaia serve` path) runs without token auth
+  and logs a loud dev-only warning — Host/Origin checks still apply, but
+  don't rely on loopback binding as the security boundary in the daemon path.
 - **`run_id` must be a UUID**, and unknown fields in the request body are a
   **422** — the model forbids extras. Typos don't get ignored.
 - **`gaia run` needs the *Python* `gaia` CLI on `PATH`** — the TUI shells out to
