@@ -10,8 +10,15 @@ Run it with no arguments::
     python util/verify_publish_pipeline.py
 
 It boots ``workers/agent-hub`` under ``wrangler dev`` with Miniflare's simulated
-R2, drives ``hub/agents/email/python/packaging/publish_to_r2.py`` against it, and
-asserts on behaviour. Exit code is 0 only if every case passes.
+R2, drives BOTH copies of ``publish_to_r2.py`` against it -- the email agent's
+and the gaia flagship's -- and asserts on behaviour. Exit code is 0 only if every
+case passes for every publisher. Narrow it with ``--publisher gaia``.
+
+The two publishers are separate files with separate CLI shapes (gaia's
+``--artifact`` takes ``=<component>:<platform>`` and its summary records the
+component that routes ``binaries.lock.json``'s two lanes). Every case below runs
+against both, so a fix that lands in one copy and not the other is a FAIL here
+rather than a dead release.
 
 WHAT THIS PROVES
 ----------------
@@ -32,11 +39,14 @@ G  The same pre-flight refuses to start when boto3 is missing, before storing
    anything -- credentials alone are not enough to make the upload possible.
 H  ``--require-new`` turns "this run stored nothing new" into a hard failure,
    while the default stays lenient with a warning that says so.
-I  The platform key and executable name are derived from the artifact filename
-   rather than hardcoded to one product. Both are load-bearing:
-   release_agent_gaia.yml passes its binaries with no explicit
-   ``=<platform-key>``, and release_agent_email.yml feeds this summary into
-   gen_binaries_lock.py, which reads ``executable`` straight out of it.
+I  The platform key, component, and executable name are derived from the
+   artifact filename rather than hardcoded. All are load-bearing:
+   release_agent_gaia.yml passes its binaries with no explicit key, and both
+   release workflows feed this summary into gen_binaries_lock.py, which reads
+   ``executable`` (and, for gaia, ``component``) straight out of it.
+J  A 409 that is NOT ``version_exists`` (the Worker has four) stays a hard
+   failure -- reconciling one against the R2 object would report a green release
+   the hub never recorded.
 
 WHAT THIS CANNOT PROVE
 ----------------------
@@ -73,20 +83,67 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WORKER_DIR = REPO_ROOT / "workers" / "agent-hub"
-PUBLISHER = REPO_ROOT / "hub/agents/email/python/packaging/publish_to_r2.py"
 
-# Must match DIRECT_UPLOAD_THRESHOLD in publish_to_r2.py. Asserted at startup so
-# a change there fails here loudly instead of silently testing the wrong lane.
+# Must match DIRECT_UPLOAD_THRESHOLD in each publisher. Asserted at startup so a
+# change there fails here loudly instead of silently testing the wrong lane.
 DIRECT_UPLOAD_THRESHOLD = 90 * 1024 * 1024
 
-AGENT_ID = "zz-pipeline-test"
 PUBLISH_TOKEN = "zz-local-verify-token"
+
+
+@dataclass(frozen=True)
+class Flavor:
+    """One publisher script and the CLI shape it expects.
+
+    There are two divergent copies of publish_to_r2.py -- the email agent's and
+    the gaia flagship's -- and only the gaia one gates the flagship release. Both
+    are driven here, through the same cases, so a fix that lands in one and not
+    the other shows up as a FAIL rather than as a broken release.
+    """
+
+    name: str
+    publisher: Path
+    agent_id: str
+    #: Artifact filename stem prefix. gaia's publisher infers the component from
+    #: it and refuses anything else, so the fixtures must be named for the lane.
+    file_prefix: str
+    #: What ``=<key>`` suffix this publisher's --artifact takes for a platform.
+    platform_key: Callable[[str], str]
+    #: Component field expected in the summary records ("" = none emitted).
+    component: str
+
+    def artifact(self, path: Path, platform: str) -> str:
+        return f"{path}={self.platform_key(platform)}"
+
+
+FLAVORS = {
+    f.name: f
+    for f in (
+        Flavor(
+            name="email",
+            publisher=REPO_ROOT / "hub/agents/email/python/packaging/publish_to_r2.py",
+            agent_id="zz-pipeline-test-email",
+            file_prefix="email-agent-",
+            platform_key=lambda p: p,
+            component="",
+        ),
+        Flavor(
+            name="gaia",
+            publisher=REPO_ROOT / "hub/agents/gaia/python/packaging/publish_to_r2.py",
+            agent_id="zz-pipeline-test-gaia",
+            file_prefix="gaia-agent-",
+            platform_key=lambda p: f"sidecar:{p}",
+            component="sidecar",
+        ),
+    )
+}
 
 # Never a real account: any boto3 call that escapes to the network dies on an
 # untrusted host rather than authenticating against Cloudflare.
@@ -312,21 +369,21 @@ class Worker:
             raise SystemExit(f"error: seeding {key} failed: HTTP {status} {body!r}")
         return json.loads(body)
 
-    def manifest(self) -> dict | None:
-        status, body = _http(f"{self.base_url}/agents/{AGENT_ID}/manifest.json")
+    def manifest(self, agent_id: str) -> dict | None:
+        status, body = _http(f"{self.base_url}/agents/{agent_id}/manifest.json")
         return json.loads(body) if status == 200 else None
 
-    def versions(self) -> list[str]:
-        m = self.manifest()
+    def versions(self, agent_id: str) -> list[str]:
+        m = self.manifest(agent_id)
         return sorted(m["versions"]) if m else []
 
-    def artifacts(self, version: str) -> list[str]:
-        m = self.manifest()
+    def artifacts(self, agent_id: str, version: str) -> list[str]:
+        m = self.manifest(agent_id)
         entry = (m or {}).get("versions", {}).get(version)
         return sorted(a["filename"] for a in entry["artifacts"]) if entry else []
 
-    def download(self, version: str, filename: str) -> tuple[int, bytes]:
-        return _http(f"{self.base_url}/agents/{AGENT_ID}/{version}/{filename}")
+    def download(self, agent_id: str, version: str, filename: str) -> tuple[int, bytes]:
+        return _http(f"{self.base_url}/agents/{agent_id}/{version}/{filename}")
 
 
 # ---------------------------------------------------------------------------
@@ -366,16 +423,40 @@ class Run:
 @dataclass
 class Ctx:
     worker: Worker
+    flavor: Flavor
     tmp: Path
     dist: Path
     no_boto_runner: Path
     manifests: dict[str, Path] = field(default_factory=dict)
 
+    # Fixture filenames. gaia's publisher infers the component from the stem and
+    # refuses a name it does not own, so these follow the lane under test.
+    @property
+    def linux(self) -> str:
+        return f"{self.flavor.file_prefix}linux-x64"
+
+    @property
+    def darwin(self) -> str:
+        return f"{self.flavor.file_prefix}darwin-arm64"
+
+    @property
+    def win(self) -> str:
+        return f"{self.flavor.file_prefix}win32-x64.exe"
+
+    def versions(self) -> list[str]:
+        return self.worker.versions(self.flavor.agent_id)
+
+    def artifacts(self, version: str) -> list[str]:
+        return self.worker.artifacts(self.flavor.agent_id, version)
+
+    def download(self, version: str, filename: str) -> tuple[int, bytes]:
+        return self.worker.download(self.flavor.agent_id, version, filename)
+
     def manifest_for(self, version: str) -> Path:
         if version not in self.manifests:
-            path = self.tmp / f"gaia-agent-{version}.yaml"
+            path = self.tmp / f"{self.flavor.name}-agent-{version}.yaml"
             path.write_text(
-                f"id: {AGENT_ID}\n"
+                f"id: {self.flavor.agent_id}\n"
                 "name: ZZ Pipeline Test\n"
                 f"version: {version}\n"
                 "description: Throwaway component used by util/verify_publish_pipeline.py.\n"
@@ -420,7 +501,7 @@ class Ctx:
         if block_boto3:
             cmd.append(str(self.no_boto_runner))
         cmd += [
-            str(PUBLISHER),
+            str(self.flavor.publisher),
             "--base-url",
             self.worker.base_url,
             "--manifest",
@@ -466,27 +547,27 @@ SIBLING = b"SMALL-SIBLING" * 1000
 # and this local file are the same artifact.
 OVERSIZED = b"BIG" + b"C" * (DIRECT_UPLOAD_THRESHOLD - 3)
 
-LINUX = f"{AGENT_ID}-linux-x64"
-DARWIN = f"{AGENT_ID}-darwin-arm64"
-WIN = f"{AGENT_ID}-win-x64.exe"
-
 
 def case_a(c: Ctx) -> str:
-    path, sha = c.write_artifact(LINUX, SMALL)
-    run, summary = c.publish("0.0.1", [f"{path}=linux-x64"], summary="a.json")
+    path, sha = c.write_artifact(c.linux, SMALL)
+    run, summary = c.publish(
+        "0.0.1", [c.flavor.artifact(path, "linux-x64")], summary="a.json"
+    )
     assert run.returncode == 0, f"expected exit 0, got {run.returncode}\n{run.output}"
     assert run.says("ok 201"), f"expected a 201 publish\n{run.output}"
-    status, body = c.worker.download("0.0.1", LINUX)
+    status, body = c.download("0.0.1", c.linux)
     assert status == 200, f"artifact not downloadable: HTTP {status}"
     assert _sha256(body) == sha, "downloaded bytes do not match the published sha256"
     assert summary and summary[0]["sha256"] == sha, "summary sha256 mismatch"
-    assert c.worker.artifacts("0.0.1") == [LINUX], "catalog does not list the artifact"
+    assert c.artifacts("0.0.1") == [c.linux], "catalog does not list the artifact"
     return f"201, downloaded {len(body)} bytes, sha256 {sha[:12]}... matches"
 
 
 def case_b(c: Ctx) -> str:
-    path, sha = c.write_artifact(LINUX, SMALL)
-    run, summary = c.publish("0.0.1", [f"{path}=linux-x64"], summary="b.json")
+    path, sha = c.write_artifact(c.linux, SMALL)
+    run, summary = c.publish(
+        "0.0.1", [c.flavor.artifact(path, "linux-x64")], summary="b.json"
+    )
     assert run.returncode == 0, f"expected exit 0, got {run.returncode}\n{run.output}"
     assert run.says(
         "409", "identical bytes"
@@ -497,8 +578,10 @@ def case_b(c: Ctx) -> str:
 
 def case_c(c: Ctx) -> str:
     published_sha, published_size = _sha256(SMALL), len(SMALL)
-    path, local_sha = c.write_artifact(LINUX, REBUILD)
-    run, summary = c.publish("0.0.1", [f"{path}=linux-x64"], summary="c.json")
+    path, local_sha = c.write_artifact(c.linux, REBUILD)
+    run, summary = c.publish(
+        "0.0.1", [c.flavor.artifact(path, "linux-x64")], summary="c.json"
+    )
     assert run.returncode == 0, f"expected exit 0, got {run.returncode}\n{run.output}"
     assert "::warning::" in run.output, f"expected a ::warning::\n{run.output}"
     assert summary, "no summary written"
@@ -517,9 +600,12 @@ def case_c(c: Ctx) -> str:
 
 
 def case_d(c: Ctx) -> str:
-    path, _ = c.write_artifact(LINUX, REBUILD)
+    path, _ = c.write_artifact(c.linux, REBUILD)
     run, summary = c.publish(
-        "0.0.1", [f"{path}=linux-x64"], extra=["--strict-immutable"], summary="d.json"
+        "0.0.1",
+        [c.flavor.artifact(path, "linux-x64")],
+        extra=["--strict-immutable"],
+        summary="d.json",
     )
     assert run.returncode != 0, f"expected a non-zero exit\n{run.output}"
     assert run.says("immutable", "bump the version"), f"wrong error\n{run.output}"
@@ -529,25 +615,28 @@ def case_d(c: Ctx) -> str:
 
 def _assert_nothing_published(c: Ctx, version: str, names: list[str]) -> None:
     assert (
-        version not in c.worker.versions()
+        version not in c.versions()
     ), f"version {version} exists in the catalog -- something WAS published"
     for n in names:
-        status, _ = c.worker.download(version, n)
+        status, _ = c.download(version, n)
         assert status == 404, f"{n} is downloadable (HTTP {status}) -- it was published"
 
 
 def case_e(c: Ctx) -> str:
-    sibling, _ = c.write_artifact(DARWIN, SIBLING)
-    big, _ = c.write_artifact(WIN, OVERSIZED)
+    sibling, _ = c.write_artifact(c.darwin, SIBLING)
+    big, _ = c.write_artifact(c.win, OVERSIZED)
     run, summary = c.publish(
         "0.0.2",
-        [f"{sibling}=darwin-arm64", f"{big}=win-x64"],
+        [
+            c.flavor.artifact(sibling, "darwin-arm64"),
+            c.flavor.artifact(big, "win32-x64"),
+        ],
         creds=False,
         summary="e.json",
     )
     assert run.returncode != 0, f"expected a non-zero exit\n{run.output}"
     assert (
-        WIN in run.output
+        c.win in run.output
     ), f"the error does not name the offending file\n{run.output}"
     assert run.says(
         "nothing has been published"
@@ -556,7 +645,7 @@ def case_e(c: Ctx) -> str:
         "pro"
     ), f"the error should note Pro does not raise the cap\n{run.output}"
     assert summary is None, "a summary was written for a failed run"
-    _assert_nothing_published(c, "0.0.2", [DARWIN, WIN])
+    _assert_nothing_published(c, "0.0.2", [c.darwin, c.win])
     return "non-zero exit, names the file, catalog untouched (small sibling included)"
 
 
@@ -599,50 +688,54 @@ def _post_by_reference(
 
 
 def case_f(c: Ctx) -> str:
-    big, sha = c.write_artifact(WIN, OVERSIZED)
-    seeded = c.worker.seed(f"agents/{AGENT_ID}/0.0.3/{WIN}", len(OVERSIZED))
+    big, sha = c.write_artifact(c.win, OVERSIZED)
+    seeded = c.worker.seed(f"agents/{c.flavor.agent_id}/0.0.3/{c.win}", len(OVERSIZED))
     assert (
         seeded["sha256"] == sha
     ), f"seeded object hashes to {seeded['sha256']}, local file {sha}"
-    sibling, _ = c.write_artifact(DARWIN, SIBLING)
+    sibling, _ = c.write_artifact(c.darwin, SIBLING)
     run, _ = c.publish(
         "0.0.3",
-        [f"{sibling}=darwin-arm64", f"{big}=win-x64"],
+        [
+            c.flavor.artifact(sibling, "darwin-arm64"),
+            c.flavor.artifact(big, "win32-x64"),
+        ],
         creds=True,
         summary="f.json",
     )
     assert run.returncode == 0, f"expected exit 0, got {run.returncode}\n{run.output}"
     assert run.says("already in r2"), f"expected the no-overwrite path\n{run.output}"
-    assert c.worker.artifacts("0.0.3") == sorted(
-        [DARWIN, WIN]
+    assert c.artifacts("0.0.3") == sorted(
+        [c.darwin, c.win]
     ), "catalog is missing an artifact"
-    status, body = c.worker.download("0.0.3", WIN)
+    status, body = c.download("0.0.3", c.win)
     assert (
         status == 200 and _sha256(body) == sha
     ), "by-reference artifact is not served intact"
 
     # The verification must be real, not a rubber stamp: a wrong claimed hash for
     # a correctly-seeded object has to be refused.
-    c.worker.seed(f"agents/{AGENT_ID}/0.0.9/{WIN}", len(OVERSIZED))
+    c.worker.seed(f"agents/{c.flavor.agent_id}/0.0.9/{c.win}", len(OVERSIZED))
     wrong_but_well_formed = "de" + "ad" * 31  # 64 hex chars: passes the shape check
-    status, body = _post_by_reference(c, "0.0.9", WIN, wrong_but_well_formed)
+    status, body = _post_by_reference(c, "0.0.9", c.win, wrong_but_well_formed)
     assert (
         status == 409 and b"artifact_mismatch" in body
     ), f"a wrong claimed sha256 was NOT rejected: HTTP {status} {body[:300]!r}"
-    assert (
-        "0.0.9" not in c.worker.versions()
-    ), "the rejected publish still touched the catalog"
+    assert "0.0.9" not in c.versions(), "the rejected publish still touched the catalog"
     return (
         f"201 by reference ({len(OVERSIZED)} bytes verified); a bad claimed hash -> 409"
     )
 
 
 def case_g(c: Ctx) -> str:
-    sibling, _ = c.write_artifact(DARWIN, SIBLING)
-    big, _ = c.write_artifact(WIN, OVERSIZED)
+    sibling, _ = c.write_artifact(c.darwin, SIBLING)
+    big, _ = c.write_artifact(c.win, OVERSIZED)
     run, summary = c.publish(
         "0.0.4",
-        [f"{sibling}=darwin-arm64", f"{big}=win-x64"],
+        [
+            c.flavor.artifact(sibling, "darwin-arm64"),
+            c.flavor.artifact(big, "win32-x64"),
+        ],
         creds=True,
         block_boto3=True,
         summary="g.json",
@@ -650,27 +743,32 @@ def case_g(c: Ctx) -> str:
     assert run.returncode != 0, f"expected a non-zero exit\n{run.output}"
     assert run.says("boto3"), f"the error does not mention boto3\n{run.output}"
     assert (
-        WIN in run.output
+        c.win in run.output
     ), f"the error does not name the offending file\n{run.output}"
     assert summary is None, "a summary was written for a failed run"
-    _assert_nothing_published(c, "0.0.4", [DARWIN, WIN])
+    _assert_nothing_published(c, "0.0.4", [c.darwin, c.win])
     return "non-zero exit before storing anything, names boto3 and the file"
 
 
 def case_h(c: Ctx) -> str:
-    before = c.worker.artifacts("0.0.1")
+    before = c.artifacts("0.0.1")
     assert before, "case H needs a published version; run it after case A"
-    path, _ = c.write_artifact(LINUX, SMALL)
+    path, _ = c.write_artifact(c.linux, SMALL)
 
     strict, _ = c.publish(
-        "0.0.1", [f"{path}=linux-x64"], extra=["--require-new"], summary="h1.json"
+        "0.0.1",
+        [c.flavor.artifact(path, "linux-x64")],
+        extra=["--require-new"],
+        summary="h1.json",
     )
     assert strict.returncode != 0, (
         f"--require-new accepted a run that stored nothing (exit {strict.returncode})\n"
         f"{strict.output}"
     )
 
-    lenient, _ = c.publish("0.0.1", [f"{path}=linux-x64"], summary="h2.json")
+    lenient, _ = c.publish(
+        "0.0.1", [c.flavor.artifact(path, "linux-x64")], summary="h2.json"
+    )
     assert (
         lenient.returncode == 0
     ), f"expected exit 0 without the flag\n{lenient.output}"
@@ -679,35 +777,99 @@ def case_h(c: Ctx) -> str:
     assert lenient.says(
         "::warning::", "nothing new was stored"
     ), f"a run that stored nothing should say so\n{lenient.output}"
-    assert c.worker.artifacts("0.0.1") == before, "the catalog changed"
+    assert c.artifacts("0.0.1") == before, "the catalog changed"
     return "--require-new -> non-zero; default -> exit 0 + 'nothing new was stored'"
 
 
 def case_i(c: Ctx) -> str:
     """The platform key and executable name are derived, not hardcoded.
 
-    Both matter beyond cosmetics: release_agent_gaia.yml passes its binaries with
-    no explicit ``=<platform-key>``, and release_agent_email.yml feeds this
-    summary into gen_binaries_lock.py, which reads ``rec["executable"]``.
+    Both matter beyond cosmetics: the release workflows pass their binaries with
+    no explicit key, and feed this summary into gen_binaries_lock.py, which reads
+    ``rec["executable"]`` and (for gaia) ``rec["component"]`` straight out of it.
+
+    The email publisher accepts any ``<product>-agent-<platform>`` name, so it is
+    checked against BOTH products' filenames -- that cross-product case is what
+    caught the name being pinned to one product. The gaia publisher owns exactly
+    one component and refuses a name it does not own, so it is checked on its own
+    filenames plus the ``.exe`` suffix rule.
     """
-    gaia, _ = c.write_artifact("gaia-agent-linux-x64", SIBLING)
-    email, _ = c.write_artifact("email-agent-win32-x64.exe", SIBLING + b"x")
-    # Deliberately NO "=platform" -- inference is half of what this proves.
-    run, summary = c.publish("0.0.5", [str(gaia), str(email)], summary="i.json")
+    if c.flavor.name == "email":
+        names = ["gaia-agent-linux-x64", "email-agent-win32-x64.exe"]
+        expected = {
+            "gaia-agent-linux-x64": ("linux-x64", "gaia-agent"),
+            "email-agent-win32-x64.exe": ("win32-x64", "email-agent.exe"),
+        }
+    else:
+        names = ["gaia-agent-linux-x64", "gaia-agent-win32-x64.exe"]
+        expected = {
+            "gaia-agent-linux-x64": ("linux-x64", "gaia-agent"),
+            "gaia-agent-win32-x64.exe": ("win32-x64", "gaia-agent.exe"),
+        }
+    paths = [c.write_artifact(n, SIBLING + bytes([i]))[0] for i, n in enumerate(names)]
+    # Deliberately NO "=<key>" -- inference is half of what this proves.
+    run, summary = c.publish("0.0.5", [str(p) for p in paths], summary="i.json")
     assert run.returncode == 0, f"expected exit 0, got {run.returncode}\n{run.output}"
     assert summary, "no summary written"
     got = {r["filename"]: (r["platform"], r["executable"]) for r in summary}
-    expected = {
-        "gaia-agent-linux-x64": ("linux-x64", "gaia-agent"),
-        "email-agent-win32-x64.exe": ("win32-x64", "email-agent.exe"),
-    }
     assert (
         got == expected
     ), f"derived names wrong:\n  got      {got}\n  expected {expected}"
+    if c.flavor.component:
+        components = {r.get("component") for r in summary}
+        assert components == {c.flavor.component}, (
+            f"summary components {components} != {{{c.flavor.component!r}}} -- "
+            "gen_binaries_lock.py routes lanes on this field"
+        )
     assert (
         "_published" not in summary[0]
     ), "the internal _published flag leaked into the summary"
-    return "gaia-agent-linux-x64 -> gaia-agent; email-agent-win32-x64.exe -> email-agent.exe"
+    pairs = ", ".join(f"{n} -> {expected[n][1]}" for n in names)
+    return pairs
+
+
+def case_j(c: Ctx) -> str:
+    """A 409 that is NOT ``version_exists`` stays a hard failure.
+
+    The Worker returns 409 for four different reasons and only ``version_exists``
+    means "already published". The other three say the catalog was NOT modified,
+    so reconciling them against the R2 object the way case B does would report a
+    green release the hub never recorded.
+
+    Reached the way it happens for real: R2 holds the object (so the publisher
+    skips its upload) but the bytes are not this build's, so the by-reference
+    claim does not match what R2 recorded.
+    """
+    same_size_other_bytes = b"BAD" + OVERSIZED[3:].replace(b"C", b"D", 1)
+    assert len(same_size_other_bytes) == len(OVERSIZED), "fixture size drifted"
+    c.worker.seed(f"agents/{c.flavor.agent_id}/0.0.6/{c.win}", len(OVERSIZED))
+    big, local_sha = c.write_artifact(c.win, same_size_other_bytes)
+    assert local_sha != _sha256(OVERSIZED), "fixture bytes are not actually different"
+
+    run, summary = c.publish(
+        "0.0.6",
+        [c.flavor.artifact(big, "win32-x64")],
+        creds=True,
+        summary="j.json",
+    )
+    assert run.returncode != 0, f"expected a non-zero exit\n{run.output}"
+    assert run.says(
+        "artifact_mismatch"
+    ), f"the error does not name the Worker's 409 code\n{run.output}"
+    assert run.says(
+        "not", "already"
+    ), f"the error should say this is NOT 'already published'\n{run.output}"
+    assert not run.says(
+        "idempotent no-op"
+    ), f"a non-version_exists 409 was reconciled as a no-op\n{run.output}"
+    assert summary is None, "a summary was written for a failed run"
+    # Only the CATALOG: the seeded object is still in the bucket by construction,
+    # and the download route serves straight from R2. "Not published" means the
+    # hub never recorded the version, which is what a release ships from.
+    assert (
+        "0.0.6" not in c.versions()
+    ), "the rejected publish still recorded a version in the catalog"
+    return "409 artifact_mismatch -> non-zero exit, catalog untouched"
 
 
 CASES = [
@@ -720,21 +882,22 @@ CASES = [
     ("G", "oversized pre-flight, boto3 missing", case_g),
     ("H", "--require-new when a run stores nothing", case_h),
     ("I", "platform key + executable name are derived", case_i),
+    ("J", "a non-version_exists 409 stays a hard failure", case_j),
 ]
 
 
-def _read_threshold() -> int:
-    """Read DIRECT_UPLOAD_THRESHOLD out of the publisher without importing it."""
+def _read_threshold(publisher: Path) -> int:
+    """Read DIRECT_UPLOAD_THRESHOLD out of a publisher without importing it."""
     import ast
 
-    tree = ast.parse(PUBLISHER.read_text(encoding="utf-8"))
+    tree = ast.parse(publisher.read_text(encoding="utf-8"))
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
             isinstance(t, ast.Name) and t.id == "DIRECT_UPLOAD_THRESHOLD"
             for t in node.targets
         ):
             return int(eval(compile(ast.Expression(node.value), "<t>", "eval")))
-    raise SystemExit("error: DIRECT_UPLOAD_THRESHOLD not found in publish_to_r2.py")
+    raise SystemExit(f"error: DIRECT_UPLOAD_THRESHOLD not found in {publisher}")
 
 
 def main(argv=None) -> int:
@@ -748,21 +911,40 @@ def main(argv=None) -> int:
         help="Run only these cases, e.g. --only ACF. Default: all.",
     )
     parser.add_argument(
+        "--publisher",
+        metavar="NAMES",
+        default=",".join(FLAVORS),
+        help="Comma-separated publishers to drive: "
+        f"{', '.join(FLAVORS)}. Default: all.",
+    )
+    parser.add_argument(
         "--keep-temp",
         action="store_true",
         help="Leave the temp dir (fixtures + wrangler log) in place for debugging.",
     )
     args = parser.parse_args(argv)
 
-    if not PUBLISHER.exists():
-        raise SystemExit(f"error: publisher not found at {PUBLISHER}")
-    threshold = _read_threshold()
-    if threshold != DIRECT_UPLOAD_THRESHOLD:
-        raise SystemExit(
-            f"error: publish_to_r2.py's DIRECT_UPLOAD_THRESHOLD is {threshold}, but this "
-            f"harness builds its oversized fixture at {DIRECT_UPLOAD_THRESHOLD}. Update "
-            "DIRECT_UPLOAD_THRESHOLD in this file so cases E/F/G still test the right lane."
-        )
+    flavors = []
+    for name in (n.strip() for n in args.publisher.split(",") if n.strip()):
+        if name not in FLAVORS:
+            raise SystemExit(
+                f"error: unknown publisher {name!r}. Known: {', '.join(FLAVORS)}."
+            )
+        flavors.append(FLAVORS[name])
+    if not flavors:
+        raise SystemExit("error: --publisher selected nothing to run.")
+
+    for flavor in flavors:
+        if not flavor.publisher.exists():
+            raise SystemExit(f"error: publisher not found at {flavor.publisher}")
+        threshold = _read_threshold(flavor.publisher)
+        if threshold != DIRECT_UPLOAD_THRESHOLD:
+            raise SystemExit(
+                f"error: {flavor.publisher}'s DIRECT_UPLOAD_THRESHOLD is {threshold}, "
+                f"but this harness builds its oversized fixture at "
+                f"{DIRECT_UPLOAD_THRESHOLD}. Update DIRECT_UPLOAD_THRESHOLD in this "
+                "file so cases E/F/G still test the right lane."
+            )
 
     selected = [c for c in CASES if not args.only or c[0] in args.only.upper()]
     tmp = Path(tempfile.mkdtemp(prefix="zz-verify-publish-"))
@@ -774,18 +956,31 @@ def main(argv=None) -> int:
         runner.write_text(NO_BOTO_RUNNER, encoding="utf-8")
 
         try:
+            # One Worker for every flavor: each publishes under its own agent id,
+            # so the catalogs never collide, and booting wrangler is the slow part.
             with Worker(tmp) as worker:
-                ctx = Ctx(worker=worker, tmp=tmp, dist=dist, no_boto_runner=runner)
-                for letter, title, fn in selected:
-                    print(f"\n=== {letter}. {title} ===", flush=True)
-                    try:
-                        detail = fn(ctx)
-                        results.append((letter, title, True, detail))
-                        print(f"  PASS  {detail}", flush=True)
-                    except AssertionError as e:
-                        first = str(e).split("\n")[0]
-                        results.append((letter, title, False, first))
-                        print(f"  FAIL  {e}", flush=True)
+                for flavor in flavors:
+                    print(
+                        f"\n########## publisher: {flavor.name} ##########", flush=True
+                    )
+                    ctx = Ctx(
+                        worker=worker,
+                        flavor=flavor,
+                        tmp=tmp,
+                        dist=dist,
+                        no_boto_runner=runner,
+                    )
+                    for letter, title, fn in selected:
+                        tag = f"{flavor.name}/{letter}"
+                        print(f"\n=== {tag}. {title} ===", flush=True)
+                        try:
+                            detail = fn(ctx)
+                            results.append((tag, title, True, detail))
+                            print(f"  PASS  {detail}", flush=True)
+                        except AssertionError as e:
+                            first = str(e).split("\n")[0]
+                            results.append((tag, title, False, first))
+                            print(f"  FAIL  {e}", flush=True)
         except Skip as e:
             print(f"\nSKIPPED: {e}.")
             print(
