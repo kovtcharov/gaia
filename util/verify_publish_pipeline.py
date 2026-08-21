@@ -24,14 +24,17 @@ There are two ``publish_to_r2.py`` scripts and they are different programs::
         release_agent_gaia.yml
 
 Proving one says NOTHING about the other, which is why this runs both by default
-and labels every row with the publisher it came from. They differ today in more
-than plumbing: the gaia copy has no direct-to-R2 lane (it refuses anything at the
-request-body cap and tells you to port one), still hard-fails a differing
-rebuild, takes ``<component>:<platform>`` artifact keys rather than
-``<platform>``, and has neither opt-in flag. Those differences live in ``SPECS``;
-a case needing a capability a publisher lacks is reported **N/A**, never passed.
-When the R2 lane is ported to the gaia publisher, flip its ``direct_r2`` and
-``lenient_rebuild`` and the relevant cases start applying to it.
+and labels every row with the publisher it came from. They carry the same
+behaviours today -- the gaia copy gained the direct-to-R2 lane, the lenient
+rebuild, and both opt-in flags when the 120 MB Linux sidecar outgrew the Worker
+-- and differ only in plumbing: gaia takes ``<component>:<platform>`` artifact
+keys rather than ``<platform>``, and tags each summary record with the component
+that routes ``binaries.lock.json``'s two lanes.
+
+That parity is asserted, not assumed. Each publisher's capabilities live in
+``SPECS``; a case needing one a publisher lacks is reported **N/A**, never
+passed, so a copy that falls behind shows up as coverage it does not have rather
+than as a green row.
 
 WHAT THIS PROVES
 ----------------
@@ -58,8 +61,12 @@ I  The platform key and executable name are derived from the artifact filename
    release_agent_email.yml feeds this summary into gen_binaries_lock.py, which
    reads ``executable`` straight out of it.
 J  A publisher WITHOUT a direct-to-R2 lane refuses an oversized artifact at the
-   cap rather than 413ing mid-release. This is the gaia release's live blocker:
-   its Linux sidecar is ~120 MB.
+   cap rather than 413ing mid-release. N/A for both publishers now that gaia has
+   the lane; it guards the next publisher added here.
+K  A 409 that is NOT ``version_exists`` stays a hard failure. Case F proves the
+   Worker rejects a wrong claimed hash; this proves the publisher does not then
+   reconcile that rejection into success -- which would exit 0 on a release the
+   catalog never recorded.
 
 WHAT THIS CANNOT PROVE
 ----------------------
@@ -68,7 +75,9 @@ WHAT THIS CANNOT PROVE
   deliberately bogus credentials that never authenticate anywhere.
 * That boto3's SigV4 request is accepted by REAL R2. Miniflare records whatever
   checksum it is handed; real R2 computes its own and can reject the request
-  shape (see the ``when_required`` checksum note in publish_to_r2.py).
+  shape (see the ``when_required`` checksum note in publish_to_r2.py). Only a
+  real publish settles this: gaia 0.1.1 put a 122 MB Linux sidecar through the
+  lane and the Worker verified it, so the shape is known-good as of that release.
 * Real artifact sizes. The oversized fixture is a synthetic 90 MiB file, not the
   ~120 MB sidecar or the ~135 MB Agent UI installers.
 * The macOS PyInstaller freeze legs, the Cloudflare WAF behaviour that forces
@@ -119,8 +128,9 @@ BOGUS_R2 = {
     "CLOUDFLARE_ACCOUNT_ID": "zz-local-bogus-account",
 }
 
-# gaia's own dev API. Binding it would kill a running session.
-FORBIDDEN_PORTS = {4001}
+# gaia's own dev API and the Agent UI's Vite dev server. Binding either would
+# kill a running session.
+FORBIDDEN_PORTS = {4001, 5173}
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
 
@@ -167,10 +177,10 @@ SPECS = {
             ("email-agent-win32-x64.exe", "win32-x64", "email-agent.exe"),
         ),
     ),
-    # A separate 367-line script. It has NONE of the email publisher's fixes: no
-    # direct-to-R2 lane (it hard-fails at the cap and tells you to port one), the
-    # old hard-failure on a differing rebuild, and neither opt-in flag. Its
-    # artifact key is <component>:<platform>, not <platform>.
+    # A separate script that now carries the same behaviours as the email copy
+    # (ported when the Linux sidecar outgrew the Worker), plus two of its own:
+    # oversized artifacts publish FIRST so a bad R2 token cannot leave smaller
+    # platforms stored immutably, and its artifact key is <component>:<platform>.
     "gaia": Spec(
         key="gaia",
         path=REPO_ROOT / "hub/agents/gaia/python/packaging/publish_to_r2.py",
@@ -832,9 +842,10 @@ def case_i(c: Ctx) -> str:
 def case_j(c: Ctx) -> str:
     """A publisher with no direct-to-R2 lane must refuse an oversized artifact.
 
-    This is the gaia release's real blocker: the Linux sidecar is ~120 MB against
-    a publisher that stops at the cap. When the lane is ported, flip ``direct_r2``
-    on the spec and cases E/F/G take over from this one.
+    N/A for both publishers today -- it was the gaia release's live blocker until
+    the lane was ported, and cases E/F/G took over. Kept because "refuse at the
+    cap" is the only correct behaviour for a publisher that cannot upload
+    directly, and the next one added here starts out that way.
     """
     sibling, _ = c.write_artifact(DARWIN, SIBLING)
     big, _ = c.write_artifact(WIN, OVERSIZED)
@@ -851,6 +862,62 @@ def case_j(c: Ctx) -> str:
     assert run.says("cap"), f"the error should name the request-body cap\n{run.output}"
     assert summary is None, "a summary was written for a failed run"
     return "non-zero exit at the request-body cap, as this publisher has no R2 lane"
+
+
+def case_k(c: Ctx) -> str:
+    """A 409 that is NOT ``version_exists`` must stay a hard failure.
+
+    The Worker answers 409 for four different reasons and only ``version_exists``
+    means "already published". ``artifact_mismatch``, ``artifact_unverifiable``
+    and ``id_conflict`` all say the catalog was NOT modified. Reconciling one of
+    those against the R2 object the way case B does would exit 0 on a release the
+    hub never recorded -- green CI, nothing published, and a lock describing an
+    artifact no catalog entry points at.
+
+    Case F proves the WORKER rejects a wrong claimed hash. This proves the
+    PUBLISHER does not then talk itself back into success. Reached the way it
+    happens for real: R2 already holds the object, so the publisher skips its
+    upload, but the stored bytes are not this build's.
+    """
+    stored = c.worker.seed(f"agents/{AGENT_ID}/0.0.7/{WIN}", len(OVERSIZED))
+    # Same length, different bytes: isolates the hash check from the size check.
+    rebuilt = b"BAD" + OVERSIZED[3:]
+    assert len(rebuilt) == len(OVERSIZED), "fixture size drifted"
+    big, claimed = c.write_artifact(WIN, rebuilt)
+    assert claimed != stored["sha256"], "fixture bytes are not actually different"
+
+    run, summary = c.publish(
+        "0.0.7", [c.arg(big, "win-x64")], creds=True, summary="k.json"
+    )
+
+    vs = (
+        f"publisher claimed sha256={claimed[:12]}…, "
+        f"hub stored sha256={stored['sha256'][:12]}…"
+    )
+    assert run.returncode != 0, (
+        f"the publisher exited 0 on a 409 the Worker REJECTED ({vs}). The catalog "
+        f"recorded nothing, so this release reports green and ships nothing.\n"
+        f"{run.output}"
+    )
+    assert run.says("artifact_mismatch"), (
+        f"the failure does not name the Worker's 409 code ({vs}), so an operator "
+        f"cannot tell it apart from 'already published'\n{run.output}"
+    )
+    assert not run.says("idempotent no-op"), (
+        f"a REJECTED 409 was reconciled as an already-published no-op ({vs})\n"
+        f"{run.output}"
+    )
+    assert summary is None, (
+        f"a summary was written for a publish the hub refused ({vs}) -- "
+        "gen_binaries_lock.py would build a lock from it"
+    )
+    # Only the CATALOG. The seeded object is still in the bucket by construction
+    # and the download route serves straight from R2; "not published" means the
+    # hub never recorded the version, which is what a release ships from.
+    assert (
+        "0.0.7" not in c.worker.versions()
+    ), f"the rejected publish still recorded a version in the catalog ({vs})"
+    return f"409 artifact_mismatch -> non-zero exit, catalog untouched ({vs})"
 
 
 # (letter, title, fn, required capability). A case whose capability the selected
@@ -872,6 +939,7 @@ CASES = [
     ("H", "--require-new when a run stores nothing", case_h, "require_new_flag"),
     ("I", "platform key + executable name are derived", case_i, None),
     ("J", "oversized refused (no direct-to-R2 lane)", case_j, "!direct_r2"),
+    ("K", "a non-version_exists 409 stays a hard failure", case_k, "direct_r2"),
 ]
 
 
