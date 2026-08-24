@@ -93,3 +93,89 @@ export async function resolvePlatform(nav: NavigatorLike): Promise<PlatformKey |
 export function artifactName(platform: PlatformKey): string {
   return platform.startsWith('win-') ? `gaia-${platform}.exe` : `gaia-${platform}`;
 }
+
+// ---- One-click installers ----
+//
+// The raw binaries above are the payload; these are the installers that wrap
+// them. `.github/workflows/build-flagship-installers.yml` builds one per
+// platform, bundles the frozen agent sidecar and (on Windows) Lemonade Server,
+// and uploads them to the GitHub Release. The names below are that workflow's
+// artifact contract — a mismatch is not a build failure anywhere, it is a
+// visitor who never sees the installer and gets handed a bare binary instead.
+
+/** Platforms an installer is published for. The agent sidecar is only frozen
+ *  for these four, so win-arm64 and linux-arm64 have no installer to offer. */
+export const INSTALLER_PLATFORMS = [
+  'win-x64',
+  'darwin-arm64',
+  'darwin-x64',
+  'linux-x64',
+] as const;
+
+export type InstallerPlatform = (typeof INSTALLER_PLATFORMS)[number];
+
+export interface InstallerAssetSpec {
+  /** What the visitor is downloading, e.g. "Installer (.exe)". */
+  label: string;
+  pattern: RegExp;
+}
+
+// Anchored, and the character after `gaia-` must be a digit — that is what
+// keeps these from matching the raw binaries (`gaia-win-x64.exe`) or the Agent
+// UI's own installers (`gaia-agent-ui-0.23.0-x64-setup.exe`), which share the
+// release and the prefix.
+const VER = String.raw`\d[\w.]*`;
+
+// String.raw on every pattern below is load-bearing: a plain template literal
+// collapses `\.` to `.`, which turns the extension separator into "any
+// character" and lets a near-miss filename match.
+
+export const INSTALLER_ASSETS: Record<InstallerPlatform, InstallerAssetSpec[]> = {
+  'win-x64': [
+    { label: 'Installer (.exe)', pattern: new RegExp(String.raw`^gaia-${VER}-x64-setup\.exe$`, 'i') },
+  ],
+  'darwin-arm64': [
+    { label: 'Disk image (.dmg)', pattern: new RegExp(String.raw`^gaia-${VER}-arm64\.dmg$`, 'i') },
+  ],
+  'darwin-x64': [
+    { label: 'Disk image (.dmg)', pattern: new RegExp(String.raw`^gaia-${VER}-x64\.dmg$`, 'i') },
+  ],
+  'linux-x64': [
+    { label: 'Debian package (.deb)', pattern: new RegExp(String.raw`^gaia-${VER}-x64\.deb$`, 'i') },
+    { label: 'AppImage', pattern: new RegExp(String.raw`^gaia-${VER}-x64\.AppImage$`, 'i') },
+  ],
+};
+
+export interface ReleaseAssetLike {
+  name: string;
+  browser_download_url: string;
+}
+
+export interface InstallerDownload {
+  label: string;
+  name: string;
+  url: string;
+}
+
+/**
+ * The installers a release publishes for one platform, in preference order.
+ *
+ * Empty means "no installer for this visitor" — either the platform has no
+ * installer lane, or the release predates the installer. The caller keeps the
+ * raw-binary list in that case rather than rendering a dead button.
+ */
+export function findInstallers(
+  platform: PlatformKey,
+  assets: ReleaseAssetLike[],
+): InstallerDownload[] {
+  const specs = INSTALLER_ASSETS[platform as InstallerPlatform];
+  if (!specs) return [];
+  const found: InstallerDownload[] = [];
+  for (const spec of specs) {
+    const asset = assets.find((a) => spec.pattern.test(a.name));
+    if (asset) {
+      found.push({ label: spec.label, name: asset.name, url: asset.browser_download_url });
+    }
+  }
+  return found;
+}

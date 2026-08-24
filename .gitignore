@@ -213,6 +213,11 @@ release_info.json
 # Lemonade MSI downloaded at build time (issue #774)
 installer/lemonade-server-minimal.msi
 
+# Flagship installer build outputs — the staged payload is ~110 MB of published
+# binaries fetched from the hub, and the installers themselves are larger still.
+installer/tui/payload/
+dist-installer/
+
 # version
 version.txt
 **/version.nsh

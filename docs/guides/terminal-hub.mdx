@@ -14,15 +14,17 @@ cd tui && make build     # -> tui/bin/gaia
 ./tui/bin/gaia
 ```
 
-<Warning>
-  The hub binary is **not yet published** — `release_components.yml` builds and
-  publishes it as the `terminal-hub` hub component (all six platform/arch targets,
-  cross-compiled from one Go toolchain), but no version has been tagged and released
-  yet. `pip install amd-gaia` does not provide it, and the Python CLI has no `tui`
-  subcommand (`gaia tui` exits 2 today). Building from source
-  (`cd tui && make build`) remains the only way to get it until the first tag lands.
-  Once a version is live, this page will name the download instead.
-</Warning>
+<Info>
+  **Building from source is the developer path, not the only one.** `terminal-hub`
+  0.23.0 is published as a hub component for all six platform/arch targets. Most
+  people should take the [one-click installer](/guides/install-agent) instead — it
+  installs this binary *and* the flagship agent behind it, on `PATH`, with the local
+  model server set up. `npx @amd-gaia/gaia` does the same without an installer.
+
+  Downloading the bare `gaia-<os>-<arch>` binary from the hub gets you the terminal UI
+  alone: no `PATH` entry, and no agent to talk to. `pip install amd-gaia` still does
+  not provide it, and the Python CLI has no `tui` subcommand (`gaia tui` exits 2).
+</Info>
 
 <Info>
   The Terminal Hub and the [Agent UI](/guides/agent-ui) are two front ends over the

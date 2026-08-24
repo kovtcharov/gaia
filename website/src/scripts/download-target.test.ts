@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   artifactName,
   detectOs,
+  findInstallers,
   resolveArch,
   resolvePlatform,
   type NavigatorLike,
@@ -108,5 +109,79 @@ describe('artifactName', () => {
     expect(artifactName('win-arm64')).toBe('gaia-win-arm64.exe');
     expect(artifactName('darwin-arm64')).toBe('gaia-darwin-arm64');
     expect(artifactName('linux-x64')).toBe('gaia-linux-x64');
+  });
+});
+
+describe('findInstallers', () => {
+  // A real release carries the flagship installers, the Agent UI's installers,
+  // and the raw terminal-hub binaries side by side under the same `gaia-`
+  // prefix. Matching the wrong one hands the visitor a different product.
+  const asset = (name: string) => ({
+    name,
+    browser_download_url: `https://github.com/amd/gaia/releases/download/v0.23.0/${name}`,
+  });
+
+  const RELEASE = [
+    asset('gaia-0.1.1-x64-setup.exe'),
+    asset('gaia-0.1.1-arm64.dmg'),
+    asset('gaia-0.1.1-x64.dmg'),
+    asset('gaia-0.1.1-x64.deb'),
+    asset('gaia-0.1.1-x64.AppImage'),
+    asset('gaia-agent-ui-0.23.0-x64-setup.exe'),
+    asset('gaia-agent-ui-0.23.0-arm64.dmg'),
+    asset('gaia-win-x64.exe'),
+    asset('gaia-darwin-arm64'),
+    asset('gaia-linux-x64'),
+  ];
+
+  it('resolves the flagship installer for each supported platform', () => {
+    expect(findInstallers('win-x64', RELEASE).map((i) => i.name)).toEqual([
+      'gaia-0.1.1-x64-setup.exe',
+    ]);
+    expect(findInstallers('darwin-arm64', RELEASE).map((i) => i.name)).toEqual([
+      'gaia-0.1.1-arm64.dmg',
+    ]);
+    expect(findInstallers('darwin-x64', RELEASE).map((i) => i.name)).toEqual([
+      'gaia-0.1.1-x64.dmg',
+    ]);
+  });
+
+  it('offers the .deb first and the AppImage second on Linux', () => {
+    expect(findInstallers('linux-x64', RELEASE).map((i) => i.name)).toEqual([
+      'gaia-0.1.1-x64.deb',
+      'gaia-0.1.1-x64.AppImage',
+    ]);
+  });
+
+  it('never matches the Agent UI installer or a raw binary', () => {
+    const decoysOnly = RELEASE.filter((a) => !/^gaia-\d/.test(a.name));
+    for (const platform of ['win-x64', 'darwin-arm64', 'darwin-x64', 'linux-x64'] as const) {
+      expect(findInstallers(platform, decoysOnly)).toEqual([]);
+    }
+  });
+
+  it('returns nothing for platforms with no frozen sidecar', () => {
+    expect(findInstallers('win-arm64', RELEASE)).toEqual([]);
+    expect(findInstallers('linux-arm64', RELEASE)).toEqual([]);
+  });
+
+  // The separator dots must be ESCAPED. A plain template literal collapses `\.`
+  // to `.`, and the patterns then match any character there — which is how a
+  // near-miss filename gets offered to a visitor as the real installer.
+  it('treats the extension separator as a literal dot, not a wildcard', () => {
+    const nearMisses = [
+      asset('gaia-0.1.1-x64Xdeb'),
+      asset('gaia-0.1.1-arm64-dmg'),
+      asset('gaia-0.1.1-x64-setup-exe'),
+      asset('gaia-0.1.1-x64_AppImage'),
+    ];
+    expect(findInstallers('linux-x64', nearMisses)).toEqual([]);
+    expect(findInstallers('darwin-arm64', nearMisses)).toEqual([]);
+    expect(findInstallers('win-x64', nearMisses)).toEqual([]);
+  });
+
+  it('returns nothing for a release cut before the installers existed', () => {
+    const old = [asset('gaia-agent-ui-0.23.0-x64-setup.exe'), asset('gaia-win-x64.exe')];
+    expect(findInstallers('win-x64', old)).toEqual([]);
   });
 });
