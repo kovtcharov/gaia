@@ -180,6 +180,23 @@ describe('findInstallers', () => {
     expect(findInstallers('win-x64', nearMisses)).toEqual([]);
   });
 
+  // The workflow publishes -rc./-beta. tags, so a prerelease artifact name has to
+  // match its own contract — otherwise the button silently drops to the raw binary
+  // on exactly the releases we most want to test.
+  it('matches a prerelease version', () => {
+    const rc = [
+      asset('gaia-0.2.0-rc.1-x64-setup.exe'),
+      asset('gaia-0.2.0-rc.1-arm64.dmg'),
+      asset('gaia-0.2.0-rc.1-x64.AppImage'),
+    ];
+    expect(findInstallers('win-x64', rc).map((i) => i.name)).toEqual([
+      'gaia-0.2.0-rc.1-x64-setup.exe',
+    ]);
+    expect(findInstallers('darwin-arm64', rc).map((i) => i.name)).toEqual([
+      'gaia-0.2.0-rc.1-arm64.dmg',
+    ]);
+  });
+
   it('returns nothing for a release cut before the installers existed', () => {
     const old = [asset('gaia-agent-ui-0.23.0-x64-setup.exe'), asset('gaia-win-x64.exe')];
     expect(findInstallers('win-x64', old)).toEqual([]);

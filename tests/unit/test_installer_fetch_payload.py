@@ -191,3 +191,49 @@ def test_a_missing_lock_says_how_to_get_one(tmp_path):
         fetch_payload.stage(tmp_path / "nope.json", "win32-x64", tmp_path / "payload")
 
     assert "npm pack @amd-gaia/gaia" in str(excinfo.value)
+
+
+def test_an_executable_that_is_a_path_is_refused(lock_file, served, tmp_path):
+    """`executable` is joined onto --dest before any digest exists to trust."""
+    served(_bodies)
+    lock = _lock()
+    lock["components"]["tui"]["platforms"]["win32-x64"][
+        "executable"
+    ] = "../../escaped.exe"
+
+    with pytest.raises(fetch_payload.PayloadError) as excinfo:
+        fetch_payload.stage(lock_file(lock), "win32-x64", tmp_path / "payload")
+
+    assert "is a path, not a filename" in str(excinfo.value)
+    assert not (tmp_path / "escaped.exe").exists()
+
+
+@pytest.mark.parametrize("field", ["filename", "executable", "sha256"])
+def test_a_missing_required_field_is_an_actionable_error_not_a_traceback(
+    lock_file, served, tmp_path, field
+):
+    served(_bodies)
+    lock = _lock()
+    del lock["components"]["tui"]["platforms"]["win32-x64"][field]
+
+    # PayloadError, not KeyError — main() only translates the former into
+    # an ::error:: line.
+    with pytest.raises(fetch_payload.PayloadError) as excinfo:
+        fetch_payload.stage(lock_file(lock), "win32-x64", tmp_path / "payload")
+
+    assert field in str(excinfo.value)
+
+
+def test_main_reports_a_bad_lock_as_an_error_line_and_exits_nonzero(
+    lock_file, capsys, tmp_path
+):
+    lock = _lock()
+    del lock["components"]["tui"]["platforms"]["win32-x64"]["sha256"]
+    path = lock_file(lock)
+
+    code = fetch_payload.main(
+        ["--lock", str(path), "--platform", "win32-x64", "--dest", str(tmp_path / "p")]
+    )
+
+    assert code == 1
+    assert "::error::" in capsys.readouterr().err
