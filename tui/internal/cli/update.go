@@ -374,6 +374,10 @@ var updateStatusCmd = &cobra.Command{
 		fmt.Fprintf(out, "TUI          %s\n             %s\n", orDash(st.TUIVersion), st.TUIPath)
 		if st.SidecarVersion != "" {
 			fmt.Fprintf(out, "Sidecar      %s\n             %s\n", st.SidecarVersion, st.SidecarPath)
+		} else if st.SidecarPath != "" {
+			// Installed by something that writes no version record (the one-click
+			// installer). Saying "unknown" beats a blank line that reads as a bug.
+			fmt.Fprintf(out, "Sidecar      unknown version — installing a release will name it\n             %s\n", st.SidecarPath)
 		} else {
 			fmt.Fprintf(out, "Sidecar      %s\n", st.SidecarNote)
 		}

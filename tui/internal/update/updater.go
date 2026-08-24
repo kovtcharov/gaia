@@ -696,6 +696,13 @@ func (u *Updater) writeSidecarSentinel(version, executable string) error {
 	path := filepath.Join(u.opts.SidecarDir, sentinelName)
 	fields := map[string]any{}
 	raw, err := os.ReadFile(path) // #nosec G304 -- path is derived from the user's home dir
+	// A directory the one-click installer owns has no sentinel to begin with;
+	// writing a fresh one still serves the reason this record exists, which is
+	// that the version on disk must not be reported stale.
+	if errors.Is(err, fs.ErrNotExist) {
+		raw, err = []byte("{}"), nil
+		fields["id"] = SidecarAgentID
+	}
 	if err != nil {
 		return fmt.Errorf(
 			"the sidecar was replaced but its install record at %s could not be read "+
@@ -731,6 +738,19 @@ type installedRecord struct {
 	Executable string `json:"executable"`
 }
 
+// sidecarExecutableOnDisk names the sidecar binary sitting in SidecarDir, or ""
+// when there is none. The one-click installer leaves a binary and no sentinel.
+func (u *Updater) sidecarExecutableOnDisk() string {
+	name := "gaia-agent"
+	if u.opts.GOOS == "windows" {
+		name += ".exe"
+	}
+	if _, err := os.Stat(filepath.Join(u.opts.SidecarDir, name)); err == nil {
+		return name
+	}
+	return ""
+}
+
 // sidecarRecord reads the flagship sidecar's install record, or explains why
 // there is none. A missing sidecar is a normal state, not a failure — the
 // updater refreshes what is installed and never installs an agent behind the
@@ -739,6 +759,13 @@ func (u *Updater) sidecarRecord() (*installedRecord, string) {
 	path := filepath.Join(u.opts.SidecarDir, sentinelName)
 	raw, err := os.ReadFile(path) // #nosec G304 -- path is derived from the user's home dir
 	if errors.Is(err, fs.ErrNotExist) {
+		// Only the daemon's installer writes this sentinel. The one-click
+		// installer does not, so the binary itself is the install record there
+		// -- reporting "not installed" over a working binary would refuse to
+		// update the very copy that runs.
+		if exe := u.sidecarExecutableOnDisk(); exe != "" {
+			return &installedRecord{ID: SidecarAgentID, Executable: exe}, ""
+		}
 		return nil, "not installed — `gaia tui install " + SidecarAgentID + "` installs it"
 	}
 	if err != nil {
