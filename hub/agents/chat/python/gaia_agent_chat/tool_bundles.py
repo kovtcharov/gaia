@@ -337,10 +337,14 @@ FULL_BUNDLES = [
             {
                 "search_skill_hub",
                 "install_skill",
+                "capture_skill",
                 "remove_skill",
             }
         ),
-        description="Search the Agent Hub for new skills, install and remove them.",
+        description=(
+            "Search the Agent Hub for new skills, install, capture "
+            "(paste/URL/folder), and remove them."
+        ),
     ),
     ToolBundle(
         name="shell",
@@ -420,6 +424,7 @@ FULL_OPTIONAL_TOOLS = frozenset(
         "skill_status",
         "search_skill_hub",
         "install_skill",
+        "capture_skill",
         "remove_skill",
     }
 )
