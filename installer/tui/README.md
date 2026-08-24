@@ -83,24 +83,45 @@ included) until `gaia-tui update unpin`.
 
 ## Platform status
 
-| Platform | Artifact                     | Built and installed on a real machine? |
-| -------- | ---------------------------- | -------------------------------------- |
-| Windows  | `nsis/installer.nsi`         | Yes — built, installed, uninstalled     |
-| macOS    | `macos/build-dmg.sh`         | No — written and wired into CI, never run |
-| Linux    | `linux/build-deb.sh`, `linux/build-appimage.sh` | No — same |
+| Platform | Artifact                | Size  | Build | Install | PATH | TUI + hub | Uninstall |
+| -------- | ----------------------- | ----- | ----- | ------- | ---- | --------- | --------- |
+| Windows  | `gaia-<v>-x64-setup.exe`| 57 MB | yes   | yes     | yes  | yes       | clean     |
+| Ubuntu   | `gaia-<v>-x64.deb`      | 60 MB | yes   | yes     | yes  | yes       | clean     |
+| Ubuntu   | `gaia-<v>-x64.AppImage` | 128 MB| yes   | n/a     | n/a  | runs      | n/a       |
+| macOS    | `gaia-<v>-<arch>.dmg`   | —     | **unverified** | — | — | —  | —         |
 
-Only the Windows leg has been exercised end to end. The macOS and Linux scripts
-are wired into `.github/workflows/build-flagship-installers.yml` and are the
-first thing to verify on a machine of each kind before a release claims them.
+Windows was exercised on this machine; Ubuntu 24.04 in a container, from build
+through `apt remove`. Both reach the hub screen with GAIA listed as **Installed**
+and no Python CLI present.
 
-Whatever the format, the load-bearing property is the same on every platform:
-**both** binaries must land somewhere on `PATH`. The `.deb` symlinks them into
-`/usr/bin` for exactly this reason — the terminal UI finds its agent with
+**macOS is unverified and cannot be verified from Windows or Linux** — `hdiutil`
+is macOS-only, and PyInstaller cannot cross-compile the sidecar. The script is
+syntax- and shellcheck-clean and refuses a missing payload with an actionable
+error, but nothing has run it. It needs a Mac. Two things to watch there first:
+the `.command` file is itself quarantined when it arrives inside a downloaded
+DMG, so the first launch needs right-click → Open (the shipped README.txt says
+so); and arm64 macOS *kills* unsigned binaries rather than warning, so the
+sidecar's ad-hoc signature is load-bearing until notarization lands.
+
+Whatever the format, the load-bearing property is the same everywhere: **both**
+binaries must land on `PATH`. The `.deb` symlinks them into `/usr/bin` for
+exactly this reason — the terminal UI finds its agent with
 `exec.LookPath("gaia-agent")`, so a package that installs only `gaia-tui` gives
 you a UI that cannot start the agent.
 
 `installer/scripts/install.sh` (the `curl | sh` one-liner) still installs
 `gaia-tui` without `gaia-agent`, so it has that gap today.
+
+### Two things that only fail off Windows
+
+Both were found by actually running the Linux build, and neither is visible from
+a Windows checkout:
+
+- **CRLF.** A `.sh` committed with Windows line endings dies on its first line
+  (`$'\r': command not found`). `*.sh text eol=lf` in `.gitattributes` now
+  prevents it.
+- **The executable bit.** The workflow invokes these scripts by path, and they
+  were committed `100644`. Fixed with `git update-index --chmod=+x`.
 
 ## Uninstall
 
