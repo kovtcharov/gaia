@@ -51,8 +51,9 @@ type Options struct {
 	TUIVersion string
 	// TUIPath is the binary to replace. Defaults to os.Executable().
 	TUIPath string
-	// SidecarDir holds the flagship agent's binary. Defaults to
-	// <GaiaDir>/agents/gaia.
+	// SidecarDir holds the flagship agent's binary. Defaults to the directory
+	// the running TUI is in when a sidecar sits beside it, else
+	// <GaiaDir>/agents/gaia. See resolveSidecarDir.
 	SidecarDir string
 	// Env reads the environment. Defaults to os.Getenv.
 	Env func(string) string
@@ -95,9 +96,6 @@ func New(opts Options) (*Updater, error) {
 		}
 		opts.GaiaDir = filepath.Join(home, ".gaia")
 	}
-	if opts.SidecarDir == "" {
-		opts.SidecarDir = filepath.Join(opts.GaiaDir, "agents", SidecarAgentID)
-	}
 	if opts.TUIPath == "" {
 		exe, err := os.Executable()
 		if err != nil {
@@ -112,7 +110,34 @@ func New(opts Options) (*Updater, error) {
 		}
 		opts.TUIPath = exe
 	}
+	if opts.SidecarDir == "" {
+		opts.SidecarDir = resolveSidecarDir(opts.TUIPath, opts.GaiaDir, opts.GOOS)
+	}
 	return &Updater{opts: opts}, nil
+}
+
+// resolveSidecarDir picks the sidecar this machine will actually run.
+//
+// Two installers put it in different places: the daemon and @amd-gaia/gaia
+// stage it at ~/.gaia/agents/gaia, while the one-click installer puts it beside
+// gaia-tui and on PATH. The TUI resolves `gaia-agent` with exec.LookPath first
+// (catalog.resolveAgentBinary), so with both present the colocated one wins --
+// and updating the other would report success while the binary that runs stays
+// on the old version.
+func resolveSidecarDir(tuiPath, gaiaDir, goos string) string {
+	hubDir := filepath.Join(gaiaDir, "agents", SidecarAgentID)
+	if tuiPath == "" {
+		return hubDir
+	}
+	beside := filepath.Dir(tuiPath)
+	name := "gaia-agent"
+	if goos == "windows" {
+		name += ".exe"
+	}
+	if _, err := os.Stat(filepath.Join(beside, name)); err == nil {
+		return beside
+	}
+	return hubDir
 }
 
 // GaiaDir is where this updater keeps its state.
