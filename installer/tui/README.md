@@ -123,6 +123,26 @@ you a UI that cannot start the agent.
 `installer/scripts/install.sh` (the `curl | sh` one-liner) still installs
 `gaia-tui` without `gaia-agent`, so it has that gap today.
 
+### Verified without cutting a release
+
+Things that would otherwise only be found by a real release, checked here instead:
+
+- **The download button flips.** Serving the built site with the GitHub Releases
+  response faked, a Windows visitor gets *"Download GAIA for Windows (x64)"* →
+  `gaia-<v>-x64-setup.exe`, and the raw binaries collapse to "Advanced". With a
+  release carrying **only** the Agent UI's installer, the button correctly stays
+  on the raw binary rather than handing the visitor a different product.
+- **The artifact names agree across three places** — `build.ps1`, the Linux and
+  macOS scripts, and `website/src/scripts/download-target.test.ts`. The workflow's
+  matrix, run against the real published lock, emits exactly the five names those
+  scripts produce.
+- **A hash mismatch is refused.** Pointing `fetch_payload.py` at a lock with one
+  wrong digest fails with exit 1, names expected vs actual and the URL, and
+  stages nothing.
+- **The workflow is actionlint-clean** (no errors; three shellcheck style/info
+  notes remain), and every runner label it uses is real — including
+  `macos-26-intel`, which is the last Intel macOS image GitHub will offer.
+
 ### Two things that only fail off Windows
 
 Both were found by actually running the Linux build, and neither is visible from
