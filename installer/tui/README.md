@@ -81,19 +81,26 @@ rather than the daemon's cache.
 `gaia-tui update pin <version>` holds a machine on a specific release (downgrade
 included) until `gaia-tui update unpin`.
 
-## Why Windows only
+## Platform status
 
-Windows is where a terminal program has no good install story and where the AI PC
-target lives, so it gets a real installer. macOS and Linux already have the
-one-liner (`installer/scripts/install.sh`), which is the idiomatic shape there and
-handles PATH and shell startup files.
+| Platform | Artifact                     | Built and installed on a real machine? |
+| -------- | ---------------------------- | -------------------------------------- |
+| Windows  | `nsis/installer.nsi`         | Yes — built, installed, uninstalled     |
+| macOS    | `macos/build-dmg.sh`         | No — written and wired into CI, never run |
+| Linux    | `linux/build-deb.sh`, `linux/build-appimage.sh` | No — same |
 
-**Known gap:** `install.sh` installs `gaia-tui` but not `gaia-agent`, so the
-flagship's direct-spawn path has no binary on those platforms. Closing it means
-fetching the sidecar from the same lock this build uses and verifying it the same
-way. A `.dmg`/`.deb`/`.AppImage` is deliberately *not* the answer — those exist
-for the Electron Agent UI because it is a GUI app; a terminal program does not
-need a bundle format.
+Only the Windows leg has been exercised end to end. The macOS and Linux scripts
+are wired into `.github/workflows/build-flagship-installers.yml` and are the
+first thing to verify on a machine of each kind before a release claims them.
+
+Whatever the format, the load-bearing property is the same on every platform:
+**both** binaries must land somewhere on `PATH`. The `.deb` symlinks them into
+`/usr/bin` for exactly this reason — the terminal UI finds its agent with
+`exec.LookPath("gaia-agent")`, so a package that installs only `gaia-tui` gives
+you a UI that cannot start the agent.
+
+`installer/scripts/install.sh` (the `curl | sh` one-liner) still installs
+`gaia-tui` without `gaia-agent`, so it has that gap today.
 
 ## Uninstall
 
