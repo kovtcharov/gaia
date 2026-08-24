@@ -80,11 +80,36 @@ VIAddVersionKey "ProductVersion"  "${GAIA_VERSION}"
 
 !insertmacro MUI_LANGUAGE "English"
 
-; The TUI is a console program. Launching it from the finish page with a bare
-; Exec would attach it to the installer's hidden console and no window would
-; ever appear, so go through cmd.exe /C start to get a real one.
+; ─── Which console the TUI opens in ────────────────────────────────────
+;
+; Windows Terminal when it is present, the legacy console host only as a
+; fallback. This is not cosmetic: conhost has no truecolor, so the TUI's
+; lipgloss styling and its syntax highlighting collapse to flat, mostly
+; uncoloured text and the app looks broken on first launch.
+;
+; wt.exe normally lives behind an App Execution Alias in WindowsApps, which is
+; on PATH — but that alias can be turned off, so SearchPath is tried first and
+; the literal path second. $R2 is left empty when neither resolves.
+;
+; The TUI is a console program, so a bare Exec would attach it to the
+; installer's hidden console and no window would ever appear; both branches
+; below open a real one.
+Function ResolveTerminal
+  StrCpy $R2 ""
+  SearchPath $R2 "wt.exe"
+  ${If} $R2 == ""
+  ${AndIf} ${FileExists} "$LOCALAPPDATA\Microsoft\WindowsApps\wt.exe"
+    StrCpy $R2 "$LOCALAPPDATA\Microsoft\WindowsApps\wt.exe"
+  ${EndIf}
+FunctionEnd
+
 Function LaunchGaia
-  Exec '"$SYSDIR\cmd.exe" /C start "GAIA" "$INSTDIR\gaia-tui.exe"'
+  Call ResolveTerminal
+  ${If} $R2 != ""
+    Exec '"$R2" "$INSTDIR\gaia-tui.exe"'
+  ${Else}
+    Exec '"$SYSDIR\cmd.exe" /C start "GAIA" "$INSTDIR\gaia-tui.exe"'
+  ${EndIf}
 FunctionEnd
 
 ; ---------------------------------------------------------------------------
@@ -140,9 +165,23 @@ Section "GAIA" SecMain
   WriteRegDWORD HKCU "${UNINST_KEY}" "EstimatedSize" "$0"
 
   ; --- Shortcuts -----------------------------------------------------------
+  ; Resolved at install time, so a machine with Windows Terminal gets a
+  ; shortcut into it and one without still gets a working console. The icon is
+  ; taken from gaia-tui.exe either way, so the shortcut looks like GAIA rather
+  ; than like whichever terminal is hosting it.
+  Call ResolveTerminal
   CreateDirectory "$SMPROGRAMS\GAIA"
-  CreateShortCut "$SMPROGRAMS\GAIA\GAIA.lnk" "$SYSDIR\cmd.exe" '/C start "GAIA" "$INSTDIR\gaia-tui.exe"' "$INSTDIR\gaia-tui.exe" 0
-  CreateShortCut "$DESKTOP\GAIA.lnk" "$SYSDIR\cmd.exe" '/C start "GAIA" "$INSTDIR\gaia-tui.exe"' "$INSTDIR\gaia-tui.exe" 0
+  ${If} $R2 != ""
+    DetailPrint "Shortcuts will open GAIA in Windows Terminal."
+    CreateShortCut "$SMPROGRAMS\GAIA\GAIA.lnk" "$R2" '"$INSTDIR\gaia-tui.exe"' "$INSTDIR\gaia-tui.exe" 0
+    CreateShortCut "$DESKTOP\GAIA.lnk" "$R2" '"$INSTDIR\gaia-tui.exe"' "$INSTDIR\gaia-tui.exe" 0
+  ${Else}
+    ; No Windows Terminal: the legacy console renders the TUI's colours poorly,
+    ; but a working shortcut beats none.
+    DetailPrint "Windows Terminal not found — shortcuts will use the legacy console."
+    CreateShortCut "$SMPROGRAMS\GAIA\GAIA.lnk" "$SYSDIR\cmd.exe" '/C start "GAIA" "$INSTDIR\gaia-tui.exe"' "$INSTDIR\gaia-tui.exe" 0
+    CreateShortCut "$DESKTOP\GAIA.lnk" "$SYSDIR\cmd.exe" '/C start "GAIA" "$INSTDIR\gaia-tui.exe"' "$INSTDIR\gaia-tui.exe" 0
+  ${EndIf}
 
   ; --- PATH ----------------------------------------------------------------
   ; This entry is what makes the flagship launchable at all, not a convenience:
