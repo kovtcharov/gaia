@@ -124,7 +124,10 @@ export interface InstallerAssetSpec {
 // keeps these from matching the raw binaries (`gaia-win-x64.exe`) or the Agent
 // UI's own installers (`gaia-agent-ui-0.23.0-x64-setup.exe`), which share the
 // release and the prefix.
-const VER = String.raw`\d[\w.]*`;
+// Starts with a digit (that is what separates these from `gaia-agent-ui-*` and
+// the raw `gaia-win-x64.exe`), and may carry a prerelease suffix — the workflow
+// publishes `-rc.`/`-beta.` tags, so `0.1.1-rc.1` has to match too.
+const VER = String.raw`\d[\w.]*(?:-[\w.]+)?`;
 
 // String.raw on every pattern below is load-bearing: a plain template literal
 // collapses `\.` to `.`, which turns the extension separator into "any

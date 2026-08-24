@@ -107,6 +107,41 @@ def _download(url: str, dest: Path) -> bytes:
     return data
 
 
+def _require(entry: dict, field: str, component: str, platform: str) -> str:
+    """Read a required lock field, or fail the way every other path here does.
+
+    A bare ``KeyError`` would escape ``main``'s ``PayloadError`` handler and
+    print a traceback instead of an actionable ``::error::`` line.
+    """
+    value = entry.get(field)
+    if not isinstance(value, str) or not value:
+        raise PayloadError(
+            f"The lock's '{component}/{platform}' entry has no usable {field!r} "
+            f"(got {value!r}). It was written by gen_binaries_lock.py in "
+            f".github/workflows/release_agent_gaia.yml — a lock missing this field "
+            f"cannot describe what to download, so regenerate it rather than "
+            f"guessing here."
+        )
+    return value
+
+
+def _safe_executable(name: str, component: str, platform: str) -> str:
+    """Reject an ``executable`` that would write outside ``--dest``.
+
+    Everything else in this file assumes the lock is hostile until its digests
+    check out; this field is used as a path before any digest exists, so it gets
+    the same treatment.
+    """
+    if name != Path(name).name or name in {".", ".."}:
+        raise PayloadError(
+            f"The lock's '{component}/{platform}' executable name {name!r} is a "
+            f"path, not a filename. It is joined onto the staging directory, so a "
+            f"lock carrying a path here could write outside it. Refusing; fix the "
+            f"lock."
+        )
+    return name
+
+
 def stage(lock_path: Path, platform: str, dest: Path) -> list[dict]:
     lock = _load_lock(lock_path)
     version = lock.get("agentVersion")
@@ -118,9 +153,11 @@ def stage(lock_path: Path, platform: str, dest: Path) -> list[dict]:
 
     for component in COMPONENTS:
         base, entry = _entry(lock, component, platform)
-        filename = entry["filename"]
-        executable = entry["executable"]
-        expected = entry["sha256"]
+        filename = _require(entry, "filename", component, platform)
+        executable = _safe_executable(
+            _require(entry, "executable", component, platform), component, platform
+        )
+        expected = _require(entry, "sha256", component, platform)
         if expected == PLACEHOLDER or not expected:
             raise PayloadError(
                 f"The lock pins '{component}/{platform}' to the placeholder hash "
