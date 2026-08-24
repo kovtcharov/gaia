@@ -143,16 +143,23 @@ Things that would otherwise only be found by a real release, checked here instea
   notes remain), and every runner label it uses is real — including
   `macos-26-intel`, which is the last Intel macOS image GitHub will offer.
 
-### Two things that only fail off Windows
+### Testing these scripts from a Windows checkout
 
-Both were found by actually running the Linux build, and neither is visible from
-a Windows checkout:
+- **The executable bit was a real bug.** The workflow invokes these scripts by
+  path and they were committed `100644`, so every Linux and macOS leg would have
+  failed "Permission denied" before running a line of packaging. Fixed with
+  `git update-index --chmod=+x`; `git ls-tree` shows `100755` now.
+- **Line endings were not.** With `core.autocrlf=true` the *working copy* is CRLF
+  while the committed blob is LF, so mounting the working tree into a Linux
+  container makes every script look broken (`$'\r': command not found`) while CI,
+  which checks out the blob, is fine. Every `.sh` blob in this repo is LF.
+  `*.sh text eol=lf` in `.gitattributes` is kept because it makes the working
+  copy match the blob — which is what lets a container read a checkout directly —
+  but it fixed no shipping bug.
 
-- **CRLF.** A `.sh` committed with Windows line endings dies on its first line
-  (`$'\r': command not found`). `*.sh text eol=lf` in `.gitattributes` now
-  prevents it.
-- **The executable bit.** The workflow invokes these scripts by path, and they
-  were committed `100644`. Fixed with `git update-index --chmod=+x`.
+The lesson generalises: when running a repo script inside a container from a
+Windows host, check what you are actually executing (`file`), or export from git
+(`git archive`) so you get blob bytes and blob modes rather than the checkout's.
 
 ## Uninstall
 
