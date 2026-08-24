@@ -1,10 +1,20 @@
 # Copyright(C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: MIT
 """
-Reproducible PyInstaller freeze for the GAIA flagship agent REST sidecar.
+Reproducible PyInstaller freeze for the GAIA flagship agent.
 
-Freezes ``packaging/server.py`` into a self-contained executable that boots the
-``/v1/gaia/*`` REST surface with NO Python interpreter on the target machine.
+Freezes ``packaging/entry.py`` -- the dispatcher -- into a self-contained
+executable that runs with NO Python interpreter on the target machine and
+carries BOTH of the agent's transports:
+
+    gaia-agent                    -> stdio JSONL  (``gaia_agent.stdio``)
+    gaia-agent --host H --port P  -> REST sidecar (``gaia_agent.server``)
+
+Freezing ``packaging/server.py`` directly is what this replaces. It produced a
+binary named ``gaia-agent`` that could only speak HTTP, while that same name
+means ``gaia_agent.stdio:main`` in the wheel's console scripts and in the TUI's
+subprocess transport -- so a TUI launch got uvicorn's banner where it expected
+JSON lines. See ``packaging/entry.py`` for the dispatch rule.
 
 Usage (from a venv with the deps + pyinstaller installed)::
 
@@ -46,7 +56,7 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ENTRY = HERE / "server.py"
+ENTRY = HERE / "entry.py"
 NAME = "gaia-agent"
 # Repo root: packaging/ -> python/ -> gaia/ -> agents/ -> hub/ -> <root>
 REPO_ROOT = HERE.parents[4]
@@ -169,6 +179,12 @@ def build(onefile: bool = False, clean: bool = True) -> Path:
         "keyring",
         "--copy-metadata",
         "keyring",
+        # The dispatcher imports each transport inside a branch, so neither is
+        # reachable by static analysis from the entry module.
+        "--hidden-import",
+        "gaia_agent.stdio",
+        "--hidden-import",
+        "gaia_agent.server",
         # Both agent packages register tools lazily inside functions.
         "--collect-submodules",
         "gaia_agent",
@@ -222,7 +238,7 @@ def build(onefile: bool = False, clean: bool = True) -> Path:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="Freeze the GAIA agent REST sidecar.")
+    parser = argparse.ArgumentParser(description="Freeze the GAIA flagship agent.")
     parser.add_argument(
         "--onefile", action="store_true", help="Build a single-file executable."
     )

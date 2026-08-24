@@ -4,6 +4,25 @@ All notable changes to `@amd-gaia/gaia` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this package adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **The terminal UI can now run the flagship again.** The frozen binary ships as
+  `gaia-agent`, and that name means the stdio JSONL transport everywhere else —
+  it is the wheel's console script and what the terminal UI resolves on PATH. The
+  freeze produced an HTTP-only server under that name, so a UI launch got
+  uvicorn's startup banner where it expected JSON lines and every turn died with
+  "unreadable event skipped". The binary now dispatches on argv: bare is stdio,
+  `--host`/`--port` (what the daemon and this client already send) is HTTP. See
+  [SPEC.md](./SPEC.md) §5.
+- **An installed flagship no longer shows as "Coming Soon".** A subprocess agent
+  is spawned as a child, so it has no sidecar spec, no daemon supervising it and
+  no hub publication it needs — but its launchability was gated on one of those
+  anyway. Dropping a verified `gaia-agent` on PATH left the agent listed as
+  unavailable beside a binary that ran fine. It is now launchable whenever its
+  binary actually resolves on disk, and still not before.
+
 ## [0.1.0] — unreleased
 
 First release. `npx @amd-gaia/gaia` is now the single command that gets a user

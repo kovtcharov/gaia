@@ -203,7 +203,25 @@ Both defaults are overridable (`--sidecar-dir`, `--cache-dir`).
 
 ---
 
-## 5. Sidecar HTTP surface
+## 5. Sidecar transports
+
+The `gaia-agent` binary carries **both** of the agent's transports and picks one
+from argv (`packaging/entry.py`):
+
+| argv                          | Transport                    | Who spawns it that way          |
+| ----------------------------- | ---------------------------- | ------------------------------- |
+| *(none)*, or any stdio flag   | stdin/stdout JSONL           | the terminal UI, directly       |
+| `--host H` / `--port P`       | HTTP (`/v1/gaia/*`)          | the GAIA daemon, the npm client |
+| `--serve`                     | HTTP, explicitly             | scripts                         |
+
+`--host`/`--port` select HTTP on their own, with no `--serve`, because that is the
+argv the daemon and the npm client have always sent.
+
+The stdio transport is the direct path: the terminal UI spawns the binary as a
+child and keeps it, so there is no port, no bearer token, and no daemon in the
+way. Everything below describes the HTTP transport only.
+
+## 5a. Sidecar HTTP surface
 
 Served by `gaia_agent.server`. Bound to `127.0.0.1` only.
 
