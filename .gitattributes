@@ -26,3 +26,9 @@ hub/agents/email/python/CHANGELOG.md merge=union
 # fixture-hub zips' sha256s are pinned in their manifests — keep both byte-exact.
 tests/fixtures/gaia/fake_gh/gh eol=lf
 tests/fixtures/gaia/fixture_hub/**/*.zip binary
+
+# Shell scripts must be LF in the blob. A .sh committed with CRLF from a Windows
+# checkout dies on the first line on Linux and macOS ("$'': command not found"),
+# which no Windows test can catch -- installer/tui/linux/build-deb.sh shipped that
+# way and only failed once it was run in a real Ubuntu container.
+*.sh text eol=lf
