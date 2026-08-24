@@ -94,6 +94,14 @@ VIAddVersionKey "ProductVersion"  "${GAIA_VERSION}"
 ; The TUI is a console program, so a bare Exec would attach it to the
 ; installer's hidden console and no window would ever appear; both branches
 ; below open a real one.
+; $R2 = Windows Terminal, or "" when it is not available.
+; $R3 = the PowerShell command line that actually runs the TUI.
+;
+; PowerShell rather than cmd.exe is the shell the agent is expected to be used
+; alongside, and it is what a user dropping out of the TUI should land in. The
+; path is wrapped in PowerShell single quotes (NSIS $\' ) so an install
+; directory containing spaces still resolves as one argument; -NoProfile keeps
+; a slow or noisy user profile out of the launch path.
 Function ResolveTerminal
   StrCpy $R2 ""
   SearchPath $R2 "wt.exe"
@@ -101,14 +109,15 @@ Function ResolveTerminal
   ${AndIf} ${FileExists} "$LOCALAPPDATA\Microsoft\WindowsApps\wt.exe"
     StrCpy $R2 "$LOCALAPPDATA\Microsoft\WindowsApps\wt.exe"
   ${EndIf}
+  StrCpy $R3 '-NoLogo -NoProfile -Command "& $\'$INSTDIR\gaia-tui.exe$\'"'
 FunctionEnd
 
 Function LaunchGaia
   Call ResolveTerminal
   ${If} $R2 != ""
-    Exec '"$R2" "$INSTDIR\gaia-tui.exe"'
+    Exec '"$R2" "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" $R3'
   ${Else}
-    Exec '"$SYSDIR\cmd.exe" /C start "GAIA" "$INSTDIR\gaia-tui.exe"'
+    Exec '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" $R3'
   ${EndIf}
 FunctionEnd
 
@@ -172,15 +181,15 @@ Section "GAIA" SecMain
   Call ResolveTerminal
   CreateDirectory "$SMPROGRAMS\GAIA"
   ${If} $R2 != ""
-    DetailPrint "Shortcuts will open GAIA in Windows Terminal."
-    CreateShortCut "$SMPROGRAMS\GAIA\GAIA.lnk" "$R2" '"$INSTDIR\gaia-tui.exe"' "$INSTDIR\gaia-tui.exe" 0
-    CreateShortCut "$DESKTOP\GAIA.lnk" "$R2" '"$INSTDIR\gaia-tui.exe"' "$INSTDIR\gaia-tui.exe" 0
+    DetailPrint "Shortcuts will open GAIA in Windows Terminal (PowerShell)."
+    CreateShortCut "$SMPROGRAMS\GAIA\GAIA.lnk" "$R2" '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" $R3' "$INSTDIR\gaia-tui.exe" 0
+    CreateShortCut "$DESKTOP\GAIA.lnk"          "$R2" '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" $R3' "$INSTDIR\gaia-tui.exe" 0
   ${Else}
-    ; No Windows Terminal: the legacy console renders the TUI's colours poorly,
-    ; but a working shortcut beats none.
-    DetailPrint "Windows Terminal not found — shortcuts will use the legacy console."
-    CreateShortCut "$SMPROGRAMS\GAIA\GAIA.lnk" "$SYSDIR\cmd.exe" '/C start "GAIA" "$INSTDIR\gaia-tui.exe"' "$INSTDIR\gaia-tui.exe" 0
-    CreateShortCut "$DESKTOP\GAIA.lnk" "$SYSDIR\cmd.exe" '/C start "GAIA" "$INSTDIR\gaia-tui.exe"' "$INSTDIR\gaia-tui.exe" 0
+    ; No Windows Terminal: PowerShell still hosts it, just in whatever console
+    ; the system provides. A working shortcut beats none.
+    DetailPrint "Windows Terminal not found — shortcuts will use PowerShell in the system console."
+    CreateShortCut "$SMPROGRAMS\GAIA\GAIA.lnk" "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" "$R3" "$INSTDIR\gaia-tui.exe" 0
+    CreateShortCut "$DESKTOP\GAIA.lnk"          "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" "$R3" "$INSTDIR\gaia-tui.exe" 0
   ${EndIf}
 
   ; --- PATH ----------------------------------------------------------------
