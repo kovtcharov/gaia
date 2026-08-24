@@ -294,12 +294,15 @@ Rules a client must respect:
 
 Read this before you design a workflow around it.
 
-Five of the agent's 67 tools are confirmation-gated. Three write to disk or
+Six of the agent's 68 tools are confirmation-gated. Three write to disk or
 execute a command and sit in the base `TOOLS_REQUIRING_CONFIRMATION` set:
-**`write_file`**, **`edit_file`**, and **`run_shell_command`**. Two more are
-the agent's own additions (`CONFIRMATION_REQUIRED_TOOLS`): **`install_skill`**
-and **`remove_skill`** — installing a skill writes third-party code under
-`~/.gaia/skills` and removing one deletes it. Everything else — reading,
+**`write_file`**, **`edit_file`**, and **`run_shell_command`**. Three more are
+the agent's own additions (`CONFIRMATION_REQUIRED_TOOLS`): **`install_skill`**,
+**`capture_skill`**, and **`remove_skill`** — installing or capturing a skill
+writes third-party content under `~/.gaia/skills` and removing one deletes it.
+A capture that does land is additionally **code-inert**: its instructions load,
+but any `tools.py`/scripts stay unregistered until a human runs
+`gaia skill promote <name>` in a terminal. Everything else — reading,
 indexing, querying, web fetching, memory — runs without asking.
 
 Over `/v1/gaia/query` there is **no way to collect an approval**, so the stream
@@ -422,7 +425,7 @@ There is no silent null.
   this package. Start it, or set `LEMONADE_BASE_URL`.
 - **`needs_confirmation` is followed by a refusal and the run ends.** See §8.
   `write_file` / `edit_file` / `run_shell_command` / `install_skill` /
-  `remove_skill` are unreachable over `/query`.
+  `capture_skill` / `remove_skill` are unreachable over `/query`.
 - **A placeholder hash in `binaries.lock.json` blocks the fetch before any
   network call.** Between releases that is the *expected* state — it is not a
   broken install, and there is no override.

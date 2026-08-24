@@ -14,6 +14,17 @@ terminal UI meant building it from source.
 
 ### Added
 
+- **`capture_skill` — capture a skill from pasted `SKILL.md` text, a URL, or a
+  local folder, with code inert until trusted.** The agent can now bring a
+  skill into `~/.gaia/skills` straight from the conversation (68 registered
+  tools, up from 67). Every capture is confirmation-gated, security-audited (a
+  `BLOCK` verdict refuses it), SSRF-guarded on the URL path, and lands at the
+  `experimental` tier. Instructions load immediately; any `tools.py`/scripts
+  the bundle carries stay **inert** until the user runs
+  `gaia skill promote <name>` in a terminal, which re-audits and binds trust
+  to the audited bytes. Over `/query`, `capture_skill` is refused like the
+  other gated tools (SKILL §8; SPEC §5.2 documents the load-time deferral).
+
 - **`503` from `/query` at session capacity.** When every retained session
   slot is busy and none is idle enough to evict, starting a new session
   returns `503` with the reason in `detail` — retryable, distinct from a
