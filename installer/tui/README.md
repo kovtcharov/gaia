@@ -70,6 +70,31 @@ PATH edits go through `pathmgr.ps1` rather than NSIS registry writes: a stock
 makensis caps strings at 1024 characters, so reading a longer PATH into a
 register and writing it back silently truncates it.
 
+## Updates
+
+The installer is the first install; `gaia-tui update` is every one after it.
+It reads the published lock, asks before downloading, SHA-256 verifies, and swaps
+both binaries in place — see `tui/internal/update/`. It resolves the sidecar the
+same way the terminal UI does, so it updates the copy this installer placed
+rather than the daemon's cache.
+
+`gaia-tui update pin <version>` holds a machine on a specific release (downgrade
+included) until `gaia-tui update unpin`.
+
+## Why Windows only
+
+Windows is where a terminal program has no good install story and where the AI PC
+target lives, so it gets a real installer. macOS and Linux already have the
+one-liner (`installer/scripts/install.sh`), which is the idiomatic shape there and
+handles PATH and shell startup files.
+
+**Known gap:** `install.sh` installs `gaia-tui` but not `gaia-agent`, so the
+flagship's direct-spawn path has no binary on those platforms. Closing it means
+fetching the sidecar from the same lock this build uses and verifying it the same
+way. A `.dmg`/`.deb`/`.AppImage` is deliberately *not* the answer — those exist
+for the Electron Agent UI because it is a GUI app; a terminal program does not
+need a bundle format.
+
 ## Uninstall
 
 Removes the files, both shortcuts, the PATH entry, and both registry keys. It
