@@ -128,6 +128,10 @@ func claudeSkipSuffix(claudeMode bool) string {
 // setupCheckResultMsg is delivered once the read-only readiness probe
 // (`gaia init --check`) returns.
 type setupCheckResultMsg struct {
+	// staleCLI marks the one failure with a different fix: a `gaia` CLI that
+	// predates `--check`. Telling that user to run `gaia init` sends them at
+	// the very command that just refused the flag.
+	staleCLI bool
 	ready bool
 	// err is non-nil only when the check itself could not run (gaia missing,
 	// the probe timed out) -- never set merely because the profile isn't
@@ -183,6 +187,14 @@ func checkSetupCmd(claudeMode bool) tea.Cmd {
 		// "not ready" ran a full multi-minute `gaia init` on EVERY launch: an
 		// installed gaia older than `--check` exits 2 with "unrecognized
 		// arguments", which looked exactly like a clean machine.
+		if strings.Contains(out.String(), "unrecognized arguments") {
+			// Still quotes what the tool said: the remedy differs, the evidence
+			// must not disappear.
+			return setupCheckResultMsg{staleCLI: true, err: fmt.Errorf(
+				"the `gaia` CLI at %s is older than this build and does not "+
+					"understand `init --check` (it said: %s)",
+				bin, lastMeaningfulLine(out.String()))}
+		}
 		return setupCheckResultMsg{err: fmt.Errorf(
 			"could not check whether setup is needed (%w). GAIA said: %s",
 			runErr, lastMeaningfulLine(out.String()))}
@@ -330,13 +342,23 @@ func (m ChatModel) handleSetupCheckResult(msg setupCheckResultMsg) (tea.Model, t
 	m.setupChecking = false
 
 	if msg.err != nil {
-		m.messages = append(m.messages, Message{
-			Role: RoleError,
-			Content: fmt.Sprintf(
-				"Could not check whether %s is set up: %v\nType /setup to try running it directly, "+
-					"or run `gaia init --profile %s%s` in a terminal.",
-				m.agentName, msg.err, setupProfile, claudeSkipSuffix(m.claudeMode)),
-		})
+		// Nothing here blocks the session -- the gate is released either way.
+		// The flagship runs as a direct child process and never calls the
+		// `gaia` CLI, so an unanswerable setup question is a warning about what
+		// could not be CHECKED, not a broken agent.
+		content := fmt.Sprintf(
+			"Could not check whether %s is set up: %v\nType /setup to try running it directly, "+
+				"or run `gaia init --profile %s%s` in a terminal.",
+			m.agentName, msg.err, setupProfile, claudeSkipSuffix(m.claudeMode))
+		if msg.staleCLI {
+			content = fmt.Sprintf(
+				"Skipping the setup check: %v.\n"+
+					"Nothing is broken -- %s runs on its own and does not need that CLI. "+
+					"Upgrade it with `pip install -U amd-gaia` to get the check back, or just "+
+					"make sure Lemonade Server is running.",
+				msg.err, m.agentName)
+		}
+		m.messages = append(m.messages, Message{Role: RoleError, Content: content})
 		m.updateViewport()
 		return m, m.releaseAfterSetupGate()
 	}
