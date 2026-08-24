@@ -44,19 +44,21 @@ The agent runs local inference only: the sidecar's `/query` endpoint rejects any
 ## Install and launch
 
 <Tabs>
+  <Tab title="One-click installer">
+    Download one file from [amd-gaia.ai](https://amd-gaia.ai) and run it. It installs the agent and its terminal UI on your `PATH` — and on Windows, Lemonade Server too — with no Node.js, no Python, and no repo clone. Then:
+
+    ```bash
+    gaia-tui
+    ```
+
+    Full walkthrough, per platform, plus the first-launch SmartScreen/Gatekeeper prompts: [Install the GAIA agent](/guides/install-agent).
+  </Tab>
   <Tab title="One command (npx)">
     ```bash
     npx @amd-gaia/gaia
     ```
 
-    This is the shipping entry point: it resolves your platform, fetches and SHA-256-verifies the agent binary and the terminal UI, starts the GAIA daemon plus the agent, and drops you at a chat prompt. A hash mismatch is a hard failure — there is no "continue anyway" path.
-
-    <Warning>
-      `@amd-gaia/gaia` publishes with this release. Until the release tag lands, the package
-      is not on npm yet and the agent shows as **Coming Soon** in the
-      [terminal hub](/guides/terminal-hub) — it can't be installed from the Agent Hub. Use
-      the source path in the next tab in the meantime.
-    </Warning>
+    The same binaries, fetched at run time instead of bundled — it resolves your platform, fetches and SHA-256-verifies the agent binary and the terminal UI, starts the GAIA daemon plus the agent, and drops you at a chat prompt. A hash mismatch is a hard failure; there is no "continue anyway" path. Needs Node.js 18+.
   </Tab>
   <Tab title="From source">
     Run the agent from your own checkout, so prompt and tool edits take effect without a freeze-and-publish cycle.
@@ -202,15 +204,15 @@ The file resolves outside the allowed paths — by default, outside your home di
 
 ### The agent shows as "Coming Soon" in the terminal hub
 
-It isn't on the Agent Hub yet, so there is nothing to install — the row is deliberately not offered rather than failing halfway through an install. Run it from source in the meantime (see [Install and launch](#install-and-launch)).
+The hub row reflects what *this* GAIA build knows how to run, not what is published. The agent is published, so if the row still says Coming Soon your terminal hub or GAIA CLI predates it — take the [one-click installer](/guides/install-agent), which carries a matching pair.
 
 ### The sidecar won't start
 
 The daemon redirects the sidecar's output to `~/.gaia/agents/gaia/logs/sidecar-<port>.log`. Check that file first; a failed start also surfaces the log tail in the error. `gaia daemon agents` shows id, mode, pid, port, and contract version for everything currently running.
 
-## Limitations (v0.1.0)
+## Limitations (v0.1.1)
 
-- **Not published on the Agent Hub yet** — install from source until the release tag lands.
+- **No arm64 sidecar** — the agent is frozen for Windows x64, Linux x64, and both macOS architectures. Linux arm64 and Windows arm64 get the terminal UI but no agent, so they have no installer; the run stops with an error naming the supported set rather than opening a UI with nothing behind it.
 - **No skill sets declared** — the skill machinery is wired and tested, but nothing ships enabled; see [Skills](#skills-opt-in).
 - **Narrowing file scope requires embedding the agent** — no sidecar flag for `allowed_paths` yet.
 - **No server-side confirmation flow** — over `/query`, `write_file`, `edit_file`, and `run_shell_command` end the run with a refusal instead of prompting over the stream.

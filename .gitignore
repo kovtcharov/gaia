@@ -213,9 +213,10 @@ release_info.json
 # Lemonade MSI downloaded at build time (issue #774)
 installer/lemonade-server-minimal.msi
 
-# Flagship (TUI) installer build outputs: the staged payload and the artifact.
-# Both are downloaded/produced by installer/tui/build.ps1 and are hundreds of MB.
+# Flagship installer build outputs. build.ps1 stages into build/; the CI
+# workflow stages into payload/. Both hold hundreds of MB of fetched binaries.
 installer/tui/build/
+installer/tui/payload/
 dist-installer/
 
 # version
