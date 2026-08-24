@@ -103,3 +103,44 @@ func TestPromotionDoesNotTouchDaemonAgents(t *testing.T) {
 			"the daemon reports, not be promoted by a binary lookup", agent.Status)
 	}
 }
+
+// An installer ships gaia-tui and gaia-agent as a matched pair, but PATH order
+// is not the installer's to control: on Windows the user's own entries are
+// searched before an appended one. A leftover gaia-agent from a pip install
+// therefore shadowed the frozen binary sitting right next to gaia-tui, and the
+// agent that ran was a different build than the one that shipped.
+func TestASidecarBesideTheExecutableBeatsOneOnPath(t *testing.T) {
+	isolateLookups(t)
+	// A decoy earlier on PATH, standing in for an old pip install.
+	decoyDir := t.TempDir()
+	writeFakeBinary(t, decoyDir, "gaia-agent")
+	t.Setenv("PATH", decoyDir)
+
+	// The real one, beside the running test binary.
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+	besideDir := filepath.Dir(self)
+	beside := writeFakeBinary(t, besideDir, "gaia-agent")
+	t.Cleanup(func() { os.Remove(beside) })
+
+	got := resolveAgentBinary("gaia", "gaia-agent")
+	if got != beside {
+		t.Errorf("resolveAgentBinary = %q, want the colocated %q -- a stale copy "+
+			"earlier on PATH is shadowing the binary the installer shipped", got, beside)
+	}
+}
+
+// With nothing beside the executable, PATH is still the next answer.
+func TestPathIsStillUsedWhenNothingSitsBesideTheExecutable(t *testing.T) {
+	isolateLookups(t)
+	onPath := t.TempDir()
+	want := writeFakeBinary(t, onPath, "gaia-agent")
+	t.Setenv("PATH", onPath)
+
+	got := resolveAgentBinary("gaia", "gaia-agent")
+	if got != want {
+		t.Errorf("resolveAgentBinary = %q, want the PATH copy %q", got, want)
+	}
+}

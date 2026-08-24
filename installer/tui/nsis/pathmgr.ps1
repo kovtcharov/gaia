@@ -28,7 +28,11 @@ $kept = @($entries | Where-Object { $_.TrimEnd('\') -ne $normalized })
 
 if ($Action -eq 'Add') {
     if ($kept.Count -eq $entries.Count) {
-        $kept = $kept + $normalized
+        # PREPENDED, not appended. Windows searches the user's existing entries
+        # before an appended one, so a leftover gaia-agent from an earlier pip
+        # install shadowed the frozen binary this installer just placed -- the
+        # agent that ran was a different build than the one that shipped.
+        $kept = @($normalized) + $kept
     } else {
         # Already present: leave the PATH byte-for-byte alone rather than
         # rewriting it to move our entry around.

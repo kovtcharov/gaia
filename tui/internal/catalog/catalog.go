@@ -80,6 +80,15 @@ func (c *Catalog) DiscoverBinaries() {
 // install root, then the in-repo build output for a developer running from
 // source. Empty when nothing on disk matches.
 func resolveAgentBinary(agentID, name string) string {
+	// Beside this executable first. An installer ships the UI and its agent as
+	// a matched pair, and PATH order is not ours to control: on Windows the
+	// user's own entries are searched before an installer's appended one, so a
+	// leftover `gaia-agent` from a pip install shadowed the frozen binary the
+	// installer had just placed next to us -- the agent that ran was a
+	// different build than the one that shipped, and it died on an import.
+	if found := findBinaryBesideExecutable(name); found != "" {
+		return found
+	}
 	if p, err := exec.LookPath(name); err == nil {
 		return p
 	}
@@ -91,6 +100,27 @@ func resolveAgentBinary(agentID, name string) string {
 		return found
 	}
 	return findBinaryInRepo(name)
+}
+
+// findBinaryBesideExecutable looks for an agent binary in the directory this
+// program is running from. Empty when there is none, or when the running
+// binary's own path cannot be determined.
+func findBinaryBesideExecutable(name string) string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	dir := filepath.Dir(exe)
+	for _, candidate := range executableNames(name) {
+		path := filepath.Join(dir, candidate)
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			return path
+		}
+	}
+	return ""
 }
 
 // markSubprocessInstalled promotes a subprocess agent whose binary is really on
