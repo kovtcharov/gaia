@@ -89,9 +89,34 @@ FunctionEnd
 
 ; ---------------------------------------------------------------------------
 
+; Windows refuses to delete a running .exe, so a failed Delete of an existing
+; binary means GAIA is open. Checking up front turns "File: cannot write" (an
+; abort halfway through, with a half-written install left behind) into one
+; sentence naming what to close.
+;
+; No retry loop: a relative MessageBox jump would have to count instructions
+; across two expansions of this macro, and miscounting it silently jumps
+; somewhere else. Aborting with one clear sentence is worth more than a Retry
+; button here.
+!macro EnsureNotRunning path
+  ${If} ${FileExists} "${path}"
+    ClearErrors
+    Delete "${path}"
+    ${If} ${Errors}
+      StrCpy $R1 "${path}"
+      DetailPrint "Cannot replace $R1 -- it is in use."
+      MessageBox MB_OK|MB_ICONEXCLAMATION "GAIA is still running, so its files cannot be replaced.$\r$\n$\r$\nClose every GAIA window and terminal, then run this installer again.$\r$\n$\r$\n$R1" /SD IDOK
+      Abort "GAIA is still running -- close it and run this installer again."
+    ${EndIf}
+  ${EndIf}
+!macroend
+
 Section "GAIA" SecMain
   SectionIn RO
   SetOutPath "$INSTDIR"
+
+  !insertmacro EnsureNotRunning "$INSTDIR\gaia-tui.exe"
+  !insertmacro EnsureNotRunning "$INSTDIR\gaia-agent.exe"
 
   File "${STAGE_DIR}\gaia-tui.exe"
   File "${STAGE_DIR}\gaia-agent.exe"
@@ -179,6 +204,15 @@ Section "Uninstall"
   Delete "$INSTDIR\gaia-tui.exe.old"
   Delete "$INSTDIR\gaia-agent.exe.old"
   RMDir "$INSTDIR"
+
+  ; Windows cannot delete a running .exe, so a survivor here means GAIA was open
+  ; and this uninstall was partial. Saying so beats an "uninstalled" dialog over
+  ; a folder that still has the binaries in it.
+  ${If} ${FileExists} "$INSTDIR\gaia-tui.exe"
+  ${OrIf} ${FileExists} "$INSTDIR\gaia-agent.exe"
+    DetailPrint "WARNING: some files could not be removed -- GAIA was running."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "Some GAIA files could not be removed because GAIA was still running.$\r$\n$\r$\nClose every GAIA window and terminal, then delete this folder by hand:$\r$\n$\r$\n$INSTDIR" /SD IDOK
+  ${EndIf}
 
   Delete "$SMPROGRAMS\GAIA\GAIA.lnk"
   RMDir  "$SMPROGRAMS\GAIA"
