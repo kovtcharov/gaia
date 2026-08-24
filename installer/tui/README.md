@@ -87,21 +87,32 @@ included) until `gaia-tui update unpin`.
 | -------- | ----------------------- | ----- | ----- | ------- | ---- | --------- | --------- |
 | Windows  | `gaia-<v>-x64-setup.exe`| 57 MB | yes   | yes     | yes  | yes       | clean     |
 | Ubuntu   | `gaia-<v>-x64.deb`      | 60 MB | yes   | yes     | yes  | yes       | clean     |
-| Ubuntu   | `gaia-<v>-x64.AppImage` | 128 MB| yes   | n/a     | n/a  | runs      | n/a       |
+| Ubuntu   | `gaia-<v>-x64.AppImage` | 128 MB| yes   | n/a     | n/a  | runs on Fedora 41 + Debian 12 | n/a |
 | macOS    | `gaia-<v>-<arch>.dmg`   | —     | **unverified** | — | — | —  | —         |
 
 Windows was exercised on this machine; Ubuntu 24.04 in a container, from build
 through `apt remove`. Both reach the hub screen with GAIA listed as **Installed**
 and no Python CLI present.
 
-**macOS is unverified and cannot be verified from Windows or Linux** — `hdiutil`
-is macOS-only, and PyInstaller cannot cross-compile the sidecar. The script is
-syntax- and shellcheck-clean and refuses a missing payload with an actionable
-error, but nothing has run it. It needs a Mac. Two things to watch there first:
-the `.command` file is itself quarantined when it arrives inside a downloaded
-DMG, so the first launch needs right-click → Open (the shipped README.txt says
-so); and arm64 macOS *kills* unsigned binaries rather than warning, so the
-sidecar's ad-hoc signature is load-bearing until notarization lands.
+**macOS still needs a Mac, but most of the DMG build has now been exercised off
+one.** Running `build-dmg.sh` with `hdiutil` stubbed proves everything up to the
+packaging call, and the `Install GAIA.command` inside the DMG is plain bash, so
+it runs anywhere:
+
+| Step                                          | Verified |
+| --------------------------------------------- | -------- |
+| darwin-arm64 payload fetched + SHA-256 checked | yes      |
+| DMG staging tree and file modes                | yes      |
+| `hdiutil` argv well-formed (volname stays one argument) | yes |
+| `Install GAIA.command` installs both binaries to `/usr/local/bin`, both resolve on PATH | yes |
+| `hdiutil create` itself                        | **no — macOS-only** |
+| the Mach-O binaries actually executing         | **no — needs a Mac** |
+
+Two Gatekeeper hazards to check first on a real Mac: the `.command` file is
+itself quarantined when it arrives inside a downloaded DMG, so the first launch
+needs right-click → Open (the shipped `README.txt` says so); and arm64 macOS
+*kills* unsigned binaries rather than warning, so the sidecar's ad-hoc signature
+is load-bearing until notarization lands.
 
 Whatever the format, the load-bearing property is the same everywhere: **both**
 binaries must land on `PATH`. The `.deb` symlinks them into `/usr/bin` for
