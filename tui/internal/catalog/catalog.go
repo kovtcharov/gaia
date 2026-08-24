@@ -64,24 +64,9 @@ func (c *Catalog) DiscoverBinaries() {
 		if c.agents[i].Transport == TransportDaemon || c.agents[i].BinaryPath == "" {
 			continue
 		}
-		name := c.agents[i].BinaryPath
-		// Check if already on PATH
-		if p, err := exec.LookPath(name); err == nil {
-			c.agents[i].BinaryPath = p
-			continue
-		}
-		if p, err := exec.LookPath(name + ".exe"); err == nil {
-			c.agents[i].BinaryPath = p
-			continue
-		}
-		// An agent installed from the Agent Hub lives under ~/.gaia/agents/<id>/.
-		if found := findInstalledBinary(c.agents[i].ID, name); found != "" {
+		if found := resolveAgentBinary(c.agents[i].ID, c.agents[i].BinaryPath); found != "" {
 			c.agents[i].BinaryPath = found
-			continue
-		}
-		// Finally the in-repo build output, for a developer running from source.
-		if found := findBinaryInRepo(name); found != "" {
-			c.agents[i].BinaryPath = found
+			markSubprocessInstalled(&c.agents[i])
 		}
 	}
 
@@ -89,6 +74,50 @@ func (c *Catalog) DiscoverBinaries() {
 	// every installed id to daemon transport, and the loop above skips daemon
 	// agents — which made the install-root lookup unreachable.
 	c.LoadInstalledAgents()
+}
+
+// resolveAgentBinary finds an agent's executable: on PATH first, then the hub
+// install root, then the in-repo build output for a developer running from
+// source. Empty when nothing on disk matches.
+func resolveAgentBinary(agentID, name string) string {
+	if p, err := exec.LookPath(name); err == nil {
+		return p
+	}
+	if p, err := exec.LookPath(name + ".exe"); err == nil {
+		return p
+	}
+	// An agent installed from the Agent Hub lives under ~/.gaia/agents/<id>/.
+	if found := findInstalledBinary(agentID, name); found != "" {
+		return found
+	}
+	return findBinaryInRepo(name)
+}
+
+// markSubprocessInstalled promotes a subprocess agent whose binary is really on
+// disk to launchable.
+//
+// For a subprocess agent the binary IS the install: it is spawned as a child,
+// so there is no sidecar spec to look up, no daemon to supervise it, and no
+// hub publication it needs. Its launchability was nonetheless gated on the
+// daemon promoting it or on a ~/.gaia/agents/<id>/.installed sentinel, neither
+// of which a direct-spawn agent ever gets -- so an installer that put
+// gaia-agent on PATH still left the flagship sitting under Coming Soon,
+// unlaunchable, next to a binary that runs fine. Every future direct-spawn
+// agent hits this the same way.
+//
+// Gated on the binary having actually resolved, which is the distinction that
+// matters: seeding an agent installed while its binary is absent is what put a
+// row in front of users that failed on the first message.
+func markSubprocessInstalled(a *Agent) {
+	if a.Transport != TransportSubprocess || a.BinaryPath == "" {
+		return
+	}
+	if !a.Status.IsLaunchable() {
+		a.Status = StatusInstalled
+	}
+	// The row is runnable now, so the "not published yet" note next to it is
+	// simply false.
+	a.NotOfferedReason = ""
 }
 
 // SentinelName is the file gaia.hub.installer writes into an agent's install
