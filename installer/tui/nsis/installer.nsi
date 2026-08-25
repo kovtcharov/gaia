@@ -40,7 +40,14 @@ Unicode true
   !error "LEMONADE_VERSION is not defined -- build via installer/tui/build.ps1, not makensis directly."
 !endif
 
+; Shown in the installer chrome and as the shortcut name.
 !define PRODUCT_NAME      "GAIA"
+; Shown in Add/Remove Programs. The Electron Agent UI also registers itself as
+; plain "GAIA" (publisher "AMD AI Group"), so an identical row here left a user
+; with two entries and no way to tell which was which. "Agent" is the product
+; noun this repo already uses for the flagship, so it disambiguates without
+; reading as a lesser add-on.
+!define ARP_DISPLAY_NAME  "GAIA Agent"
 !define PRODUCT_PUBLISHER "Advanced Micro Devices, Inc."
 !define UNINST_KEY        "Software\Microsoft\Windows\CurrentVersion\Uninstall\GAIA"
 
@@ -64,8 +71,12 @@ VIAddVersionKey "FileVersion"     "${GAIA_VERSION}"
 VIAddVersionKey "ProductVersion"  "${GAIA_VERSION}"
 
 !define MUI_ABORTWARNING
-!define MUI_ICON   "${NSISDIR}\Contrib\Graphics\Icons\modern-install.ico"
-!define MUI_UNICON "${NSISDIR}\Contrib\Graphics\Icons\modern-uninstall.ico"
+; The GAIA robot-head mark, carrying 16/32/48/256 so Explorer, the taskbar and
+; Alt-Tab each get a size they do not have to rescale. Copied into this
+; installer rather than referenced from the Agent UI's tree, so the two cannot
+; break each other.
+!define MUI_ICON   "${STAGE_DIR}\gaia.ico"
+!define MUI_UNICON "${STAGE_DIR}\gaia.ico"
 !define MUI_FINISHPAGE_RUN_TEXT "Start GAIA now"
 !define MUI_FINISHPAGE_RUN_FUNCTION LaunchGaia
 !define MUI_FINISHPAGE_RUN
@@ -155,16 +166,20 @@ Section "GAIA" SecMain
   File "${STAGE_DIR}\gaia-tui.exe"
   File "${STAGE_DIR}\gaia-agent.exe"
   File "${STAGE_DIR}\pathmgr.ps1"
+  ; Installed so the shortcuts can name an icon explicitly. gaia-tui.exe now
+  ; embeds the same mark (tui/cmd/gaia/rsrc_windows_*.syso), which is what makes
+  ; Explorer, the taskbar and Alt-Tab draw it -- a shortcut icon alone would not.
+  File "${STAGE_DIR}\gaia.ico"
 
   WriteRegStr HKCU "Software\GAIA" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "Software\GAIA" "Version"    "${GAIA_VERSION}"
 
   ; --- Add/Remove Programs -------------------------------------------------
   WriteUninstaller "$INSTDIR\Uninstall.exe"
-  WriteRegStr   HKCU "${UNINST_KEY}" "DisplayName"     "${PRODUCT_NAME}"
+  WriteRegStr   HKCU "${UNINST_KEY}" "DisplayName"     "${ARP_DISPLAY_NAME}"
   WriteRegStr   HKCU "${UNINST_KEY}" "DisplayVersion"  "${GAIA_VERSION}"
   WriteRegStr   HKCU "${UNINST_KEY}" "Publisher"       "${PRODUCT_PUBLISHER}"
-  WriteRegStr   HKCU "${UNINST_KEY}" "DisplayIcon"     "$INSTDIR\gaia-tui.exe"
+  WriteRegStr   HKCU "${UNINST_KEY}" "DisplayIcon"     "$INSTDIR\gaia.ico"
   WriteRegStr   HKCU "${UNINST_KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
   WriteRegStr   HKCU "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegDWORD HKCU "${UNINST_KEY}" "NoModify" 1
@@ -182,14 +197,14 @@ Section "GAIA" SecMain
   CreateDirectory "$SMPROGRAMS\GAIA"
   ${If} $R2 != ""
     DetailPrint "Shortcuts will open GAIA in Windows Terminal (PowerShell)."
-    CreateShortCut "$SMPROGRAMS\GAIA\GAIA.lnk" "$R2" '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" $R3' "$INSTDIR\gaia-tui.exe" 0
-    CreateShortCut "$DESKTOP\GAIA.lnk"          "$R2" '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" $R3' "$INSTDIR\gaia-tui.exe" 0
+    CreateShortCut "$SMPROGRAMS\GAIA\GAIA.lnk" "$R2" '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" $R3' "$INSTDIR\gaia.ico" 0
+    CreateShortCut "$DESKTOP\GAIA.lnk"          "$R2" '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" $R3' "$INSTDIR\gaia.ico" 0
   ${Else}
     ; No Windows Terminal: PowerShell still hosts it, just in whatever console
     ; the system provides. A working shortcut beats none.
     DetailPrint "Windows Terminal not found — shortcuts will use PowerShell in the system console."
-    CreateShortCut "$SMPROGRAMS\GAIA\GAIA.lnk" "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" "$R3" "$INSTDIR\gaia-tui.exe" 0
-    CreateShortCut "$DESKTOP\GAIA.lnk"          "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" "$R3" "$INSTDIR\gaia-tui.exe" 0
+    CreateShortCut "$SMPROGRAMS\GAIA\GAIA.lnk" "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" "$R3" "$INSTDIR\gaia.ico" 0
+    CreateShortCut "$DESKTOP\GAIA.lnk"          "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" "$R3" "$INSTDIR\gaia.ico" 0
   ${EndIf}
 
   ; --- PATH ----------------------------------------------------------------
@@ -247,6 +262,7 @@ Section "Uninstall"
   Delete "$INSTDIR\gaia-tui.exe"
   Delete "$INSTDIR\gaia-agent.exe"
   Delete "$INSTDIR\pathmgr.ps1"
+  Delete "$INSTDIR\gaia.ico"
   Delete "$INSTDIR\Uninstall.exe"
   ; Left behind by the updater's swap when a replaced binary was still locked.
   Delete "$INSTDIR\gaia-tui.exe.old"

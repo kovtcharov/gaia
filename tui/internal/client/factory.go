@@ -111,10 +111,16 @@ func ForAgent(agent catalog.Agent, opts ForAgentOptions) (AgentClient, error) {
 			}
 			args = append(append([]string{}, args...), extra...)
 		}
+		var sub *SubprocessClient
 		if agent.CanonicalEvents {
-			return NewCanonicalSubprocessClient(bin, args, opts.Dev), nil
+			sub = NewCanonicalSubprocessClient(bin, args, opts.Dev)
+		} else {
+			sub = NewSubprocessClient(bin, args, opts.Dev)
 		}
-		return NewSubprocessClient(bin, args, opts.Dev), nil
+		// Carried from the catalog, not inferred from opts: --use-claude does
+		// not lift the requirement, because embeddings stay on Lemonade.
+		sub.RequireLemonade(agent.NeedsLemonade)
+		return sub, nil
 
 	default:
 		return nil, fmt.Errorf(

@@ -132,6 +132,12 @@ type setupCheckResultMsg struct {
 	// predates `--check`. Telling that user to run `gaia init` sends them at
 	// the very command that just refused the flag.
 	staleCLI bool
+	// noCLI marks the check as unaskable because there is no `gaia` on PATH at
+	// all. That is the NORMAL state for a standalone install, which ships the
+	// agent and the UI and deliberately no Python CLI -- so it is reported
+	// nowhere. Announcing it told a user who had just installed GAIA that GAIA
+	// was not installed.
+	noCLI bool
 	ready bool
 	// err is non-nil only when the check itself could not run (gaia missing,
 	// the probe timed out) -- never set merely because the profile isn't
@@ -163,7 +169,7 @@ func checkSetupCmd(claudeMode bool) tea.Cmd {
 	return func() tea.Msg {
 		bin, err := gaiaBinary()
 		if err != nil {
-			return setupCheckResultMsg{err: err}
+			return setupCheckResultMsg{noCLI: true, err: err}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), setupCheckTimeout)
 		defer cancel()
@@ -344,21 +350,34 @@ func (m ChatModel) handleSetupCheckResult(msg setupCheckResultMsg) (tea.Model, t
 	if msg.err != nil {
 		// Nothing here blocks the session -- the gate is released either way.
 		// The flagship runs as a direct child process and never calls the
-		// `gaia` CLI, so an unanswerable setup question is a warning about what
-		// could not be CHECKED, not a broken agent.
-		content := fmt.Sprintf(
-			"Could not check whether %s is set up: %v\nType /setup to try running it directly, "+
-				"or run `gaia init --profile %s%s` in a terminal.",
-			m.agentName, msg.err, setupProfile, claudeSkipSuffix(m.claudeMode))
-		if msg.staleCLI {
-			content = fmt.Sprintf(
-				"Skipping the setup check: %v.\n"+
-					"Nothing is broken -- %s runs on its own and does not need that CLI. "+
-					"Upgrade it with `pip install -U amd-gaia` to get the check back, or just "+
-					"make sure Lemonade Server is running.",
-				msg.err, m.agentName)
+		// `gaia` CLI, so an unanswerable setup question is at most a note about
+		// what could not be CHECKED, never a broken agent. Only a genuinely
+		// unexplained failure earns RoleError; the two known-benign shapes are
+		// a dim line or nothing, because the first thing a new user sees must
+		// not be red text that itself says nothing is wrong.
+		switch {
+		case msg.noCLI:
+			// Silent. A standalone install ships no Python CLI by design, so
+			// its absence is the expected state, not news.
+
+		case msg.staleCLI:
+			m.messages = append(m.messages, Message{
+				Role: RoleStatus,
+				Content: fmt.Sprintf(
+					"Setup check skipped -- the `gaia` CLI on PATH predates `init --check`. "+
+						"%s does not need it; `pip install -U amd-gaia` restores the check.",
+					m.agentName),
+			})
+
+		default:
+			m.messages = append(m.messages, Message{
+				Role: RoleError,
+				Content: fmt.Sprintf(
+					"Could not check whether %s is set up: %v\nType /setup to try running it "+
+						"directly, or run `gaia init --profile %s%s` in a terminal.",
+					m.agentName, msg.err, setupProfile, claudeSkipSuffix(m.claudeMode)),
+			})
 		}
-		m.messages = append(m.messages, Message{Role: RoleError, Content: content})
 		m.updateViewport()
 		return m, m.releaseAfterSetupGate()
 	}

@@ -101,6 +101,15 @@ type Agent struct {
 	// events carry tool narration and result previews, so an agent that emits
 	// them and is parsed as legacy loses its progress reporting silently.
 	CanonicalEvents bool
+	// NeedsLemonade marks an agent that cannot start without a reachable
+	// Lemonade Server. It is checked BEFORE the child is spawned, because an
+	// agent that needs it and does not find it dies during construction with
+	// its reason in a log file the user never opens.
+	//
+	// True for the flagship even under --use-claude: chat moves to Anthropic,
+	// but memory and RAG embeddings stay on Lemonade (Anthropic has no
+	// embeddings API -- see gaia_agent/stdio.py's header).
+	NeedsLemonade bool
 	// DevArgs are appended to BinaryArgs when the TUI runs in developer mode, so
 	// one `--dev` turns on rich output here AND verbose logging in the child.
 	//

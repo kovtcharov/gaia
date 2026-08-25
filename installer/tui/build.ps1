@@ -208,6 +208,9 @@ $lemonadeVersion = Get-LemonadeVersion
 Get-LemonadeMsi $lemonadeVersion
 
 Copy-Item (Join-Path $PSScriptRoot 'nsis\pathmgr.ps1') $StageDir -Force
+# The brand mark: MUI_ICON reads it from the stage at compile time, and it is
+# also installed so the shortcuts can name an icon explicitly.
+Copy-Item (Join-Path $PSScriptRoot 'nsis\gaia.ico') $StageDir -Force
 
 $outDirFull = if ([System.IO.Path]::IsPathRooted($OutDir)) { $OutDir } else { Join-Path $RepoRoot $OutDir }
 New-Item -ItemType Directory -Force -Path $outDirFull | Out-Null

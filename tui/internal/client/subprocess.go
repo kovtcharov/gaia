@@ -10,6 +10,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,12 +28,44 @@ var (
 // finish before giving up on a clean reap.
 const closeGrace = 2 * time.Second
 
+// lemonadePorts are the Lemonade Server ports worth probing: 13305 is the
+// default since Lemonade v10.1.0, 8000 the one before it.
+var lemonadePorts = []string{"13305", "8000"}
+
+// lemonadeProbeURLs names what detectLemonadeURL looked at, so a failure can
+// report the same list it actually tried rather than a hardcoded guess.
+func lemonadeProbeURLs() []string {
+	urls := make([]string, 0, len(lemonadePorts))
+	for _, p := range lemonadePorts {
+		urls = append(urls, "http://localhost:"+p)
+	}
+	return urls
+}
+
+// lemonadeStartHint is the command that starts Lemonade on this OS.
+func lemonadeStartHint() string {
+	if runtime.GOOS == "windows" {
+		return `the "Lemonade Server" shortcut, or LemonadeServer.exe`
+	}
+	return "lemonade-server serve"
+}
+
+// agentNameForError names the child in a message a user reads, without leaking
+// a full install path into a one-line error.
+func agentNameForError(path string) string {
+	name := filepath.Base(path)
+	name = strings.TrimSuffix(name, filepath.Ext(name))
+	if name == "" {
+		return "the agent"
+	}
+	return name
+}
+
 // detectLemonadeURL probes common Lemonade Server ports and returns the first reachable URL.
 func detectLemonadeURL() string {
-	ports := []string{"13305", "8000"}
 	client := &http.Client{Timeout: 2 * time.Second}
 
-	for _, port := range ports {
+	for _, port := range lemonadePorts {
 		url := "http://localhost:" + port + "/api/v1"
 		resp, err := client.Get(url + "/models")
 		if err == nil {
@@ -81,6 +116,9 @@ type SubprocessClient struct {
 	// canonical selects the event dialect read off the pipe: the frozen legacy
 	// vocabulary (false) or the canonical one (true).
 	canonical bool
+	// needsLemonade refuses the spawn when no Lemonade Server answers, instead
+	// of starting a child that will die building its embedder.
+	needsLemonade bool
 
 	mu      sync.Mutex
 	proc    *procHandle
@@ -105,6 +143,13 @@ func NewSubprocessClient(path string, args []string, debug bool) *SubprocessClie
 		args:  args,
 		debug: debug,
 	}
+}
+
+// RequireLemonade makes a missing Lemonade Server a refusal to spawn rather
+// than a child that starts and dies building its embedder. Off by default: not
+// every subprocess agent needs a model server.
+func (s *SubprocessClient) RequireLemonade(required bool) {
+	s.needsLemonade = required
 }
 
 // NewCanonicalSubprocessClient is NewSubprocessClient for an agent that speaks
@@ -146,9 +191,28 @@ func (s *SubprocessClient) startLocked() (turnState, error) {
 	stderr := &bytes.Buffer{}
 	cmd.Stderr = stderr
 
-	// Auto-detect Lemonade URL if not set in environment
+	// Auto-detect Lemonade URL if not set in environment.
+	//
+	// A miss used to fall through and spawn anyway. For an agent that needs
+	// Lemonade that is a guaranteed death: it builds its embedder during
+	// construction, fails to connect, and exits 1 with the reason in
+	// ~/.gaia/logs/gaia-agent.log -- on screen the user gets a bare exit code
+	// and nothing to act on. Refusing here turns that into one sentence naming
+	// the ports probed and how to start the server.
 	if os.Getenv("LEMONADE_BASE_URL") == "" {
-		if url := detectLemonadeURL(); url != "" {
+		url := detectLemonadeURL()
+		if url == "" && s.needsLemonade {
+			return turnState{}, fmt.Errorf(
+				"Lemonade Server is not running, and %s cannot start without it.\n"+
+					"  Looked on: %s\n"+
+					"  Start it:  %s\n"+
+					"  Then send your message again. This is needed even with --use-claude: "+
+					"chat would go to Anthropic, but memory and document embeddings still "+
+					"come from Lemonade.",
+				agentNameForError(s.path), strings.Join(lemonadeProbeURLs(), ", "),
+				lemonadeStartHint())
+		}
+		if url != "" {
 			cmd.Env = append(os.Environ(), "LEMONADE_BASE_URL="+url)
 			if s.debug {
 				fmt.Fprintf(os.Stderr, "[DEBUG] Auto-detected Lemonade at %s\n", url)
