@@ -27,11 +27,9 @@ hub/agents/email/python/CHANGELOG.md merge=union
 tests/fixtures/gaia/fake_gh/gh eol=lf
 tests/fixtures/gaia/fixture_hub/**/*.zip binary
 
-# Shell scripts must be LF in the blob. A .sh committed with CRLF from a Windows
-# checkout dies on the first line on Linux and macOS ("$'
-': command not found"),
-# which no Windows test can catch -- installer/tui/linux/build-deb.sh shipped that
-# way and only failed once it was run in a real Ubuntu container.
+# Shell scripts are LF in the blob. Git checks them out CRLF on Windows
+# under core.autocrlf, which is fine for CI (it reads the blob) but breaks
+# a container that mounts the working tree -- this keeps the two the same.
 *.sh text eol=lf
 
 # Debian maintainer scripts have no extension, so the *.sh rule misses them.
