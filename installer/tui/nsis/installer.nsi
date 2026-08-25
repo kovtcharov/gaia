@@ -307,7 +307,21 @@ Section "Uninstall"
   ; Left behind by the updater's swap when a replaced binary was still locked.
   Delete "$INSTDIR\gaia-tui.exe.old"
   Delete "$INSTDIR\gaia-agent.exe.old"
+  ; Written by `gaia-tui update` after a swap, so it exists only on a machine
+  ; that has updated at least once -- which is why a fresh install uninstalled
+  ; cleanly while an updated one left this behind and kept the folder alive.
+  Delete "$INSTDIR\.installed"
   RMDir "$INSTDIR"
+
+  ; RMDir above is non-recursive on purpose: $INSTDIR is user-chosen, and a
+  ; recursive delete of a directory someone pointed at their Documents folder is
+  ; not a risk worth taking. That means anything unaccounted for keeps the
+  ; folder alive, so say what survived instead of reporting a clean uninstall
+  ; over it.
+  ${If} ${FileExists} "$INSTDIR\*.*"
+    DetailPrint "Some files in $INSTDIR were not created by this installer and were left alone."
+    MessageBox MB_OK|MB_ICONINFORMATION "GAIA was uninstalled, but $INSTDIR still holds files this installer did not put there, so it was left in place.$\r$\n$\r$\nDelete it by hand if you do not need it." /SD IDOK
+  ${EndIf}
 
   Delete "$SMPROGRAMS\GAIA\GAIA.lnk"
   RMDir  "$SMPROGRAMS\GAIA"
