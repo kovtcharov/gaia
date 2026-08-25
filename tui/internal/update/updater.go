@@ -308,6 +308,19 @@ func (u *Updater) Install(ctx context.Context, req InstallRequest) (*InstallResu
 	if disabled, value := IsDisabled(u.opts.Env); disabled {
 		return nil, &DisabledError{Value: value}
 	}
+	// Refused BEFORE the download, not after: an AppImage install otherwise
+	// fetched everything, replaced files inside a temporary extraction, and
+	// reported "Installed x.y.z" over an AppImage that was byte-identical.
+	if where := u.appImagePath(); where != "" {
+		return nil, fmt.Errorf(
+			"this GAIA is running from an AppImage, which cannot update itself.\n"+
+				"  Running: %s\n"+
+				"  Instead: download the new AppImage and replace that file.\n"+
+				"An AppImage runs from a read-only image and its binaries live in a "+
+				"temporary extraction that is discarded on exit, so an update here "+
+				"would download everything, report success, and change nothing.",
+			where)
+	}
 	guard, err := Acquire(u.opts.GaiaDir, u.opts.Now)
 	if err != nil {
 		return nil, err
@@ -788,4 +801,29 @@ func (u *Updater) sidecarRecord() (*installedRecord, string) {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// appImagePath reports where this process is running from when it is an
+// AppImage, or "" when it is not.
+//
+// Two signals because there are two run modes and only one sets the env var:
+// the type-2 runtime exports APPIMAGE (the absolute path of the .AppImage), and
+// `--appimage-extract-and-run` instead unpacks under /tmp and executes from
+// there. The path check is what catches the second — observed as
+// /tmp/appimage_extracted_<hash>/usr/bin/gaia-tui — and .mount_ covers the
+// FUSE mountpoint form.
+func (u *Updater) appImagePath() string {
+	if p := u.opts.Env("APPIMAGE"); p != "" {
+		return p
+	}
+	exe := u.opts.TUIPath
+	for _, marker := range []string{"appimage_extracted_", "/.mount_"} {
+		if strings.Contains(exe, marker) {
+			if dir := u.opts.Env("APPDIR"); dir != "" {
+				return dir
+			}
+			return exe
+		}
+	}
+	return ""
 }
