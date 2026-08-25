@@ -42,12 +42,53 @@ func lemonadeProbeURLs() []string {
 	return urls
 }
 
-// lemonadeStartHint is the command that starts Lemonade on this OS.
-func lemonadeStartHint() string {
-	if runtime.GOOS == "windows" {
-		return `the "Lemonade Server" shortcut, or LemonadeServer.exe`
+// lemonadeInstallPaths are where an installed Lemonade Server lives, per OS.
+// Used only to tell "not installed" apart from "installed but not running":
+// printing "start it with ..." to someone who does not have it is a dead end.
+func lemonadeInstallPaths() []string {
+	if runtime.GOOS != "windows" {
+		return nil // resolved via PATH instead
 	}
-	return "lemonade-server serve"
+	var paths []string
+	if local := os.Getenv("LOCALAPPDATA"); local != "" {
+		paths = append(paths, filepath.Join(local, "lemonade_server", "bin", "LemonadeServer.exe"))
+	}
+	if pf := os.Getenv("ProgramFiles"); pf != "" {
+		paths = append(paths, filepath.Join(pf, "Lemonade Server", "bin", "LemonadeServer.exe"))
+	}
+	return paths
+}
+
+// lemonadeInstalled reports whether Lemonade Server is on this machine at all.
+func lemonadeInstalled() bool {
+	for _, p := range lemonadeInstallPaths() {
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			return true
+		}
+	}
+	// Non-Windows, and Windows installs that put it on PATH.
+	for _, name := range []string{"lemonade-server", "LemonadeServer"} {
+		if _, err := exec.LookPath(name); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// lemonadeRemedy is the next step for whichever state this machine is in. The
+// two are different problems: one needs an install, the other needs a start.
+func lemonadeRemedy() string {
+	if !lemonadeInstalled() {
+		if runtime.GOOS == "windows" {
+			return "Lemonade Server is not installed. The GAIA installer bundles it -- " +
+				"re-run the installer, or get it from https://lemonade-server.ai"
+		}
+		return "Lemonade Server is not installed. Get it from https://lemonade-server.ai"
+	}
+	if runtime.GOOS == "windows" {
+		return `Start it from the "Lemonade Server" shortcut, or run LemonadeServer.exe`
+	}
+	return "Start it with: lemonade-server serve"
 }
 
 // agentNameForError names the child in a message a user reads, without leaking
@@ -203,14 +244,14 @@ func (s *SubprocessClient) startLocked() (turnState, error) {
 		url := detectLemonadeURL()
 		if url == "" && s.needsLemonade {
 			return turnState{}, fmt.Errorf(
-				"Lemonade Server is not running, and %s cannot start without it.\n"+
+				"%s needs Lemonade Server, and nothing answered on it.\n"+
 					"  Looked on: %s\n"+
-					"  Start it:  %s\n"+
+					"  Next:      %s\n"+
 					"  Then send your message again. This is needed even with --use-claude: "+
 					"chat would go to Anthropic, but memory and document embeddings still "+
 					"come from Lemonade.",
 				agentNameForError(s.path), strings.Join(lemonadeProbeURLs(), ", "),
-				lemonadeStartHint())
+				lemonadeRemedy())
 		}
 		if url != "" {
 			cmd.Env = append(os.Environ(), "LEMONADE_BASE_URL="+url)
