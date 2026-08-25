@@ -249,6 +249,47 @@ SectionEnd
 ; ---------------------------------------------------------------------------
 
 Section "Uninstall"
+  ; Refuse before removing anything, the same way installing over a running GAIA
+  ; is refused.
+  ;
+  ; Deleting the binaries FIRST is the liveness test -- Windows will not delete a
+  ; running .exe. Doing it in this order matters: the previous version swept the
+  ; files, then PATH, then the registry, then noticed the survivor. That left a
+  ; machine with gaia-tui.exe still on disk but no PATH entry, no Add/Remove row
+  ; and no Uninstall.exe -- an orphan with nothing left to remove it. Better to
+  ; touch nothing and let the user close GAIA and run it again.
+  ; Guarded on existence so a RETRY works: a second uninstall must not trip over
+  ; a file the first one already removed. gaia-tui is tested before gaia-agent
+  ; because it is the parent -- if the UI is running, this aborts having touched
+  ; nothing at all.
+  ;
+  ; $R4 records the outcome because LogicLib's ${Errors} is IfErrors, which
+  ; CLEARS the flag as it reads it. Testing it twice therefore always came back
+  ; false the second time: the abort never fired, and an uninstall over a running
+  ; GAIA stripped PATH, the Add/Remove row and Uninstall.exe while the binaries
+  ; survived -- an orphan with nothing left to remove it.
+  StrCpy $R4 "0"
+  ${If} ${FileExists} "$INSTDIR\gaia-tui.exe"
+    ClearErrors
+    Delete "$INSTDIR\gaia-tui.exe"
+    ${If} ${Errors}
+      StrCpy $R4 "1"
+    ${EndIf}
+  ${EndIf}
+  ${If} $R4 == "0"
+  ${AndIf} ${FileExists} "$INSTDIR\gaia-agent.exe"
+    ClearErrors
+    Delete "$INSTDIR\gaia-agent.exe"
+    ${If} ${Errors}
+      StrCpy $R4 "1"
+    ${EndIf}
+  ${EndIf}
+  ${If} $R4 == "1"
+    DetailPrint "GAIA is still running -- nothing was removed."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "GAIA is still running, so it cannot be uninstalled.$\r$\n$\r$\nClose every GAIA window and terminal, then uninstall again.$\r$\n$\r$\nNothing has been removed." /SD IDOK
+    Abort "GAIA is still running -- close it and uninstall again."
+  ${EndIf}
+
   ; PATH first: it needs pathmgr.ps1, which the sweep below deletes.
   ${If} ${FileExists} "$INSTDIR\pathmgr.ps1"
     DetailPrint "Removing $INSTDIR from your PATH..."
@@ -259,8 +300,7 @@ Section "Uninstall"
     ${EndIf}
   ${EndIf}
 
-  Delete "$INSTDIR\gaia-tui.exe"
-  Delete "$INSTDIR\gaia-agent.exe"
+  ; The binaries are already gone (deleted above as the liveness test).
   Delete "$INSTDIR\pathmgr.ps1"
   Delete "$INSTDIR\gaia.ico"
   Delete "$INSTDIR\Uninstall.exe"
@@ -268,15 +308,6 @@ Section "Uninstall"
   Delete "$INSTDIR\gaia-tui.exe.old"
   Delete "$INSTDIR\gaia-agent.exe.old"
   RMDir "$INSTDIR"
-
-  ; Windows cannot delete a running .exe, so a survivor here means GAIA was open
-  ; and this uninstall was partial. Saying so beats an "uninstalled" dialog over
-  ; a folder that still has the binaries in it.
-  ${If} ${FileExists} "$INSTDIR\gaia-tui.exe"
-  ${OrIf} ${FileExists} "$INSTDIR\gaia-agent.exe"
-    DetailPrint "WARNING: some files could not be removed -- GAIA was running."
-    MessageBox MB_OK|MB_ICONEXCLAMATION "Some GAIA files could not be removed because GAIA was still running.$\r$\n$\r$\nClose every GAIA window and terminal, then delete this folder by hand:$\r$\n$\r$\n$INSTDIR" /SD IDOK
-  ${EndIf}
 
   Delete "$SMPROGRAMS\GAIA\GAIA.lnk"
   RMDir  "$SMPROGRAMS\GAIA"
