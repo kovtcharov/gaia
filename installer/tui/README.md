@@ -94,6 +94,30 @@ Windows was exercised on this machine; Ubuntu 24.04 in a container, from build
 through `apt remove`. Both reach the hub screen with GAIA listed as **Installed**
 and no Python CLI present.
 
+### What still needs Lemonade, and what happens without it
+
+The agent builds its embedder at startup, so it cannot answer without a
+reachable Lemonade Server — **including under `--use-claude`**, where chat moves
+to Anthropic but memory and RAG embeddings do not (Anthropic has no embeddings
+API; see `gaia_agent/stdio.py`'s header).
+
+Only the Windows installer bundles Lemonade. The `.deb` and the `.dmg` do not,
+so on those platforms it is a separate install. Rather than an install-time
+notice nobody remembers, the terminal UI refuses the spawn at the moment it
+matters and prints the step that applies to that machine — verified on a real
+Ubuntu container with no Lemonade present:
+
+```
+gaia-agent needs Lemonade Server, and nothing answered on it.
+  Looked on: http://localhost:13305, http://localhost:8000
+  Next:      Lemonade Server is not installed. Get it from https://lemonade-server.ai
+```
+
+On Windows the "not installed" case names the GAIA installer instead, because
+that one does bundle it. When Lemonade *is* installed but stopped, both say how
+to start it. Before this the transport probed, missed, and spawned anyway — the
+agent then died during construction and the user saw a bare exit code.
+
 **macOS still needs a Mac, but most of the DMG build has now been exercised off
 one.** Running `build-dmg.sh` with `hdiutil` stubbed proves everything up to the
 packaging call, and the `Install GAIA.command` inside the DMG is plain bash, so
