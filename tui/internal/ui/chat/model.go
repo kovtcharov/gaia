@@ -281,6 +281,13 @@ type ChatModel struct {
 	// this stuck true.
 	awaitingModelSwitch bool
 
+	// coldStart is true when the agent's startup ping reported the local
+	// chat model NOT resident in Lemonade (model_loaded=false): the first
+	// message will pay a one-time model load + prompt prefill, and the live
+	// region says so instead of a generic spinner. Cleared by the first
+	// completed turn; never set without an explicit report.
+	coldStart bool
+
 	connected    bool
 	totalSteps   int
 	initialQuery string
@@ -2062,7 +2069,13 @@ func (m ChatModel) renderLiveRegion() string {
 	// reappears the moment the last finished action scrolls out of view.
 	hint := ""
 	if !anyCompleted(m.activity) && elapsed >= stillWorkingAfter {
-		hint = "     " + activityStyle.Render(glyphDetail+" still working — local model, usually 60-90s")
+		text := " still working — local model, usually 60-90s"
+		if m.coldStart {
+			// The first message also pays the one-time model load, so the
+			// generic estimate would read as a hang long before it is one.
+			text = " first message loads the model — a few minutes; later ones are fast"
+		}
+		hint = "     " + activityStyle.Render(glyphDetail+text)
 	}
 
 	// The hint is part of the height budget, not an extra row bolted on after
@@ -2119,6 +2132,10 @@ func (m ChatModel) idlePhrase(logLen int) string {
 		return "Stopping at the next step"
 	case m.buffer != "":
 		return "Writing your answer"
+	case logLen == 0 && m.coldStart:
+		// The agent reported the model cold at startup, so this wait is the
+		// one-time load — say so even before the first stage event lands.
+		return "Starting the local model (one-time)"
 	case logLen == 0:
 		return "Getting started"
 	default:
@@ -2222,7 +2239,7 @@ func (m ChatModel) renderActivityItem(item ActivityItem, live bool, elapsed time
 			style = failStyle
 		}
 		head = "  " + activityStyle.Render(glyphTool) + " " + style.Render(content)
-	case item.Kind == "status" || item.Kind == "thinking":
+	case item.Kind == "status" || item.Kind == "thinking" || item.Kind == "stage":
 		head = "  " + activityStyle.Render(glyphStatus) + " " +
 			lipgloss.NewStyle().Foreground(theme.Warning).Render(content)
 	default:

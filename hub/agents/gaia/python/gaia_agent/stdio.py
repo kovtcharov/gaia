@@ -291,15 +291,28 @@ def _model_state_event(agent: Any) -> Dict[str, Any]:
     }
     # Reported even on the Claude path: embeddings (RAG, memory) still run on
     # Lemonade, so "chat is remote" does not mean Lemonade being down is fine.
-    event.update(_lemonade_health(getattr(chat.config, "base_url", None)))
+    event.update(
+        _lemonade_health(
+            getattr(chat.config, "base_url", None),
+            model_id=None if is_claude else model_id,
+        )
+    )
     return event
 
 
-def _lemonade_health(base_url: Optional[str]) -> Dict[str, Any]:
+def _lemonade_health(
+    base_url: Optional[str], model_id: Optional[str] = None
+) -> Dict[str, Any]:
     """Version and reachability of the local model server, for the dev header.
 
     Never raises and never blocks startup for long: an unreachable Lemonade is a
     normal state to *report*, not an error to propagate out of a status ping.
+
+    When *model_id* is given (local-chat backend only), the ping also carries
+    ``model_loaded`` — whether that model is RESIDENT in Lemonade's memory
+    right now. The TUI keys its cold-start loading UI off this: ``False``
+    means the first message will pay the model load. Omitted when it cannot
+    be determined, which a client must read as unknown, not as loaded.
     """
     try:
         client = LemonadeClient(base_url=base_url, verbose=False)
@@ -315,7 +328,155 @@ def _lemonade_health(base_url: Optional[str]) -> Dict[str, Any]:
     except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.debug("[lemonade] health probe failed: %s", exc)
         state["lemonade_reachable"] = False
+    if model_id and state.get("lemonade_reachable"):
+        resident = _model_resident(client, model_id)
+        if resident is not None:
+            state["model_loaded"] = resident
     return state
+
+
+def _model_resident(client: Any, model_id: str) -> Optional[bool]:
+    """Whether *model_id* is currently loaded in Lemonade's memory.
+
+    ``None`` means indeterminate (probe failed) — never guessed either way,
+    so a broken probe cannot claim a warm model that is actually cold.
+    """
+    try:
+        status = client.get_status()
+        if not status.running:
+            return None
+        return (
+            type(client)._find_loaded_entry(status, model_id) is not None
+        )  # static helper on LemonadeClient
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.debug("[lemonade] residency probe failed: %s", exc)
+        return None
+
+
+#: Stage names carried on cold-start ``status`` events (additive ``stage``
+#: field, stdio-transport-local like the model-state ping's fields). The TUI
+#: renders these as a staged loading log with per-stage elapsed time; a client
+#: that does not know the field sees an ordinary status line — still honest,
+#: just unstaged.
+STAGE_MODEL_LOAD = "model_load"
+STAGE_PREFILL = "prefill"
+
+
+def _stage_event(stage: str, message: str) -> Dict[str, Any]:
+    return {"type": "status", "message": message, "stage": stage}
+
+
+class ModelWarmup:
+    """Background load of the local chat model, kicked off at process start.
+
+    The first message of a session used to pay the whole model load (~100s on
+    a cold Lemonade) inside ``process_query``, invisible behind a generic
+    spinner. This starts that same load the moment the transport comes up, so
+    by the time the user finishes typing it is underway or done — and the
+    first turn *joins* it instead of racing it, which keeps exactly one /load
+    in flight from this process (Lemonade's slot is single-tenant; the broker
+    lease, when configured, serializes against other processes).
+
+    Fail-loudly contract: a load failure is stored, surfaced as the first
+    turn's terminal error verbatim, then cleared so the next turn retries the
+    load (synchronously, with the same stage line) rather than wedging every
+    later turn on a stale exception.
+    """
+
+    def __init__(self, base_url: Optional[str], model_id: str) -> None:
+        self.model_id = model_id
+        self._base_url = base_url
+        self._thread: Optional[threading.Thread] = None
+        self.error: Optional[BaseException] = None
+        #: True when the model was NOT resident at startup — the case the
+        #: staged cold-start UI exists for.
+        self.was_cold = False
+        #: True once a turn has consumed the cold start (stages emitted).
+        self.consumed = False
+
+    def start_if_cold(self) -> bool:
+        """Begin the background load if the model is not already resident.
+
+        Returns True when a load was started. An indeterminate residency
+        probe does NOT start one — loading on a guess could evict a model
+        another process just placed.
+        """
+        try:
+            client = LemonadeClient(base_url=self._base_url, verbose=False)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.debug("[warmup] client construction failed: %s", exc)
+            return False
+        if _model_resident(client, self.model_id) is not False:
+            return False
+        self.was_cold = True
+        self._thread = threading.Thread(
+            target=self._load, daemon=True, name="model-warmup"
+        )
+        self._thread.start()
+        return True
+
+    def _load(self) -> None:
+        try:
+            client = LemonadeClient(base_url=self._base_url, verbose=False)
+            client.ensure_model_loaded(self.model_id)
+        except BaseException as exc:  # noqa: BLE001 - stored, then surfaced loudly
+            logger.exception("[warmup] model load failed")
+            self.error = exc
+
+    @property
+    def in_flight(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def wait(self) -> None:
+        if self._thread is not None:
+            self._thread.join()
+
+    def retry_sync(self) -> None:
+        """Blocking retry after a failed background load. Clears then re-fills
+        ``error`` so the caller reads THIS attempt's outcome."""
+        self.error = None
+        self._thread = None
+        self._load()
+
+
+def _stage_cold_start(warmup: Optional["ModelWarmup"], out) -> bool:
+    """Emit the cold-start stages for this turn; join/complete the model load.
+
+    Returns False when the load failed — the terminal error has already been
+    written and the turn must not proceed to ``process_query`` (which would
+    stack a second, slower copy of the same failure behind it).
+    """
+    if warmup is None or not warmup.was_cold or warmup.consumed:
+        return True
+
+    load_line = _stage_event(
+        STAGE_MODEL_LOAD,
+        f"Loading {warmup.model_id} into memory — the first message takes a "
+        "few minutes; later ones are fast",
+    )
+    if warmup.in_flight:
+        _write(load_line, out)
+        warmup.wait()
+    elif warmup.error is not None:
+        # The background attempt already failed; retry in view of the user.
+        _write(load_line, out)
+        warmup.retry_sync()
+
+    if warmup.error is not None:
+        error, warmup.error = warmup.error, None  # next turn retries fresh
+        _write(_terminal_error(error), out)
+        return False
+
+    _write(
+        _stage_event(
+            STAGE_PREFILL,
+            "Model in memory — reading the system prompt (one-time setup "
+            "for this session)",
+        ),
+        out,
+    )
+    warmup.consumed = True
+    return True
 
 
 #: Lemonade catalog labels that mark a model as NOT a chat target (embedders,
@@ -812,6 +973,7 @@ def run_turn(
     out,
     dev: bool = False,
     state: Optional[PermissionState] = None,
+    warmup: Optional[ModelWarmup] = None,
 ) -> None:
     """Run one query to completion, streaming canonical events to *out*.
 
@@ -830,6 +992,12 @@ def run_turn(
     one: no grant is ever inherited by accident.
     """
     from gaia.ui.sse_handler import SSEOutputHandler
+
+    # Cold start: stage the model load (joining the launch-time warm-up) and
+    # the prompt prefill BEFORE the agent loop starts, on this turn's wire.
+    # A failed load already wrote its terminal error — the turn is over.
+    if not _stage_cold_start(warmup, out):
+        return
 
     handler = SSEOutputHandler()
     agent.console = handler
@@ -944,6 +1112,7 @@ def dispatch_query(
     out,
     dev: bool = False,
     state: Optional[PermissionState] = None,
+    warmup: Optional[ModelWarmup] = None,
 ) -> None:
     """Route one line off the query queue: a sentinel, or a real turn.
 
@@ -957,7 +1126,7 @@ def dispatch_query(
     if is_model_command(query):
         run_model_command(agent, query, out)
         return
-    run_turn(agent, query, out, dev=dev, state=state)
+    run_turn(agent, query, out, dev=dev, state=state, warmup=warmup)
 
 
 def build_parser() -> "argparse.ArgumentParser":
@@ -995,6 +1164,12 @@ def build_parser() -> "argparse.ArgumentParser":
         action="store_true",
         help="Developer mode: DEBUG-level logging to the log file instead of "
         "errors only.",
+    )
+    parser.add_argument(
+        "--no-warmup",
+        action="store_true",
+        help="Do not pre-load the local chat model at startup; the first "
+        "message pays the full model load instead.",
     )
     parser.add_argument(
         "--bypass-permissions",
@@ -1045,6 +1220,18 @@ def main(argv: Optional[list] = None) -> int:
     # lands before that turn's own events.
     _write(_model_state_event(agent), out)
 
+    # Pre-warm the local chat model so the load runs while the user is still
+    # typing their first message. Local backend only — there is nothing to
+    # warm for Claude — and the first turn JOINS this thread (see
+    # _stage_cold_start) rather than racing a second /load against it.
+    warmup: Optional[ModelWarmup] = None
+    if not agent.chat.config.use_claude and not args.no_warmup:
+        warmup = ModelWarmup(
+            getattr(agent.chat.config, "base_url", None), agent.chat.effective_model
+        )
+        if warmup.start_if_cold():
+            logger.info("[warmup] pre-loading %s in the background", warmup.model_id)
+
     # stdin is read by its own thread so it keeps being read DURING a turn —
     # which is the only time a confirmation decision can arrive. The turn loop
     # takes queries off the queue the pump fills.
@@ -1058,7 +1245,7 @@ def main(argv: Optional[list] = None) -> int:
         if query is None:  # stdin closed
             break
         try:
-            dispatch_query(agent, query, out, dev=args.dev, state=state)
+            dispatch_query(agent, query, out, dev=args.dev, state=state, warmup=warmup)
         except Exception as exc:  # never let one bad turn kill the process
             logger.exception("stdio turn crashed outside the run loop")
             _write(_terminal_error(exc), out)

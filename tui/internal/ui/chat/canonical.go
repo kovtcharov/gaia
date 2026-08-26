@@ -68,6 +68,20 @@ func (m ChatModel) handleCanonicalEvent(evt interface{}) (ChatModel, tea.Cmd, bo
 			// Keep the legacy flag in sync — renderClaudeChip is still the
 			// pre-first-event fallback (see renderModelChip).
 			m.claudeMode = e.ModelRemote
+			// Only an explicit "not resident" arms the cold-start UI: absent
+			// (older agent, remote backend, failed probe) must not promise a
+			// load that may never happen.
+			if e.ModelLoaded != nil {
+				m.coldStart = !*e.ModelLoaded
+			}
+			break
+		}
+
+		// A cold-start stage ("model_load", "prefill"): staged progress with
+		// per-stage elapsed time, not a replaceable status line. Each new
+		// stage closes the previous one with how long it actually took.
+		if e.Stage != "" {
+			m.beginStage(e.Stage, clean(e.Message))
 			break
 		}
 
@@ -82,6 +96,9 @@ func (m ChatModel) handleCanonicalEvent(evt interface{}) (ChatModel, tea.Cmd, bo
 			m.totalSteps = n
 		}
 		if msg := userFacingStatus(e.Message); msg != "" {
+			// Any ordinary status means the agent loop is running — whatever
+			// cold-start stage was open has finished.
+			m.closeOpenStage()
 			m.setLiveStatus(msg)
 		} else if m.dev {
 			// --dev is where harness internals belong: suppressing them for
@@ -94,10 +111,15 @@ func (m ChatModel) handleCanonicalEvent(evt interface{}) (ChatModel, tea.Cmd, bo
 		if !m.firstToken {
 			m.firstToken = true
 			m.ttft = time.Since(m.queryStart)
+			// First answer text: the prefill (or whatever stage was open)
+			// is over — close it with its real elapsed time.
+			m.closeOpenStage()
 		}
 		m.buffer += e.Delta
 
 	case event.CanonicalToolCallEvent:
+		// A tool call is proof the model came back from the prefill.
+		m.closeOpenStage()
 		item := ActivityItem{
 			Kind:    "tool",
 			Tool:    e.Tool,
@@ -222,6 +244,9 @@ func (m ChatModel) handleCanonicalEvent(evt interface{}) (ChatModel, tea.Cmd, bo
 		m.drainPendingPreScan()
 		m.streaming = false
 		m.activity = nil
+		// A completed turn means the model is loaded and prefilled — every
+		// later message this session is a warm one.
+		m.coldStart = false
 		// The turn is over, so any question it was waiting on is dead. Leaving
 		// the panel up would swallow every keystroke into a question nobody is
 		// listening to — the composer becomes unreachable and Esc quits the app.
@@ -606,6 +631,38 @@ func userFacingStatus(raw string) string {
 	return msg
 }
 
+// beginStage opens one cold-start stage in the work log, closing whatever
+// stage was open with its real elapsed time. Stages are never folded or
+// replaced the way plain status lines are: each is a distinct, completed unit
+// of one-time work ("model load", "prompt prefill"), and seeing the earlier
+// one ticked off with its duration is what tells the user progress is real.
+func (m *ChatModel) beginStage(stage, msg string) {
+	m.closeOpenStage()
+	m.activity = append(m.activity, ActivityItem{
+		Kind:    "stage",
+		Stage:   stage,
+		Content: msg,
+		Started: time.Now(),
+	})
+}
+
+// closeOpenStage marks the still-open cold-start stage (if any) done, recording
+// how long it took. Called when a new stage begins, and when anything proving
+// the agent loop is running arrives (a tool call, answer text, a plain status).
+func (m *ChatModel) closeOpenStage() {
+	for i := len(m.activity) - 1; i >= 0; i-- {
+		item := &m.activity[i]
+		if item.Kind != "stage" || item.Done {
+			continue
+		}
+		item.Done = true
+		if !item.Started.IsZero() {
+			item.Detail = "done — " + formatElapsed(time.Since(item.Started))
+		}
+		return
+	}
+}
+
 // setLiveStatus places a stage line in the work log without letting stages pile
 // up. Three cases, in the order the loop meets them:
 //
@@ -621,7 +678,9 @@ func (m *ChatModel) setLiveStatus(msg string) {
 	sawWork := false
 	for i := len(m.activity) - 1; i >= 0; i-- {
 		switch m.activity[i].Kind {
-		case "tool", "confirm":
+		case "tool", "confirm", "stage":
+			// A completed cold-start stage is real work: the status after it
+			// must get its own line, not overwrite the record of the load.
 			sawWork = true
 		case "status":
 			if m.activity[i].Content == msg {

@@ -3206,6 +3206,18 @@ class LemonadeClient:
 
         return model_lease(model, priority=self.model_lease_priority, on_wait=_on_wait)
 
+    def ensure_model_loaded(self, model: str, auto_download: bool = True) -> None:
+        """Public pre-warm: load ``model`` at GAIA's expected ctx_size unless it
+        is already resident there.
+
+        The same check-and-load every chat request runs internally, exposed so
+        a host (e.g. the TUI's stdio transport) can start the load *before* the
+        first user message instead of paying it inside the first turn. Failures
+        propagate as :class:`LemonadeClientError` with actionable copy — never
+        swallowed.
+        """
+        self._ensure_model_loaded(model, auto_download=auto_download)
+
     def _ensure_model_loaded(self, model: str, auto_download: bool = True) -> None:
         """Ensure a model is loaded on the server before making requests.
 

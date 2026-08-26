@@ -43,6 +43,12 @@ const (
 type CanonicalStatusEvent struct {
 	Type    string `json:"type"`
 	Message string `json:"message"`
+	// Stage marks this status as one step of the cold-start sequence
+	// ("model_load", "prefill") — another stdio-transport-local additive
+	// field, sent by gaia_agent/stdio.py while the first message of a
+	// session waits on the local model. The TUI renders staged progress
+	// with per-stage elapsed time; empty means an ordinary status line.
+	Stage string `json:"stage,omitempty"`
 	// ModelID is the model actually resolved for chat (e.g. "claude-sonnet-5"
 	// or "Gemma-4-E4B-it-GGUF") — empty means this is a plain status line, not
 	// a model banner.
@@ -64,6 +70,12 @@ type CanonicalStatusEvent struct {
 	LemonadeReachable *bool  `json:"lemonade_reachable,omitempty"`
 	LemonadeVersion   string `json:"lemonade_version,omitempty"`
 	LemonadeBaseURL   string `json:"lemonade_base_url,omitempty"`
+	// ModelLoaded (startup ping only, local backend only) reports whether the
+	// chat model is RESIDENT in Lemonade's memory right now. A *bool so "not
+	// reported" (older agent, remote backend, failed probe) stays
+	// distinguishable from "reported cold" — only an explicit false arms the
+	// cold-start loading UI.
+	ModelLoaded *bool `json:"model_loaded,omitempty"`
 }
 
 // CanonicalTokenEvent — one incremental chunk of assistant answer text.

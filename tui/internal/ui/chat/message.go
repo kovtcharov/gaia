@@ -84,7 +84,7 @@ func (m *Message) renderCardDeduped(w int, seen map[string]bool) string {
 }
 
 type ActivityItem struct {
-	Kind string // "thinking", "tool", "step", "status", "confirm"
+	Kind string // "thinking", "tool", "step", "status", "confirm", "stage"
 	// Content is the user-facing line — for a tool, the narrated phrase
 	// ("Loading the github-triage skill"), never the bare tool name.
 	Content string
@@ -106,4 +106,9 @@ type ActivityItem struct {
 	// Repeat counts additional consecutive occurrences folded into this item by
 	// the live work log; 0 means it happened once.
 	Repeat int
+	// Stage names the cold-start step a "stage" item reports ("model_load",
+	// "prefill"); Started is when it began, so closing it can record an
+	// honest per-stage elapsed time. Zero for every other kind.
+	Stage   string
+	Started time.Time
 }
