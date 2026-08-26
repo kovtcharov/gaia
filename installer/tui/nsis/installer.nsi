@@ -158,7 +158,21 @@ FunctionEnd
 
 Section "GAIA" SecMain
   SectionIn RO
+
+  ; This installer is per-user (RequestExecutionLevel user), so a directory like
+  ; C:\Program Files is not writable and every File below silently fails. The
+  ; registry and shortcut writes that follow go to HKCU and the Desktop, which
+  ; ARE writable, so they succeeded -- leaving an Add/Remove entry and a Desktop
+  ; icon for a product that was never installed, and no uninstaller to remove
+  ; either. Checked here so a bad directory is refused while it is still just a
+  ; wrong answer on the previous page.
+  ClearErrors
   SetOutPath "$INSTDIR"
+  ${If} ${Errors}
+    DetailPrint "Cannot write to $INSTDIR."
+    MessageBox MB_OK|MB_ICONSTOP "GAIA cannot be installed into:$\r$\n$\r$\n$INSTDIR$\r$\n$\r$\nThat folder is not writable by your account. This installer does not ask for administrator rights, so choose a folder you own -- the default is $LOCALAPPDATA\Programs\GAIA.$\r$\n$\r$\nNothing was installed." /SD IDOK
+    Abort "Cannot write to $INSTDIR -- choose a folder your account owns."
+  ${EndIf}
 
   !insertmacro EnsureNotRunning "$INSTDIR\gaia-tui.exe"
   !insertmacro EnsureNotRunning "$INSTDIR\gaia-agent.exe"
@@ -170,6 +184,16 @@ Section "GAIA" SecMain
   ; embeds the same mark (tui/cmd/gaia/rsrc_windows_*.syso), which is what makes
   ; Explorer, the taskbar and Alt-Tab draw it -- a shortcut icon alone would not.
   File "${STAGE_DIR}\gaia.ico"
+
+  ; Belt and braces on the outcome rather than the error flag: NSIS's File keeps
+  ; going after a failed write, and everything below (registry, shortcuts, PATH)
+  ; would then advertise an install that is not on disk.
+  ${IfNot} ${FileExists} "$INSTDIR\gaia-tui.exe"
+  ${OrIfNot} ${FileExists} "$INSTDIR\gaia-agent.exe"
+    DetailPrint "The GAIA binaries were not written to $INSTDIR."
+    MessageBox MB_OK|MB_ICONSTOP "GAIA's files could not be written to:$\r$\n$\r$\n$INSTDIR$\r$\n$\r$\nCheck free space and folder permissions, then try again.$\r$\n$\r$\nNothing was installed." /SD IDOK
+    Abort "The GAIA binaries were not written to $INSTDIR."
+  ${EndIf}
 
   WriteRegStr HKCU "Software\GAIA" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "Software\GAIA" "Version"    "${GAIA_VERSION}"
