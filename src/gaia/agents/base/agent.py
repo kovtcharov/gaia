@@ -198,6 +198,9 @@ class ToolExecutionTimeout(Exception):
 TOOLS_REQUIRING_CONFIRMATION = {
     "run_shell_command",
     "run_cli_command",
+    # Runs a .py file in a subprocess — arbitrary code execution, and unlike
+    # run_shell_command there is no read-only allowlist behind it.
+    "execute_python_file",
     "write_file",
     "write_python_file",
     "edit_file",
@@ -474,6 +477,16 @@ class Agent(abc.ABC):
     # Set by ``_select_tools_for_turn`` at the top of each query; consulted by
     # both render paths and the ``_openai_tools`` property.
     _active_tool_filter: Optional[List[str]] = None
+
+    # Re-entrancy guard for tool timing. A tool body may call another tool
+    # (CodeAgent orchestrates that way); only the outermost call is timed.
+    _tool_timing_depth: int = 0
+
+    # Seconds spent waiting on a human confirmation, excluded from tool time.
+    _confirmation_wait_s: float = 0.0
+
+    # Which mixin contributed each system-prompt fragment.
+    _mixin_prompt_origins: "Optional[Dict[str, Any]]" = None
 
     # Per-turn performance record, live only for the duration of one turn and
     # only when GAIA_TURN_LOG is set. ``None`` is the off state everywhere.
@@ -1027,7 +1040,7 @@ Do NOT wrap conversational replies in JSON.
         return recorder
 
     def _finish_turn_record(
-        self, user_input: str, answer: str, steps_taken: int
+        self, answer: str, steps_taken: int
     ) -> Optional[Dict[str, Any]]:
         """Seal and write the turn record; always detaches it from the SDK.
 
@@ -1042,13 +1055,7 @@ Do NOT wrap conversational replies in JSON.
         if recorder is None:
             return None
         try:
-            record = recorder.finish(
-                query=user_input,
-                answer=answer or "",
-                steps=steps_taken,
-                agent_name=type(self).__name__,
-                model_id=getattr(self, "model_id", None),
-            )
+            record = recorder.finish(answer=answer or "", steps=steps_taken)
         except Exception as e:  # noqa: BLE001 - diagnostics must not fail a turn
             logger.warning("could not finish turn record: %s", e)
             return None
@@ -1213,11 +1220,7 @@ Do NOT wrap conversational replies in JSON.
     @property
     def _openai_tools(self):
         """Return OpenAI function-calling schemas when the active model supports native tool_calls."""
-        from gaia.llm.lemonade_client import is_tool_calling_model
-
-        if getattr(self, "_use_claude", False) or is_tool_calling_model(
-            getattr(self, "model_id", None)
-        ):
+        if self._uses_native_tool_calls():
             return (
                 self._build_openai_tool_schemas(filter_to=self._active_tool_filter)
                 or None
@@ -3270,18 +3273,23 @@ Do NOT wrap conversational replies in JSON.
         # be recorded ok, and ``_is_error_result(None)`` would say it was.
         ok = False
         self._tool_timing_depth = 1
+        self._confirmation_wait_s = 0.0
         try:
             result = self._execute_tool(tool_name, tool_args)
             ok = not self._is_error_result(result)
             return result
         finally:
             self._tool_timing_depth = 0
+            waited = getattr(self, "_confirmation_wait_s", 0.0) or 0.0
             try:
                 recorder.record_tool(
                     step=getattr(getattr(self, "chat", None), "turn_step", 0),
                     name=tool_name or "<unnamed>",
-                    wall_s=time.perf_counter() - started,
+                    # Human approval is excluded — neither tool nor model cost.
+                    # Folding it in made a 1.3s command report as 322.6s.
+                    wall_s=max(0.0, time.perf_counter() - started - waited),
                     ok=ok,
+                    waited_s=waited,
                 )
             except Exception as e:  # noqa: BLE001 - never displace a tool error
                 logger.warning("could not record tool timing: %s", e)
@@ -3372,7 +3380,19 @@ Do NOT wrap conversational replies in JSON.
         # (#2210): AgentConsole prompts on a TTY, SSEOutputHandler blocks on the
         # frontend modal, everything else denies with an actionable message.
         if self._tool_requires_confirmation(tool_name, tool_args):
-            if not self.console.confirm_tool_execution(tool_name, tool_args):
+            # Blocking on a human is not tool cost. Timed separately so a turn
+            # where approval took five minutes does not report the tool as
+            # having taken five minutes.
+            _confirm_started = time.perf_counter()
+            try:
+                approved = self.console.confirm_tool_execution(tool_name, tool_args)
+            finally:
+                # Accumulates: a tool body that invokes another confirmed tool
+                # asks twice, and the outer timer resets this per turn anyway.
+                self._confirmation_wait_s = (
+                    getattr(self, "_confirmation_wait_s", 0.0) or 0.0
+                ) + (time.perf_counter() - _confirm_started)
+            if not approved:
                 return {
                     "status": "denied",
                     "error": self._confirmation_denied_error(tool_name),
@@ -4386,7 +4406,7 @@ Do NOT wrap conversational replies in JSON.
             # The impl re-raises on purpose (the wrong-ctx reload its caller
             # retries). A recorder left attached would fold the next turn's
             # calls into this one. Idempotent when the turn already sealed.
-            self._finish_turn_record(user_input, "", 0)
+            self._finish_turn_record("", 0)
 
     def _process_query_impl(
         self,
@@ -4396,8 +4416,6 @@ Do NOT wrap conversational replies in JSON.
         filename: str = None,
     ) -> Dict[str, Any]:
         """Inner implementation of ``process_query`` — see public method docstring."""
-        import time
-
         start_time = time.time()  # Track query processing start time
 
         # Store query for error context (used in _execute_tool for error formatting)
@@ -6353,9 +6371,7 @@ Do NOT wrap conversational replies in JSON.
                 # Sealed before the answer prints: total_s must mean "until it
                 # was on screen", and the console folds the record into that
                 # same event.
-                turn_record = self._finish_turn_record(
-                    user_input, final_answer, steps_taken
-                )
+                turn_record = self._finish_turn_record(final_answer, steps_taken)
                 self._publish_turn_metrics(turn_record)
                 self.console.print_final_answer(
                     final_answer,
@@ -6420,7 +6436,7 @@ Do NOT wrap conversational replies in JSON.
                 "error_history": self.error_history,
             }
             # Returns before the tail seal below.
-            self._finish_turn_record(user_input, "", steps_taken)
+            self._finish_turn_record("", steps_taken)
             return self.last_result
 
         # Print completion message
@@ -6477,7 +6493,7 @@ Do NOT wrap conversational replies in JSON.
 
         # Catches the exits that never printed an answer (max steps).
         turn_record = (
-            self._finish_turn_record(user_input, result.get("result", ""), steps_taken)
+            self._finish_turn_record(result.get("result", ""), steps_taken)
             or turn_record
         )
         if turn_record is not None:

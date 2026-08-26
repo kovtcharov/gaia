@@ -231,7 +231,13 @@ def test_eval_surface_state_is_derived_not_asserted(matrix):
 
     # Current state pins — move these WITH the corpus, never delete them.
     assert set(matrix.eval_suites) == {"quality", "perf"}
-    assert all(s["enforce"] is False for s in matrix.eval_suites.values())
+    # Quality is ENFORCED: a regression in the flagship fails the build rather
+    # than printing a warning. Perf stays report-only until a runner baseline
+    # calibrates its bars — enforcing a number nobody has measured would gate on
+    # a guess. Both switches live in tests/fixtures/gaia/*_gate_thresholds.json,
+    # so this pin moves when that data does.
+    assert matrix.eval_suites["quality"]["enforce"] is True
+    assert matrix.eval_suites["perf"]["enforce"] is False
     assert matrix.scenario_categories == [
         "gaia_code",
         "gaia_core",

@@ -9,6 +9,23 @@ contract version is tracked separately as
 
 ### Fixed
 
+- **A request that omits its `Host` header is now refused (400).** The
+  DNS-rebinding check only compared the header when one was present, so a caller
+  could skip the control by leaving it out. Browsers always send `Host`, so the
+  drive-by vector this guards was never open and the token check applied
+  regardless — this closes a defence-in-depth fail-open, not a live bypass. The
+  refusal message quotes the header back when one was sent, so a malformed value
+  (`:8131`, an unbracketed `::1`) no longer reports as "no Host header".
+
+- **The OpenAPI document now declares the sidecar's bearer-token gate (#2993).**
+  `require_caller_token` enforces a per-session bearer token at runtime, but was
+  invisible to schema generation (it's a plain `Request` dependency, not a
+  `fastapi.security` class) — every documented operation showed 0 security
+  requirements. The live `/openapi.json` and the committed `openapi.email.json`
+  now declare a `bearerAuth` HTTP scheme and, per gated operation, `security:
+  [{"bearerAuth": []}, {}]` (bearer OR none — the check is conditional, skipped
+  when the sidecar has no token configured for local development). `EXEMPT_PATHS`
+  routes declare an explicit empty requirement. No runtime auth behavior changed.
 - **A `newer_than:`/`older_than:` search could report 0 messages for mail
   that exists (#2830, Gmail mailboxes only).** The issue blamed
   `from:"<brand>"` matching nothing on a display name — disproven: that

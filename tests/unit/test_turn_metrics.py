@@ -18,6 +18,7 @@ from gaia.agents.base.turn_metrics import (
     SCHEMA,
     TURN_LOG_ENV,
     TurnRecorder,
+    _common_prefix_len,
     format_summary,
     turn_log_path,
 )
@@ -64,11 +65,8 @@ def test_writes_nothing_when_no_path_is_configured(monkeypatch, tmp_path):
     monkeypatch.delenv(TURN_LOG_ENV, raising=False)
     rec = _recorder()
     rec.finish(
-        query="hello",
         answer="hi",
         steps=1,
-        agent_name="GaiaAgent",
-        model_id="Gemma-4-E4B-it-GGUF",
     )
     assert list(tmp_path.iterdir()) == []
 
@@ -200,7 +198,7 @@ def test_server_and_local_token_totals_are_never_mixed():
     rec = _recorder()
     rec.start_llm_call(1, "x" * 4000)
     rec.end_llm_call({"input_tokens": 99999, "output_tokens": 10})
-    record = rec.finish(query="q", answer="a", steps=1, agent_name="A", model_id="M")
+    record = rec.finish(answer="a", steps=1)
     totals = record["totals"]
 
     assert totals["input_tokens_server"] == 99999
@@ -215,7 +213,7 @@ def test_tool_time_is_tracked_separately_from_model_time():
     rec = _recorder()
     rec.record_tool(1, "run_shell_command", 2.5, ok=True)
     rec.record_tool(2, "find_files", 0.5, ok=False)
-    record = rec.finish(query="q", answer="a", steps=2, agent_name="A", model_id="M")
+    record = rec.finish(answer="a", steps=2)
 
     assert record["totals"]["tool_s"] == pytest.approx(3.0)
     assert [c["name"] for c in record["tool_calls"]] == [
@@ -229,7 +227,7 @@ def test_a_refused_tool_still_contributes_its_time():
     """Otherwise a refusal's latency is misattributed to agent overhead."""
     rec = _recorder()
     rec.record_tool(1, "gh_write", 1.25, ok=False)
-    record = rec.finish(query="q", answer="a", steps=1, agent_name="A", model_id="M")
+    record = rec.finish(answer="a", steps=1)
     assert record["totals"]["tool_s"] == pytest.approx(1.25)
 
 
@@ -239,10 +237,12 @@ def test_a_refused_tool_still_contributes_its_time():
 def test_record_is_one_json_line_per_turn(tmp_path):
     path = tmp_path / "turns.jsonl"
     for i in range(3):
-        rec = _recorder(path=path)
+        # The query rides on the recorder now, not on finish() — it is fixed
+        # when the turn opens, so each turn needs its own recorder to differ.
+        rec = _recorder(path=path, query=f"q{i}")
         rec.start_llm_call(1, f"prompt {i}")
         rec.end_llm_call({"input_tokens": 10, "output_tokens": 2})
-        rec.finish(query=f"q{i}", answer="a", steps=1, agent_name="A", model_id="M")
+        rec.finish(answer="a", steps=1)
 
     lines = path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 3
@@ -256,7 +256,7 @@ def test_record_carries_timestamps_and_total_turn_time(tmp_path):
     rec = _recorder(path=path)
     rec.start_llm_call(1, "p")
     rec.end_llm_call({})
-    record = rec.finish(query="q", answer="a", steps=1, agent_name="A", model_id="M")
+    record = rec.finish(answer="a", steps=1)
 
     assert record["started_at"].endswith("+00:00")
     assert record["ended_at"].endswith("+00:00")
@@ -269,7 +269,7 @@ def test_an_unwritable_path_does_not_fail_the_turn(tmp_path):
     blocker = tmp_path / "not-a-dir"
     blocker.write_text("x", encoding="utf-8")
     rec = _recorder(path=blocker / "nested" / "turns.jsonl")
-    record = rec.finish(query="q", answer="a", steps=1, agent_name="A", model_id="M")
+    record = rec.finish(answer="a", steps=1)
     assert record["schema"] == SCHEMA
 
 
@@ -277,7 +277,7 @@ def test_summary_line_reports_every_number_the_user_asked_for():
     rec = _recorder()
     rec.start_llm_call(1, "x" * 4000)
     rec.end_llm_call({"input_tokens": 1000, "output_tokens": 42})
-    record = rec.finish(query="q", answer="a", steps=1, agent_name="A", model_id="M")
+    record = rec.finish(answer="a", steps=1)
     line = format_summary(record)
 
     for expected in ("total", "steps", "prefill", "tools", "cached", "out", "model"):
@@ -303,7 +303,7 @@ def test_backend_cache_counters_reach_the_record():
             "cache_creation_input_tokens": 0,
         }
     )
-    record = rec.finish(query="q", answer="a", steps=1, agent_name="A", model_id="M")
+    record = rec.finish(answer="a", steps=1)
 
     (call,) = record["llm_calls"]
     assert call["cache_read_input_tokens"] == 12200
@@ -317,7 +317,7 @@ def test_a_backend_that_reports_no_cache_counters_leaves_them_absent():
     rec = _recorder()
     rec.start_llm_call(1, "x" * 4000)
     rec.end_llm_call({"input_tokens": 1000, "output_tokens": 42})
-    record = rec.finish(query="q", answer="a", steps=1, agent_name="A", model_id="M")
+    record = rec.finish(answer="a", steps=1)
 
     (call,) = record["llm_calls"]
     assert "cache_read_input_tokens" not in call
@@ -334,7 +334,7 @@ def test_summary_prefers_the_backends_own_cache_numbers():
             "cache_read_input_tokens": 12200,
         }
     )
-    record = rec.finish(query="q", answer="a", steps=1, agent_name="A", model_id="M")
+    record = rec.finish(answer="a", steps=1)
 
     # The local estimate for this same turn is 0% — one call, nothing before it.
     assert record["totals"]["input_tokens_cached_local"] == 0
@@ -354,5 +354,44 @@ def test_a_cold_turn_that_only_wrote_the_cache_still_uses_server_totals():
             "cache_creation_input_tokens": 13696,
         }
     )
-    record = rec.finish(query="q", answer="a", steps=1, agent_name="A", model_id="M")
+    record = rec.finish(answer="a", steps=1)
     assert "in 14,034 (0% cached)" in format_summary(record)
+
+
+# The cached/new split is only as trustworthy as this helper. It is a binary
+# search over slice equality, so an off-by-one lands as a wrong cache figure
+# rather than a crash — which is why it is checked against the obvious
+# implementation rather than against hand-picked expectations.
+def _naive_prefix_len(a: str, b: str) -> int:
+    limit = min(len(a), len(b))
+    i = 0
+    while i < limit and a[i] == b[i]:
+        i += 1
+    return i
+
+
+@pytest.mark.parametrize(
+    "a,b",
+    [
+        ("", ""),
+        ("", "a"),
+        ("a", ""),
+        ("a", "a"),
+        ("abc", "abd"),
+        ("aaa", "aa"),
+        ("abc", "xyz"),
+        ("x" * 5000, "x" * 5000),
+        ("x" * 5000 + "a", "x" * 5000 + "b"),
+        ("héllo", "héllx"),
+        ("日本語", "日本"),
+    ],
+)
+def test_common_prefix_matches_the_obvious_implementation(a, b):
+    assert _common_prefix_len(a, b) == _naive_prefix_len(a, b)
+
+
+def test_common_prefix_is_symmetric_and_bounded():
+    a, b = "shared-head" + "L" * 900, "shared-head" + "R" * 900
+    n = _common_prefix_len(a, b)
+    assert n == _common_prefix_len(b, a) == len("shared-head")
+    assert 0 <= n <= min(len(a), len(b))
