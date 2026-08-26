@@ -59,13 +59,19 @@ binds a send to one exact message but does not identify the caller.
   logged, deprecated compatibility leg for older binaries; a set path var whose
   file is missing or empty fails sidecar startup loudly. The npm lifecycle
   currently uses the env channel.
-- **Host allowlist** — non-loopback `Host` → **400** (DNS-rebinding).
+- **Host allowlist** — an absent or non-loopback `Host` → **400** (DNS-rebinding).
 - **Origin rejection** — non-loopback browser `Origin` → **403** (drive-by page).
   Non-browser clients send no `Origin` and are unaffected. No CORS is ever sent.
 
 Running the sidecar by hand without `GAIA_EMAIL_SIDECAR_TOKEN` disables the token
 check (local development only, logged loudly); the Host/Origin controls still
 apply. The shipped product always spawns with a token.
+
+The OpenAPI document (both the live `/openapi.json` and the committed
+`openapi.email.json`) declares this: a `bearerAuth` HTTP scheme plus, per
+gated operation, `security: [{"bearerAuth": []}, {}]` — bearer OR none,
+matching the conditional check above. Exempt paths declare an explicit empty
+requirement instead.
 
 ## REST API
 

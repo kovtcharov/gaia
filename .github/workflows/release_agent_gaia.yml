@@ -97,14 +97,25 @@
 #                              ENVIRONMENT secret on `agent-publish` (NOT a repo
 #                              secret) so it is unreadable until the gate is
 #                              approved.
+#     R2_ACCESS_KEY_ID       — R2 S3 credentials + account, from an R2 API token
+#     R2_SECRET_ACCESS_KEY     with Object Read & Write on the hub bucket
+#     CLOUDFLARE_ACCOUNT_ID    (Cloudflare → R2 → Manage R2 API Tokens). REQUIRED
+#                              for every release, not optional: the Linux sidecar
+#                              is past the Worker's request-body cap, so it is
+#                              PUT straight to R2 and published by reference.
+#                              Same ENVIRONMENT-secret placement as above.
 #   Variables:
 #     GAIA_HUB_BASE_URL      — public Worker origin for downloads + the lock
 #                              baseUrl. Default https://hub.amd-gaia.ai.
 #     GAIA_HUB_PUBLISH_URL   — origin CI POSTs uploads to. MUST be the Worker's
-#                              workers.dev URL: the free-plan managed WAF on the
-#                              proxied hub.amd-gaia.ai custom domain blocks large
-#                              binary uploads, but not GET downloads. Unset →
-#                              falls back to GAIA_HUB_BASE_URL (uploads 403).
+#                              workers.dev URL: the managed WAF fronting the
+#                              hub.amd-gaia.ai custom domain 403s large binary
+#                              uploads, so POST /publish goes through the
+#                              workers.dev origin instead — same Worker + R2
+#                              bucket, just the door that isn't WAF-blocked
+#                              (GET downloads stay on hub.amd-gaia.ai). REQUIRED —
+#                              the release fails loudly if it is unset (no silent
+#                              fallback).
 #   npm trusted publisher for @amd-gaia/gaia registered against THIS workflow
 #   file name: release_agent_gaia.yml (repo amd/gaia). The OIDC subject is tied
 #   to the exact filename — RENAMING THIS FILE BREAKS THE npm PUBLISH.
@@ -115,8 +126,14 @@
 #     Email added a macos-15-intel smoke leg to catch that. Add the same here if
 #     Intel-Mac backward-compat becomes a real support burden; today darwin-x64
 #     is best-effort and its absence/breakage fails loudly at install.
-#   * the eval / scorecard gates (email-specific corpora + thresholds).
 #   * the whole-package zip (disabled upstream — exceeded the edge upload limit).
+#
+# Carried over from email (same topology): the `scorecard-gate` job (hosted —
+# parses the committed hub/agents/gaia/npm/SCORECARD.md, bars from the
+# committed thresholds manifest, regression vs the prior agent-pkg-gaia-* tag)
+# and the `gaia-eval` job (self-hosted — a bounded subset of the judged gaia
+# eval via test_gaia_agent_eval.yml, report mode unless a manifest under
+# tests/fixtures/gaia/ sets enforce:true). Both gate `publish`.
 
 name: Release Agent (gaia)
 
@@ -312,6 +329,86 @@ jobs:
             [ -f "$f" ] || echo "::warning::${f} not found — the release will publish without that hub doc tab."
           done
 
+  # ── Stage 1b: scorecard presence + regression gate ─────────────────
+  # Hosted-CI backstop: the committed SCORECARD.md must exist, parse, and not
+  # regress vs the prior release tag. Bars come from the committed thresholds
+  # manifest (data, not YAML) — same single-source rule as the email gate.
+  scorecard-gate:
+    name: Scorecard gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # full history so git describe can find previous tags
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install core + PyYAML
+        run: pip install -e . pyyaml
+      - name: Resolve previous release tag (best-effort baseline)
+        id: prev_tag
+        shell: bash
+        run: |
+          set -uo pipefail
+          # Most recent agent-pkg-gaia-* tag strictly before the current ref;
+          # none found -> presence-only check (first adoption).
+          PREV="$(git describe --tags --abbrev=0 \
+            --match 'agent-pkg-gaia-*' \
+            "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          echo "prev_tag=${PREV}" >> "$GITHUB_OUTPUT"
+          if [ -n "${PREV}" ]; then
+            echo "Baseline tag: ${PREV}"
+          else
+            echo "No previous release tag found — presence-only check."
+          fi
+      - name: Resolve acceptance bar (data-driven from the thresholds manifest)
+        id: bars
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The bar and the enforce switch live in the committed manifest.
+          # aggregate.value = judged_pass_rate x 100, so scale the bar. With
+          # enforce:false (the current state, pending the first runner
+          # baseline) the gate runs presence+regression only.
+          MANIFEST="tests/fixtures/gaia/quality_gate_thresholds.json"
+          ENFORCE="$(python -c "import json;print(json.load(open('${MANIFEST}')).get('enforce',False))")"
+          if [ "${ENFORCE}" = "True" ]; then
+            BAR="$(python -c "import json;print(round(float(json.load(open('${MANIFEST}'))['min_judged_pass_rate'])*100,2))")"
+            echo "args=--min-aggregate ${BAR}" >> "$GITHUB_OUTPUT"
+            echo "Acceptance enforcement ON: --min-aggregate ${BAR}"
+          else
+            echo "args=" >> "$GITHUB_OUTPUT"
+            echo "Acceptance enforcement OFF (report-only) — presence+regression gate only."
+          fi
+      - name: Run scorecard gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREV="${{ steps.prev_tag.outputs.prev_tag }}"
+          BARS="${{ steps.bars.outputs.args }}"
+          if [ -n "${PREV}" ]; then
+            python -m gaia.eval.scorecard_gate \
+              --scorecard hub/agents/gaia/npm/SCORECARD.md \
+              --baseline-ref "${PREV}" ${BARS}
+          else
+            python -m gaia.eval.scorecard_gate \
+              --scorecard hub/agents/gaia/npm/SCORECARD.md ${BARS}
+          fi
+
+  # ── Stage 1c: judged gaia eval (release gate, self-hosted) ─────────
+  # A bounded subset of the judged suite (the cheap categories — the full
+  # 12-category run is the weekly/dispatch profile; a release must not hold
+  # the serial Lemonade slot for a day). Report mode end-to-end: it only
+  # hard-blocks when a manifest under tests/fixtures/gaia/ sets enforce:true.
+  # What always blocks: zero judged scenarios / unmeasured scenarios / a
+  # missing judge credential (the callee's integrity gates).
+  gaia-eval:
+    name: Gaia eval subset (release gate)
+    uses: ./.github/workflows/test_gaia_agent_eval.yml
+    with:
+      categories: 'gaia_core,gaia_shell,gaia_tool_selection,gaia_honesty'
+    secrets: inherit
+
   # ── Stage 2: native sidecar freeze on every platform ────────────────
   freeze:
     name: Freeze sidecar (${{ matrix.key }})
@@ -381,8 +478,14 @@ jobs:
           # rather than resolved from PyPI — the frozen binary must contain the
           # ChatAgent this commit was developed against, not whatever is
           # published.
+          #
+          # `rag` is required, not optional, in THIS lane: the agent's own
+          # pyproject leaves it out because a wheel gets it from `gaia init`
+          # into the active interpreter (#2358), and a frozen binary has no
+          # interpreter to install into. Without it faiss/pypdf are absent, the
+          # RAG tools still register, and document Q&A fails on every call.
           uv pip install --python .venv-freeze \
-            -e ".[api]" \
+            -e ".[api,rag]" \
             -e hub/agents/chat/python \
             -e hub/agents/gaia/python \
             pyinstaller
@@ -625,7 +728,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv pip install --system -e ".[api]" -e hub/agents/chat/python -e hub/agents/gaia/python pytest
+          # Same extras as the freeze env: testing without `rag` would exercise
+          # a dependency set no released binary ever has.
+          uv pip install --system -e ".[api,rag]" -e hub/agents/chat/python -e hub/agents/gaia/python pytest
 
       - name: Python tests (hub/agents/gaia/python/tests)
         shell: bash
@@ -644,7 +749,7 @@ jobs:
   publish:
     name: Publish to Hub + npm
     runs-on: ubuntu-latest
-    needs: [version, freeze, tui, tests]
+    needs: [version, freeze, tui, tests, scorecard-gate, gaia-eval]
     # Manual approval gate: the `agent-publish` environment is configured (repo
     # Settings → Environments) with required reviewers, so this job pauses until
     # a maintainer approves — the human backstop for an accidental/tampered
@@ -692,7 +797,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --upgrade requests pyyaml
+          # boto3 is not optional here: the Linux sidecar exceeds the Worker's
+          # request-body cap, so it uploads over the S3 API. Without it the
+          # publish dies on that artifact with the smaller platforms already
+          # stored immutably.
+          python -m pip install --upgrade requests pyyaml boto3
 
       # Re-run of the `version` job's gates AFTER the approval pause: the gate
       # can sit for hours, and this job re-checks out the ref. Cheap insurance
@@ -727,16 +836,44 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "base_url=${GAIA_HUB_BASE_URL:-https://hub.amd-gaia.ai}/${HUB_PREFIX}/${VERSION}" >> "$GITHUB_OUTPUT"
 
-      - name: Assert hub publish token present
+      - name: Assert publish credentials present
         shell: bash
-        # Secret goes through env (never inlined into the script text) so a
-        # value with shell metacharacters can't break parsing or defeat masking.
+        # Secrets go through env (never inlined into the script text) so a value
+        # with shell metacharacters can't break parsing or defeat masking.
         env:
           GAIA_HUB_TOKEN: ${{ secrets.GAIA_HUB_TOKEN }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
           if [ -z "${GAIA_HUB_TOKEN:-}" ]; then
             echo "::error::missing environment secret GAIA_HUB_TOKEN on the agent-publish environment — the Agent Hub Bearer publish token (must match the Worker's PUBLISH_TOKENS). See workers/agent-hub/README.md."
+            exit 1
+          fi
+          # The Linux sidecar is past the Worker's request-body cap, so every
+          # release needs the direct-to-R2 lane. publish_to_r2.py refuses to
+          # store anything without these; checking here names all three missing
+          # secrets at once, before the artifact downloads.
+          missing=""
+          for name in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY CLOUDFLARE_ACCOUNT_ID; do
+            [ -n "${!name:-}" ] || missing="${missing} ${name}"
+          done
+          if [ -n "${missing}" ]; then
+            echo "::error::missing secret(s):${missing}. The Linux sidecar exceeds the Cloudflare Worker request-body cap and uploads straight to R2, so these are required for every release. Create an R2 API token with Object Read & Write (Cloudflare -> R2 -> Manage R2 API Tokens) and add them as ENVIRONMENT secrets on 'agent-publish' (a repo secret is also read, but keep them behind the approval gate). See workers/agent-hub/README.md."
+            exit 1
+          fi
+
+      - name: Assert hub publish URL present
+        shell: bash
+        # Variable goes through env (never inlined into the script text) so a
+        # value with shell metacharacters can't break parsing.
+        env:
+          GAIA_HUB_PUBLISH_URL: ${{ vars.GAIA_HUB_PUBLISH_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GAIA_HUB_PUBLISH_URL:-}" ]; then
+            echo "::error::missing repository variable GAIA_HUB_PUBLISH_URL — the Worker's workers.dev origin CI POSTs uploads to (the proxied hub.amd-gaia.ai custom domain's managed WAF blocks large uploads). Set it as a repository variable, or as an environment variable on the agent-publish environment. See workers/agent-hub/README.md."
             exit 1
           fi
 
@@ -841,6 +978,14 @@ jobs:
           # hub.amd-gaia.ai (GETs aren't blocked).
           GAIA_HUB_PUBLISH_URL: ${{ vars.GAIA_HUB_PUBLISH_URL }}
           GAIA_HUB_BASE_URL: ${{ vars.GAIA_HUB_BASE_URL }}
+          # The sidecar crosses the Worker's request-body cap on Linux
+          # (measured 120,677,152 bytes with the RAG deps compiled in), so that
+          # artifact is uploaded straight to R2 over the S3 API and published by
+          # reference. Without these the publish dies partway through, after the
+          # smaller platforms have already been stored immutably.
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
           for required in "${README}" "${CHANGELOG}"; do
@@ -874,9 +1019,18 @@ jobs:
             exit 1
           fi
 
+          # --strict-immutable: the publisher's lenient default skips an already
+          # published artifact whose bytes differ and reports the PUBLISHED hash
+          # in its --summary-out. This lane does not use that summary — the lock
+          # is rebuilt from the freeze metas below — so a skipped artifact would
+          # be recorded with this run's local rebuild hash and only blow up two
+          # steps later, in the fetch-verify, blaming the bytes the hub serves.
+          # Fail here instead, where the error says to bump the version. Drop
+          # this flag if the lock is ever switched to --summary-out.
           python "${PACKAGING}/publish_to_r2.py" \
-            --base-url "${GAIA_HUB_PUBLISH_URL:-${GAIA_HUB_BASE_URL:-https://hub.amd-gaia.ai}}" \
+            --base-url "${GAIA_HUB_PUBLISH_URL}" \
             --manifest "${MANIFEST}" \
+            --strict-immutable \
             "${doc_args[@]}" \
             "${args[@]}"
 

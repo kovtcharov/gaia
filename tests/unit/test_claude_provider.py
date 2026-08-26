@@ -677,3 +677,72 @@ def test_openai_tools_gate_counts_claude_as_tool_calling():
 
     agent._use_claude = False
     assert agent._openai_tools is None
+
+
+class TestToolNameSanitization:
+    """Skill tools are namespaced ``<skill>/<tool>`` — the ``/`` 400s the
+    Anthropic API (pattern ``^[a-zA-Z0-9_-]{1,128}$``), so names must be
+    sanitized outbound and restored on returned tool_use blocks."""
+
+    def _tools(self, *names):
+        return [
+            {
+                "type": "function",
+                "function": {"name": n, "description": "", "parameters": {}},
+            }
+            for n in names
+        ]
+
+    def test_slash_name_is_sanitized_and_mapped(self, fake_anthropic):
+        p = _provider(fake_anthropic)
+        converted = p._to_anthropic_tools(self._tools("rss-digest/fetch_rss"))
+        assert converted[0]["name"] == "rss-digest_fetch_rss"
+        assert p._restore_tool_name("rss-digest_fetch_rss") == "rss-digest/fetch_rss"
+
+    def test_valid_names_pass_through_untouched(self, fake_anthropic):
+        p = _provider(fake_anthropic)
+        converted = p._to_anthropic_tools(self._tools("read_file", "query-docs"))
+        assert [t["name"] for t in converted] == ["read_file", "query-docs"]
+        assert p._restore_tool_name("read_file") == "read_file"
+
+    def test_sanitization_collision_fails_loudly(self, fake_anthropic):
+        import pytest
+
+        p = _provider(fake_anthropic)
+        with pytest.raises(ValueError, match="both map to"):
+            p._to_anthropic_tools(self._tools("a/b", "a.b"))
+
+
+class TestToolNameCollisionRouting:
+    """A sanitized name colliding with an untouched one misroutes the model's
+    call. Registering only rewritten names cannot see that collision."""
+
+    def _tools(self, *names):
+        return [
+            {
+                "type": "function",
+                "function": {"name": n, "description": "", "parameters": {}},
+            }
+            for n in names
+        ]
+
+    def test_sanitized_name_shadowing_a_builtin_is_refused(self, fake_anthropic):
+        import pytest
+
+        p = _provider(fake_anthropic)
+        # `write/file` -> `write_file`, which is already a real builtin.
+        with pytest.raises(ValueError, match="both map to"):
+            p._to_anthropic_tools(self._tools("write_file", "write/file"))
+
+    def test_order_does_not_hide_the_collision(self, fake_anthropic):
+        import pytest
+
+        p = _provider(fake_anthropic)
+        with pytest.raises(ValueError, match="both map to"):
+            p._to_anthropic_tools(self._tools("write/file", "write_file"))
+
+    def test_unchanged_names_still_round_trip(self, fake_anthropic):
+        p = _provider(fake_anthropic)
+        converted = p._to_anthropic_tools(self._tools("read_file", "query-docs"))
+        assert [t["name"] for t in converted] == ["read_file", "query-docs"]
+        assert p._restore_tool_name("read_file") == "read_file"
