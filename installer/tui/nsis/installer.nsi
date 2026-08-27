@@ -217,18 +217,26 @@ Section "GAIA" SecMain
   ; shortcut into it and one without still gets a working console. The icon is
   ; taken from gaia-tui.exe either way, so the shortcut looks like GAIA rather
   ; than like whichever terminal is hosting it.
+  ; Both shortcuts target powershell.exe -- a real file in System32 -- and never
+  ; wt.exe.
+  ;
+  ; wt.exe in WindowsApps is a zero-byte App Execution Alias (a reparse point),
+  ; not a binary. A .lnk pointing at one is fragile: the alias can be switched
+  ; off in Settings, and tools that read the shortcut back see a target that is
+  ; not a real file. Windows 11 already uses Windows Terminal as the default
+  ; console host, so launching powershell.exe lands in Windows Terminal anyway
+  ; -- the truecolor this was for -- without depending on the alias at all.
   Call ResolveTerminal
   CreateDirectory "$SMPROGRAMS\GAIA"
-  ${If} $R2 != ""
-    DetailPrint "Shortcuts will open GAIA in Windows Terminal (PowerShell)."
-    CreateShortCut "$SMPROGRAMS\GAIA\GAIA.lnk" "$R2" '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" $R3' "$INSTDIR\gaia.ico" 0
-    CreateShortCut "$DESKTOP\GAIA.lnk"          "$R2" '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" $R3' "$INSTDIR\gaia.ico" 0
-  ${Else}
-    ; No Windows Terminal: PowerShell still hosts it, just in whatever console
-    ; the system provides. A working shortcut beats none.
-    DetailPrint "Windows Terminal not found — shortcuts will use PowerShell in the system console."
-    CreateShortCut "$SMPROGRAMS\GAIA\GAIA.lnk" "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" "$R3" "$INSTDIR\gaia.ico" 0
-    CreateShortCut "$DESKTOP\GAIA.lnk"          "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" "$R3" "$INSTDIR\gaia.ico" 0
+  CreateShortCut "$SMPROGRAMS\GAIA\GAIA.lnk" "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" "$R3" "$INSTDIR\gaia.ico" 0
+  CreateShortCut "$DESKTOP\GAIA.lnk"          "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" "$R3" "$INSTDIR\gaia.ico" 0
+
+  ; Read back rather than trusting CreateShortCut: a shortcut with an empty
+  ; target is indistinguishable from a working one until someone clicks it.
+  ${IfNot} ${FileExists} "$DESKTOP\GAIA.lnk"
+  ${OrIfNot} ${FileExists} "$SMPROGRAMS\GAIA\GAIA.lnk"
+    DetailPrint "WARNING: a shortcut was not created."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "GAIA installed, but one of its shortcuts could not be created.$\r$\n$\r$\nRun it from a terminal instead:$\r$\n$\r$\n  gaia-tui" /SD IDOK
   ${EndIf}
 
   ; --- PATH ----------------------------------------------------------------

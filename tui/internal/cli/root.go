@@ -94,6 +94,16 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
+	// Cobra refuses to run a Windows console program that Explorer started; it
+	// prints "This is a command line tool. You need to open cmd.exe and run it
+	// from there." and waits for Enter. That text is cobra's, not ours, which is
+	// why grepping this repo for it finds nothing.
+	//
+	// GAIA is a TUI people are meant to double-click, so the guard is wrong here.
+	// Empty string is cobra's documented off switch -- it reads like a no-op and
+	// is not guessable, hence this comment.
+	cobra.MousetrapHelpText = ""
+
 	rootCmd.PersistentFlags().BoolVar(&dev, "dev", false,
 		"developer mode: show per-turn timings, steps, and tool arguments and output "+
 			"(agents the TUI spawns itself also log at DEBUG to ~/.gaia/logs/)")
