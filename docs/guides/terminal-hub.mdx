@@ -43,7 +43,15 @@ cd tui && make build     # -> tui/bin/gaia
 
 ## The hub screen
 
-The hub opens on the agent list, grouped into three categories:
+<Note>
+  `gaia-tui` opens the **GAIA agent's chat view**, not this screen — the product
+  ships one agent, so a catalogue of mostly-unreleased rows is the wrong first
+  thing to see. Type `/hub` (or press Esc) in the chat to reach the hub below. On
+  a machine where the agent binary is missing, the hub opens instead, because it
+  explains per-row what is and is not runnable.
+</Note>
+
+The hub lists the agents it knows about, grouped into three categories:
 
 ```
   G A I A    Local AI Agent Hub — by AMD

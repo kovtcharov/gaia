@@ -388,8 +388,11 @@ function Show-NextSteps {
     Write-Host "gaia init" -ForegroundColor $COLOR_GREEN -NoNewline
     Write-Host " to set up Lemonade Server and download models" -ForegroundColor White
     Write-Host "     (the Lemonade installer asks for administrator approval)" -ForegroundColor White
-    Write-Host "  3. Open the terminal hub: " -ForegroundColor White -NoNewline
+    Write-Host "  3. Talk to the agent: " -ForegroundColor White -NoNewline
     Write-Host "gaia-tui" -ForegroundColor $COLOR_GREEN
+    Write-Host "     (it opens the GAIA agent; type " -ForegroundColor White -NoNewline
+    Write-Host "/hub" -ForegroundColor $COLOR_GREEN -NoNewline
+    Write-Host " for the agent hub)" -ForegroundColor White
     Write-Host "`n"
 
     Write-Host "Documentation: https://amd-gaia.ai" -ForegroundColor $COLOR_CYAN

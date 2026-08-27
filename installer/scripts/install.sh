@@ -584,7 +584,8 @@ show_next_steps() {
     fi
     printf '  2. Set up the local model runtime: %sgaia init%s\n' "$COLOR_GREEN" "$COLOR_RESET"
     echo "     (installs Lemonade Server — asks for your password)"
-    printf '  3. Open the terminal hub: %sgaia-tui%s\n' "$COLOR_GREEN" "$COLOR_RESET"
+    printf '  3. Talk to the agent: %sgaia-tui%s\n' "$COLOR_GREEN" "$COLOR_RESET"
+    printf '     (it opens the GAIA agent; type %s/hub%s for the agent hub)\n' "$COLOR_GREEN" "$COLOR_RESET"
     echo ""
 
     printf '%sDocumentation:%s https://amd-gaia.ai\n' "$COLOR_CYAN" "$COLOR_RESET"
