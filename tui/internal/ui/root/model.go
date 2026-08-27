@@ -136,10 +136,12 @@ func NewRootModelWithHub(cat *catalog.Catalog, hc *catalog.HubClient, dev bool) 
 }
 
 func (m RootModel) Init() tea.Cmd {
-	// StartOnAgent may have opened the chat view before the program starts, in
-	// which case initialising the hub would leave the visible view uninitialised.
+	// Both views initialise, even though only one is on screen. StartOnAgent
+	// leaves the hub behind the chat, and the hub's Init is the only
+	// unconditional caller of its catalog load -- skip it and /hub opens on a
+	// list that says "loading" forever and refuses to install anything.
 	if m.activeView == viewChat && m.chat != nil {
-		return m.chat.Init()
+		return tea.Batch(m.chat.Init(), m.hub.Init())
 	}
 	return m.hub.Init()
 }

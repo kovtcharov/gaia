@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/amd/gaia/tui/internal/catalog"
 )
 
@@ -48,8 +50,22 @@ func TestStartOnAgentOpensChatWithTheHubBehindIt(t *testing.T) {
 	if !m.chat.CanReturnToHub() {
 		t.Error("the chat cannot return to the hub; /hub would say \"Not launched from hub\"")
 	}
-	if m.Init() == nil {
-		t.Error("Init returned no command; the visible view would never initialise")
+	// Both views must initialise, not just the visible one. Asserting only
+	// that Init is non-nil passes even when the hub never loads its catalog,
+	// which is exactly the bug this guards: /hub then opens on a list stuck
+	// at "loading" that refuses to install anything.
+	cmd := m.Init()
+	if cmd == nil {
+		t.Fatal("Init returned no command; the visible view would never initialise")
+	}
+	// tea.Batch's command reports its children without running them, so this
+	// stays offline -- the hub's own init is what would reach the network.
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("Init returned a single command (%T); the hub behind the chat never initialises", cmd())
+	}
+	if len(batch) != 2 {
+		t.Errorf("Init scheduled %d commands, want 2 (the chat and the hub behind it)", len(batch))
 	}
 }
 
