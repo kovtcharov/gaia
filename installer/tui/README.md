@@ -83,12 +83,19 @@ included) until `gaia-tui update unpin`.
 
 ## Platform status
 
-| Platform | Artifact                | Size  | Build | Install | PATH | TUI + hub | Uninstall |
-| -------- | ----------------------- | ----- | ----- | ------- | ---- | --------- | --------- |
-| Windows  | `gaia-<v>-x64-setup.exe`| 57 MB | yes   | yes     | yes  | yes       | clean     |
-| Ubuntu   | `gaia-<v>-x64.deb`      | 60 MB | yes   | yes     | yes  | yes       | clean     |
-| Ubuntu   | `gaia-<v>-x64.AppImage` | 128 MB| yes   | n/a     | n/a  | runs on Fedora 41 + Debian 12 | n/a |
+| Platform | Artifact                | Size  | Build | Install | PATH | Opens the agent | Uninstall |
+| -------- | ----------------------- | ----- | ----- | ------- | ---- | --------------- | --------- |
+| Windows  | `gaia-<v>-x64-setup.exe`| 57 MB | yes   | yes     | yes  | yes, via the Desktop shortcut | clean |
+| Ubuntu   | `gaia-<v>-x64.deb`      | 60 MB | yes   | yes     | yes  | yes             | clean     |
+| Ubuntu   | `gaia-<v>-x64.AppImage` | 128 MB| yes   | n/a     | n/a  | yes; also runs on Fedora 41 + Debian 12 | n/a |
 | macOS    | `gaia-<v>-<arch>.dmg`   | —     | **unverified** | — | — | —  | —         |
+
+"Opens the agent" is the flagship's chat view, not the hub: the product ships one
+agent, so a catalogue of mostly-unreleased rows was the wrong first screen. The
+hub is still there behind it, reached with `/hub` or Esc. Checked on Windows
+through the real shortcut chain (PowerShell hosted by Windows Terminal), and on
+Linux through both the `.deb` and the AppImage. Opening the view does not spawn
+the agent, so none of this touches Lemonade.
 
 Windows was exercised on this machine; Ubuntu 24.04 in a container, from build
 through `apt remove`. Both reach the hub screen with GAIA listed as **Installed**
