@@ -363,8 +363,24 @@ download_and_verify() {
         return 1
     fi
 
-    mkdir -p "$(dirname "$_dest")"
-    install -m 0755 "$_tmp" "$_dest"
+    # Checked, because this is where a verified download still fails: an
+    # unwritable directory, a full disk, a read-only $HOME. Both callers invoke
+    # this as `if ! download_and_verify ...`, which switches `set -e` off inside
+    # the body, so an unchecked failure here reached the caller as success and
+    # printed "installed" over a binary that was never written.
+    # (A running gaia-tui is not one of the cases: `install` unlinks the target
+    # first, so the replace succeeds and the live process keeps the old inode.)
+    if ! mkdir -p "$(dirname "$_dest")"; then
+        print_error "Could not create $(dirname "$_dest") for $_label."
+        echo "  Fix:  check you own that directory and that the disk is not full."
+        return 1
+    fi
+    if ! install -m 0755 "$_tmp" "$_dest"; then
+        print_error "Downloaded and verified $_label, but could not write $_dest."
+        echo "  Fix:  check you own $(dirname "$_dest") and that it is writable, then retry."
+        echo "  Look: free disk space, and whether $_dest is held by another tool."
+        return 1
+    fi
     return 0
 }
 
@@ -488,6 +504,9 @@ install_flagship_agent() {
         echo "  Look: $manifest_url"
         exit 1
     fi
+    # Read by show_next_steps: every path above this line leaves the machine
+    # without an agent, and the closing banner must not promise one.
+    FLAGSHIP_INSTALLED=1
     print_success "GAIA agent $version installed to $GAIA_BIN/gaia-agent"
 }
 
@@ -584,8 +603,14 @@ show_next_steps() {
     fi
     printf '  2. Set up the local model runtime: %sgaia init%s\n' "$COLOR_GREEN" "$COLOR_RESET"
     echo "     (installs Lemonade Server — asks for your password)"
-    printf '  3. Talk to the agent: %sgaia-tui%s\n' "$COLOR_GREEN" "$COLOR_RESET"
-    printf '     (it opens the GAIA agent; type %s/hub%s for the agent hub)\n' "$COLOR_GREEN" "$COLOR_RESET"
+    if [ "${FLAGSHIP_INSTALLED:-0}" = "1" ]; then
+        printf '  3. Talk to the agent: %sgaia-tui%s\n' "$COLOR_GREEN" "$COLOR_RESET"
+        printf '     (it opens the GAIA agent; type %s/hub%s for the agent hub)\n' "$COLOR_GREEN" "$COLOR_RESET"
+    else
+        printf '  3. Open the terminal hub: %sgaia-tui%s\n' "$COLOR_GREEN" "$COLOR_RESET"
+        printf '     %sThe GAIA agent was skipped — see the warning above — so this\n' "$COLOR_YELLOW"
+        printf '     opens the agent list, not a chat. Re-run this installer to retry.%s\n' "$COLOR_RESET"
+    fi
     echo ""
 
     printf '%sDocumentation:%s https://amd-gaia.ai\n' "$COLOR_CYAN" "$COLOR_RESET"
