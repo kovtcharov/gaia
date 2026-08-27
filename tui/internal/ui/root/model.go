@@ -34,10 +34,10 @@ type RootModel struct {
 	// help is the shared overlay state machine (components.HelpState) — the
 	// same one the chat view uses on a direct launch, so open/scroll/dismiss
 	// behavior can never diverge between the two paths.
-	help components.HelpState
-	width      int
-	height     int
-	dev        bool
+	help   components.HelpState
+	width  int
+	height int
+	dev    bool
 	// bypassPermissions starts agents launched from this session with
 	// confirmation prompts off (--bypass-permissions). Off unless the launch
 	// asked for it.
@@ -136,7 +136,36 @@ func NewRootModelWithHub(cat *catalog.Catalog, hc *catalog.HubClient, dev bool) 
 }
 
 func (m RootModel) Init() tea.Cmd {
+	// StartOnAgent may have opened the chat view before the program starts, in
+	// which case initialising the hub would leave the visible view uninitialised.
+	if m.activeView == viewChat && m.chat != nil {
+		return m.chat.Init()
+	}
 	return m.hub.Init()
+}
+
+// StartOnAgent opens one agent's chat view immediately, with the hub still
+// behind it.
+//
+// This is how a bare `gaia-tui` boots: the product ships one agent, so a
+// catalogue of mostly-unreleased rows is the wrong first screen. Going through
+// the hub's own launch path rather than constructing a standalone chat is what
+// keeps `/hub` and Esc working -- a directly-built chat model has no hub to
+// return to and answers "Not launched from hub".
+//
+// Reports false when the agent cannot be launched, leaving the hub as the view,
+// so a broken install lands somewhere that explains itself.
+func (m RootModel) StartOnAgent(agentID string) (RootModel, bool) {
+	agent := m.catalog.Get(agentID)
+	if agent == nil {
+		return m, false
+	}
+	updated, _ := m.launchAgent(*agent)
+	next, ok := updated.(RootModel)
+	if !ok {
+		return m, false
+	}
+	return next, next.activeView == viewChat
 }
 
 func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

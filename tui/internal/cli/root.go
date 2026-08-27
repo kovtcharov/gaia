@@ -79,8 +79,8 @@ func binaryName(argv0 string) string {
 
 var rootCmd = &cobra.Command{
 	Use:   defaultBinaryName,
-	Short: "GAIA Terminal Agent Hub",
-	Long:  "Terminal-native hub for browsing, launching, and chatting with GAIA agents.",
+	Short: "GAIA — the AI agent in your terminal",
+	Long:  "Opens the GAIA agent. Type /hub for the agent hub, /help for everything else.",
 	// A one-line refusal followed by 20 lines of command listing pushes the
 	// actual error off a short terminal. Usage is what --help is for.
 	SilenceUsage: true,
@@ -89,7 +89,7 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return ui.RunHub(dev, mockAgent, ctrl, bypassPermissions, useClaude, claudeModelArg())
+		return ui.RunDefault(dev, mockAgent, ctrl, bypassPermissions, useClaude, claudeModelArg())
 	},
 }
 
