@@ -1,15 +1,24 @@
 // Copyright(C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Which published terminal-hub binary this visitor's machine can run.
+// Which build this visitor's machine can run.
 //
-// The hub publishes six: {win,darwin,linux} x {x64,arm64}, so unlike a
-// single-architecture installer this has to resolve the ARCHITECTURE too, and
-// only the client hints report it truthfully — every OS masks arm64 in the UA
-// string to keep old sites working. A machine we cannot place resolves to null
-// and the caller keeps its full platform list on screen, which is the honest
-// outcome: an arm64 user handed an x64 binary gets a failure at exec time, not
-// a download error they can act on.
+// Resolution happens at two levels, because they succeed at very different
+// rates:
+//
+//   OS   — nearly always knowable from the UA (`placeOs`).
+//   ARCH — only the client hints report it truthfully; every OS masks arm64 in
+//          the UA string to keep old sites working (`resolveArch`).
+//
+// macOS is the hard case and the reason the two are separate. Safari ships no
+// client hints, and every Mac — Intel and Apple Silicon — says "Intel Mac OS X",
+// so about half of Mac visitors have a knowable OS and an unknowable arch.
+// Guessing would hand some of them a binary that cannot run; giving up would
+// leave them scrolling a six-row list. So the caller falls back from platform to
+// OS and offers both Mac builds, each labelled with the machine it is for.
+//
+// A machine we do not ship for at all (iPad, iPhone, Android) resolves to null
+// at both levels and keeps the full list.
 
 export type Os = 'win' | 'darwin' | 'linux';
 export type Arch = 'x64' | 'arm64';
@@ -42,6 +51,17 @@ export const PLATFORM_LABELS: Record<PlatformKey, string> = {
   'linux-arm64': 'Linux (ARM64)',
 };
 
+/**
+ * iPadOS Safari requests desktop sites by default: it sends the *Mac* UA
+ * (`Macintosh; Intel Mac OS X 10_15_7`) with no `iPad` token, so the UA alone
+ * calls it a Mac. Touch points are the giveaway — a real Mac has no
+ * touchscreen and reports 0, an iPad reports 5. Without this an iPad visitor is
+ * placed as a Mac and handed a `.dmg` it cannot open.
+ */
+function isIpadClaimingToBeAMac(nav: NavigatorLike): boolean {
+  return /Macintosh/i.test(nav.userAgent) && (nav.maxTouchPoints ?? 0) > 0;
+}
+
 export function detectOs(userAgent: string): Os | null {
   if (/Windows/i.test(userAgent)) return 'win';
   if (/Mac/i.test(userAgent) && !/iPhone|iPad|iPod/i.test(userAgent)) return 'darwin';
@@ -49,13 +69,10 @@ export function detectOs(userAgent: string): Os | null {
   return null;
 }
 
-/**
- * Apple Silicon without client hints (Safari): the UA says "Intel" on every
- * Mac, so the UA cannot decide it. A Mac reporting touch points is an M-series
- * machine — Intel Macs report 0 — which is the one signal Safari does expose.
- */
-function appleSiliconBySideChannel(nav: NavigatorLike): boolean {
-  return (nav.maxTouchPoints ?? 0) > 0;
+/** The OS we ship for, or null for a machine we do not (iPad, iPhone, Android). */
+export function placeOs(nav: NavigatorLike): Os | null {
+  if (isIpadClaimingToBeAMac(nav)) return null;
+  return detectOs(nav.userAgent);
 }
 
 export async function resolveArch(nav: NavigatorLike, os: Os): Promise<Arch | null> {
@@ -74,7 +91,11 @@ export async function resolveArch(nav: NavigatorLike, os: Os): Promise<Arch | nu
 
   // Explicit arm64 in the UA — Linux and Windows do sometimes say so.
   if (/aarch64|arm64/i.test(nav.userAgent)) return 'arm64';
-  if (os === 'darwin') return appleSiliconBySideChannel(nav) ? 'arm64' : null;
+  // macOS is genuinely undecidable here. Safari exposes no client hints, and
+  // EVERY Mac — Intel and Apple Silicon alike — reports "Intel Mac OS X" in its
+  // UA, so there is no signal left to read. Callers get null and offer the
+  // choice; see `placeOs`, which still knows the OS.
+  if (os === 'darwin') return null;
   // Windows and Linux on arm64 without hints are rare enough that x64 is the
   // safe read; on macOS it is not, which is why that case returns null above.
   if (/x86_64|win64|wow64|x64|amd64|intel/i.test(nav.userAgent)) return 'x64';
@@ -82,7 +103,7 @@ export async function resolveArch(nav: NavigatorLike, os: Os): Promise<Arch | nu
 }
 
 export async function resolvePlatform(nav: NavigatorLike): Promise<PlatformKey | null> {
-  const os = detectOs(nav.userAgent);
+  const os = placeOs(nav);
   if (!os) return null;
   const arch = await resolveArch(nav, os);
   if (!arch) return null;
@@ -120,13 +141,11 @@ export interface InstallerAssetSpec {
   pattern: RegExp;
 }
 
-// Anchored, and the character after `gaia-` must be a digit — that is what
-// keeps these from matching the raw binaries (`gaia-win-x64.exe`) or the Agent
-// UI's own installers (`gaia-agent-ui-0.23.0-x64-setup.exe`), which share the
-// release and the prefix.
-// Starts with a digit (that is what separates these from `gaia-agent-ui-*` and
-// the raw `gaia-win-x64.exe`), and may carry a prerelease suffix — the workflow
-// publishes `-rc.`/`-beta.` tags, so `0.1.1-rc.1` has to match too.
+// Anchored, and the character after `gaia-` must be a digit — that is what keeps
+// these from matching the raw binaries (`gaia-win-x64.exe`) or the Agent UI's own
+// installers (`gaia-agent-ui-0.23.0-x64-setup.exe`), which share the release and
+// the prefix. The optional suffix carries prereleases: the workflow publishes
+// `-rc.`/`-beta.` tags, so `0.1.1-rc.1` has to match too.
 const VER = String.raw`\d[\w.]*(?:-[\w.]+)?`;
 
 // String.raw on every pattern below is load-bearing: a plain template literal
@@ -181,4 +200,37 @@ export function findInstallers(
     }
   }
   return found;
+}
+
+/** Which platforms belong to an OS, most-likely machine first. */
+const OS_PLATFORMS: Record<Os, InstallerPlatform[]> = {
+  win: ['win-x64'],
+  // Apple Silicon first: it is the overwhelming majority of Macs still getting
+  // OS updates, and Intel Macs are past their last supported release. Both are
+  // offered — this only decides which one leads.
+  darwin: ['darwin-arm64', 'darwin-x64'],
+  linux: ['linux-x64'],
+};
+
+/**
+ * Installers for every platform of one OS, when the exact machine is unknown.
+ *
+ * macOS is the case this exists for: Safari exposes no client hints and every
+ * Mac claims "Intel" in its UA, so roughly half of Mac visitors cannot be
+ * placed. Offering both builds — each labelled with the machine it is for — is
+ * the honest resolution. Guessing one hands some visitors a binary that will
+ * not run; offering nothing was the previous behaviour, and it left them
+ * scrolling a six-row list of raw binaries.
+ */
+export function findInstallersForOs(
+  os: Os,
+  assets: ReleaseAssetLike[],
+): (InstallerDownload & { platform: InstallerPlatform })[] {
+  return OS_PLATFORMS[os].flatMap((platform) =>
+    findInstallers(platform, assets)
+      // One entry per platform: the lead format for each (the .deb on Linux),
+      // because this list is a machine chooser, not a format chooser.
+      .slice(0, 1)
+      .map((d) => ({ ...d, platform })),
+  );
 }

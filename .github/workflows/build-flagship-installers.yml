@@ -657,6 +657,310 @@ jobs:
           [ "$fail" -eq 0 ]
           echo "All ${#expected[@]} expected flagship installer artifacts present at v${V}."
 
+  # --- Stage 3b: install the thing, on the OS it targets --------------
+  #
+  # validate-artifacts only proves a file of roughly the right size exists under
+  # the right name. These jobs prove the installer WORKS: that it carries the
+  # exact bytes the lock pins (fetch_payload.py --verify, which is why that mode
+  # exists), that the binaries run, and that uninstalling puts the machine back.
+  #
+  # Modelled on build-installers.yml's appimage-/dmg-structural-smoke, adapted
+  # to this product: no Electron, no chrome-sandbox, no bundled uv — just two
+  # binaries and the PATH wiring around them.
+  #
+  # Every one of these MUST stay in flagship-installers-complete's `needs:`, or
+  # a broken installer that still builds sails past the gate.
+
+  linux-install-smoke:
+    name: Linux .deb + AppImage smoke
+    needs: [resolve-payload, build]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download Linux installers
+        uses: actions/download-artifact@v8
+        with:
+          name: flagship-linux-x64-installer
+          path: ${{ runner.temp }}/linux
+
+      - name: Download payload lock
+        uses: actions/download-artifact@v8
+        with:
+          name: flagship-binaries-lock
+
+      # --- AppImage ---------------------------------------------------
+      - name: AppImage unpacks and carries the pinned binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          APPIMAGE=$(ls "${RUNNER_TEMP}/linux"/*.AppImage | head -n1)
+          chmod +x "${APPIMAGE}"
+          cd "${RUNNER_TEMP}"
+          # No FUSE on the runner, so extract rather than mount.
+          "${APPIMAGE}" --appimage-extract >/dev/null
+          root="${RUNNER_TEMP}/squashfs-root"
+          for f in AppRun gaia.desktop gaia.png usr/bin/gaia-tui usr/bin/gaia-agent; do
+            if [ ! -e "${root}/${f}" ]; then
+              echo "::error::The AppImage is missing ${f}. installer/tui/linux/build-appimage.sh stages it; a build that drops it produces an image that cannot launch."
+              exit 1
+            fi
+          done
+          [ -x "${root}/AppRun" ] || { echo "::error::AppRun is not executable, so the AppImage cannot start."; exit 1; }
+
+      - name: AppImage binaries match the lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python installer/tui/fetch_payload.py --verify \
+            --lock binaries.lock.json --platform linux-x64 \
+            --dest "${RUNNER_TEMP}/squashfs-root/usr/bin"
+
+      - name: AppImage runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          # AppRun puts its own bin dir on PATH so the TUI can find gaia-agent;
+          # exercise it through AppRun rather than the binary directly, because
+          # that wiring is the part this script owns.
+          APPIMAGE=$(ls "${RUNNER_TEMP}/linux"/*.AppImage | head -n1)
+          out="$(APPIMAGE_EXTRACT_AND_RUN=1 "${APPIMAGE}" version 2>&1)" || {
+            echo "::error::The AppImage did not run: ${out}"
+            exit 1
+          }
+          echo "gaia-tui version -> ${out}"
+
+      # --- .deb -------------------------------------------------------
+      - name: .deb installs, puts both binaries on PATH, and runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEB=$(ls "${RUNNER_TEMP}/linux"/*.deb | head -n1)
+          sudo apt-get install -y "${DEB}"
+
+          for bin in gaia-tui gaia-agent; do
+            path="$(command -v "${bin}" || true)"
+            if [ -z "${path}" ]; then
+              echo "::error::${bin} is not on PATH after installing the .deb. build-deb.sh ships /usr/bin symlinks into /opt/gaia/bin; check they are in the data archive."
+              exit 1
+            fi
+            echo "  ${bin} -> ${path} -> $(readlink -f "${path}")"
+          done
+
+          out="$(gaia-tui version 2>&1)" || {
+            echo "::error::gaia-tui installed from the .deb does not run: ${out}"
+            exit 1
+          }
+          echo "gaia-tui version -> ${out}"
+
+      - name: Installed .deb binaries match the lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python installer/tui/fetch_payload.py --verify \
+            --lock binaries.lock.json --platform linux-x64 --dest /opt/gaia/bin
+
+      # docs/guides/install-agent.mdx tells users `apt remove gaia` takes
+      # everything back out. This is that claim, tested.
+      - name: apt remove leaves nothing behind
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get remove -y gaia
+          fail=0
+          for p in /usr/bin/gaia-tui /usr/bin/gaia-agent /opt/gaia/bin/gaia-tui /opt/gaia/bin/gaia-agent; do
+            if [ -e "${p}" ] || [ -L "${p}" ]; then
+              echo "::error::${p} survived 'apt remove gaia'. The docs promise a clean removal; a leftover symlink also shadows a later install."
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ]
+          echo "Clean uninstall confirmed."
+
+  appimage-distro-matrix:
+    name: AppImage on ${{ matrix.image }}
+    needs: build
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # The point of shipping an AppImage at all is the distros the .deb
+        # cannot serve, so prove it there rather than only on the build host.
+        image: ['ubuntu:22.04', 'ubuntu:24.04', 'fedora:41', 'debian:12']
+    steps:
+      - name: Download Linux installers
+        uses: actions/download-artifact@v8
+        with:
+          name: flagship-linux-x64-installer
+          path: ${{ runner.temp }}/linux
+
+      - name: Run the AppImage under ${{ matrix.image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APPIMAGE=$(ls "${RUNNER_TEMP}/linux"/*.AppImage | head -n1)
+          chmod +x "${APPIMAGE}"
+          # No --privileged and no FUSE: extract-and-run is the mode a locked-down
+          # container gives you, and it is the harsher of the two.
+          docker run --rm \
+            -v "${APPIMAGE}:/tmp/gaia.AppImage:ro" \
+            -e APPIMAGE_EXTRACT_AND_RUN=1 \
+            "${{ matrix.image }}" \
+            /tmp/gaia.AppImage version
+
+  macos-install-smoke:
+    name: macOS DMG smoke
+    needs: [resolve-payload, build]
+    if: always() && needs.build.result == 'success'
+    runs-on: macos-latest  # Apple Silicon — matches the arm64 build leg
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download macOS installer
+        uses: actions/download-artifact@v8
+        with:
+          name: flagship-macos-arm64-installer
+          path: ${{ runner.temp }}/macos
+
+      - name: Download payload lock
+        uses: actions/download-artifact@v8
+        with:
+          name: flagship-binaries-lock
+
+      - name: DMG mounts and carries what the README promises
+        id: mount
+        shell: bash
+        run: |
+          set -euo pipefail
+          DMG=$(ls "${RUNNER_TEMP}/macos"/*.dmg | head -n1)
+          MNT="${RUNNER_TEMP}/mnt"
+          mkdir -p "${MNT}"
+          hdiutil attach "${DMG}" -mountpoint "${MNT}" -nobrowse -readonly
+          echo "mnt=${MNT}" >> "$GITHUB_OUTPUT"
+          ls -la "${MNT}"
+          for f in "GAIA/gaia-tui" "GAIA/gaia-agent" "Install GAIA.command" "README.txt"; do
+            if [ ! -e "${MNT}/${f}" ]; then
+              echo "::error::The DMG is missing '${f}'. installer/tui/macos/build-dmg.sh stages it, and docs/guides/install-agent.mdx tells users to double-click 'Install GAIA.command'."
+              exit 1
+            fi
+          done
+          [ -x "${MNT}/Install GAIA.command" ] || { echo "::error::'Install GAIA.command' is not executable, so double-clicking it does nothing."; exit 1; }
+
+      - name: DMG binaries match the lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 installer/tui/fetch_payload.py --verify \
+            --lock binaries.lock.json --platform darwin-arm64 \
+            --dest "${{ steps.mount.outputs.mnt }}/GAIA"
+
+      - name: The bundled binary runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Copy off the read-only image first: a binary executed straight from a
+          # mounted DMG is not what a user ends up running either.
+          cp "${{ steps.mount.outputs.mnt }}/GAIA/gaia-tui" "${RUNNER_TEMP}/gaia-tui"
+          chmod +x "${RUNNER_TEMP}/gaia-tui"
+          out="$("${RUNNER_TEMP}/gaia-tui" version 2>&1)" || {
+            echo "::error::The bundled gaia-tui did not run: ${out}"
+            exit 1
+          }
+          echo "gaia-tui version -> ${out}"
+
+      - name: Detach
+        if: always()
+        shell: bash
+        run: hdiutil detach "${{ steps.mount.outputs.mnt }}" || true
+
+  windows-install-smoke:
+    name: Windows installer smoke
+    needs: [resolve-payload, build]
+    if: always() && needs.build.result == 'success'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Download Windows installer
+        uses: actions/download-artifact@v8
+        with:
+          name: flagship-windows-x64-installer
+          path: ${{ runner.temp }}/windows
+
+      - name: Download payload lock
+        uses: actions/download-artifact@v8
+        with:
+          name: flagship-binaries-lock
+
+      # /S is NSIS's silent mode. This is the only place CI actually RUNS the
+      # installer rather than inspecting it — everything the wizard does (PATH,
+      # shortcuts, the Lemonade MSI, the uninstaller registration) happens here.
+      - name: Installer runs silently
+        id: install
+        shell: pwsh
+        run: |
+          $exe = (Get-ChildItem "$env:RUNNER_TEMP/windows/*.exe" | Select-Object -First 1).FullName
+          Write-Host "Installing $exe"
+          $p = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -PassThru
+          Write-Host "exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) {
+            Write-Host "::error::The installer exited $($p.ExitCode) in silent mode. A non-zero silent install is a broken install, even though the wizard may look fine interactively."
+            exit 1
+          }
+
+      - name: Both binaries land, and match the lock
+        shell: pwsh
+        run: |
+          $roots = @(
+            "$env:LOCALAPPDATA\Programs\GAIA",
+            "$env:ProgramFiles\GAIA",
+            "${env:ProgramFiles(x86)}\GAIA"
+          )
+          $dir = $roots | Where-Object { Test-Path (Join-Path $_ 'gaia-tui.exe') } | Select-Object -First 1
+          if (-not $dir) {
+            Write-Host "::error::gaia-tui.exe was not found in any of: $($roots -join ', '). The installer reported success, so either it installed somewhere else or it installed nothing."
+            exit 1
+          }
+          Write-Host "Installed into $dir"
+          Get-ChildItem $dir | Format-Table Name, Length
+          python installer/tui/fetch_payload.py --verify `
+            --lock binaries.lock.json --platform win32-x64 --dest $dir
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $out = & (Join-Path $dir 'gaia-tui.exe') version 2>&1
+          Write-Host "gaia-tui version -> $out"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::The installed gaia-tui.exe did not run: $out"
+            exit 1
+          }
+
+      - name: Uninstaller runs and removes the binaries
+        shell: pwsh
+        run: |
+          $roots = @("$env:LOCALAPPDATA\Programs\GAIA", "$env:ProgramFiles\GAIA", "${env:ProgramFiles(x86)}\GAIA")
+          $dir = $roots | Where-Object { Test-Path (Join-Path $_ 'gaia-tui.exe') } | Select-Object -First 1
+          $un = Get-ChildItem $dir -Filter 'Uninstall*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $un) {
+            Write-Host "::error::No uninstaller in $dir. Windows requires one for Add/Remove Programs, and docs/guides/install-agent.mdx tells users to uninstall from there."
+            exit 1
+          }
+          $p = Start-Process -FilePath $un.FullName -ArgumentList '/S' -Wait -PassThru
+          Start-Sleep -Seconds 5   # NSIS uninstallers detach a copy of themselves
+          if (Test-Path (Join-Path $dir 'gaia-tui.exe')) {
+            Write-Host "::error::gaia-tui.exe survived the silent uninstall."
+            exit 1
+          }
+          Write-Host "Clean uninstall confirmed."
+
   # --- Stage 4: publish to the GitHub Release -------------------------
   # Isolated so `contents: write` never applies to the build matrix.
   #
@@ -669,7 +973,16 @@ jobs:
   # that condition is false on the one path that must publish.
   publish-release-assets:
     name: Publish flagship installers to the release
-    needs: [resolve-payload, build, validate-artifacts]
+    # The smoke jobs are in `needs` deliberately: an installer that builds but
+    # does not install is exactly what must not reach a release.
+    needs:
+      - resolve-payload
+      - build
+      - validate-artifacts
+      - linux-install-smoke
+      - appimage-distro-matrix
+      - macos-install-smoke
+      - windows-install-smoke
     if: >-
       inputs.publish_to_release == true &&
       inputs.tag != ''
@@ -698,28 +1011,46 @@ jobs:
           prerelease: ${{ contains(inputs.tag, '-rc.') || contains(inputs.tag, '-beta.') }}
 
   # --- Gate job -------------------------------------------------------
-  # The single job a caller should wait on.
+  # The single job a caller should wait on. Every build and smoke job belongs
+  # in `needs:` — a job missing from here can fail without blocking a release,
+  # which is the whole failure mode this job exists to prevent.
   flagship-installers-complete:
     name: Flagship installers complete
     runs-on: ubuntu-latest
-    needs: [resolve-payload, build, validate-artifacts]
+    needs:
+      - resolve-payload
+      - build
+      - validate-artifacts
+      - linux-install-smoke
+      - appimage-distro-matrix
+      - macos-install-smoke
+      - windows-install-smoke
     if: always()
     steps:
       - name: Verify every leg succeeded
         shell: bash
+        env:
+          RESULTS: |
+            resolve-payload=${{ needs.resolve-payload.result }}
+            build=${{ needs.build.result }}
+            validate-artifacts=${{ needs.validate-artifacts.result }}
+            linux-install-smoke=${{ needs.linux-install-smoke.result }}
+            appimage-distro-matrix=${{ needs.appimage-distro-matrix.result }}
+            macos-install-smoke=${{ needs.macos-install-smoke.result }}
+            windows-install-smoke=${{ needs.windows-install-smoke.result }}
         run: |
-          resolve="${{ needs.resolve-payload.result }}"
-          build="${{ needs.build.result }}"
-          validate="${{ needs.validate-artifacts.result }}"
-          echo "resolve-payload:    $resolve"
-          echo "build:              $build"
-          echo "validate-artifacts: $validate"
+          set -euo pipefail
           fail=0
-          for r in "$resolve" "$build" "$validate"; do
-            if [ "$r" != "success" ]; then
-              echo "::error::A flagship installer job did not succeed (status: $r). Do not publish a partial installer set — the website resolves one artifact per platform and a missing one silently downgrades that platform's visitors to the raw binary."
+          while IFS='=' read -r job result; do
+            [ -n "${job}" ] || continue
+            echo "  ${job}: ${result}"
+            # `skipped` is never acceptable here: every one of these jobs is
+            # gated on `needs.build.result == 'success'`, so a skip means the
+            # build did not succeed — which the build entry already reports.
+            if [ "${result}" != "success" ]; then
+              echo "::error::${job} did not succeed (status: ${result}). Do not publish this installer set: either a platform is missing — which silently downgrades that platform's visitors on amd-gaia.ai to the raw binary — or an installer builds but does not install."
               fail=1
             fi
-          done
+          done <<< "${RESULTS}"
           [ "$fail" -eq 0 ]
-          echo "Flagship installers built and validated."
+          echo "Flagship installers built, validated, and installed on every target OS."

@@ -15,6 +15,14 @@ leg, and callable by hand for a local build.
 
     python installer/tui/fetch_payload.py \
         --lock binaries.lock.json --platform win32-x64 --dest payload/win32-x64
+
+``--verify`` inverts it: instead of downloading, it checks binaries already on
+disk against the same lock. That is what turns a smoke test on a BUILT
+installer into a real integrity check — unpack the artifact, point this at the
+result, and a packaging step that altered a binary fails loudly.
+
+    python installer/tui/fetch_payload.py --verify \
+        --lock binaries.lock.json --platform linux-x64 --dest squashfs-root/usr/bin
 """
 
 from __future__ import annotations
@@ -142,6 +150,55 @@ def _safe_executable(name: str, component: str, platform: str) -> str:
     return name
 
 
+def verify(lock_path: Path, platform: str, directory: Path) -> list[dict]:
+    """Check binaries ALREADY on disk against the lock.
+
+    ``stage`` guards what goes into an installer; this guards what came out of
+    one. A smoke test unpacks a built ``.deb``/``.AppImage``/``.dmg`` and points
+    this at the result, which turns "the installer was built" into "the
+    installer carries the exact bytes the lock pins".
+    """
+    lock = _load_lock(lock_path)
+    checked: list[dict] = []
+
+    for component in COMPONENTS:
+        _, entry = _entry(lock, component, platform)
+        executable = _safe_executable(
+            _require(entry, "executable", component, platform), component, platform
+        )
+        expected = _require(entry, "sha256", component, platform)
+        target = directory / executable
+
+        if not target.is_file():
+            present = (
+                sorted(p.name for p in directory.iterdir())
+                if directory.is_dir()
+                else []
+            )
+            raise PayloadError(
+                f"{target} is missing, so the built artifact does not carry the "
+                f"{component} binary for {platform}. Present in {directory}: "
+                f"{present or '(directory does not exist)'}."
+            )
+
+        actual = hashlib.sha256(target.read_bytes()).hexdigest()
+        if actual != expected:
+            raise PayloadError(
+                f"SHA-256 mismatch for {component}/{platform} INSIDE the built "
+                f"artifact.\n"
+                f"  file:     {target}\n"
+                f"  expected: {expected}  (binaries.lock.json)\n"
+                f"  actual:   {actual}\n"
+                f"Packaging altered or replaced the verified binary — the installer "
+                f"would ship bytes nobody checked. Do not release it."
+            )
+
+        print(f"[verify]   ok  {target}  sha256 {actual}", flush=True)
+        checked.append({"component": component, "path": str(target), "sha256": actual})
+
+    return checked
+
+
 def stage(lock_path: Path, platform: str, dest: Path) -> list[dict]:
     lock = _load_lock(lock_path)
     version = lock.get("agentVersion")
@@ -226,11 +283,25 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         help="lock platform key, e.g. win32-x64 / darwin-arm64 / darwin-x64 / linux-x64",
     )
-    p.add_argument("--dest", required=True, type=Path, help="directory to stage into")
+    p.add_argument(
+        "--dest",
+        required=True,
+        type=Path,
+        help="directory to stage into, or (with --verify) the directory to check",
+    )
+    p.add_argument(
+        "--verify",
+        action="store_true",
+        help="check binaries already in --dest instead of downloading them; used by "
+        "the installer smoke tests to prove a BUILT artifact carries the pinned bytes",
+    )
     args = p.parse_args(argv)
 
     try:
-        stage(args.lock, args.platform, args.dest)
+        if args.verify:
+            verify(args.lock, args.platform, args.dest)
+        else:
+            stage(args.lock, args.platform, args.dest)
     except PayloadError as e:
         print(f"::error::{e}", file=sys.stderr)
         return 1

@@ -153,7 +153,10 @@ const downloads = release.binaries
 <script>
   import {
     findInstallers,
+    findInstallersForOs,
+    placeOs,
     resolvePlatform,
+    OS_LABELS,
     PLATFORM_LABELS,
     type ReleaseAssetLike,
   } from '../scripts/download-target';
@@ -178,10 +181,17 @@ const downloads = release.binaries
       .then((rel) => (rel?.assets ?? []) as ReleaseAssetLike[])
       .catch(() => [] as ReleaseAssetLike[]);
 
+    // Two levels, because they succeed at different rates. `os` is nearly
+    // always knowable; `platform` needs the architecture, which macOS Safari
+    // simply does not report. A Mac we cannot place still gets both Mac
+    // installers offered below rather than nothing.
+    const os = placeOs(navigator);
     const platform = await resolvePlatform(navigator).catch(() => null);
-    if (!platform) return;   // Unplaceable machine: the full list stays as-is.
+    if (!platform && !os) return;   // A machine we do not ship for: full list stays.
 
-    const match = options.find((o) => o.dataset.platform === platform);
+    const match = platform
+      ? options.find((o) => o.dataset.platform === platform)
+      : undefined;
     const meta = root.querySelector<HTMLElement>('[data-dl-meta]');
     const list = root.querySelector<HTMLElement>('[data-dl-list]');
     const listLabel = root.querySelector('[data-dl-list-label]');
@@ -214,7 +224,7 @@ const downloads = release.binaries
     // any platform the installer matrix does not cover.
     const rawPrimary = root.querySelector<HTMLAnchorElement>('[data-dl-primary]');
     const rawLabel = root.querySelector('[data-dl-label]');
-    if (match && rawPrimary && rawLabel) {
+    if (match && platform && rawPrimary && rawLabel) {
       rawPrimary.href = match.href;
       rawLabel.textContent = `Install GAIA for ${PLATFORM_LABELS[platform]}`;
       rawPrimary.hidden = false;
@@ -226,7 +236,15 @@ const downloads = release.binaries
     }
 
     // Step 2 — promote the installer over it, if the release carries one.
-    const installers = findInstallers(platform, await installerPromise);
+    //
+    // When the exact machine is known, `rest` is the same platform's other
+    // FORMAT (Linux's AppImage beside its .deb). When only the OS is known, it
+    // is the other MACHINE (an Intel Mac beside Apple Silicon) — so the labels
+    // below have to come from the entry itself rather than assume either shape.
+    const assets = await installerPromise;
+    const installers = platform
+      ? findInstallers(platform, assets).map((d) => ({ ...d, platform }))
+      : findInstallersForOs(os!, assets);
     if (!installers.length) return;
 
     const [primary, ...rest] = installers;
@@ -235,11 +253,15 @@ const downloads = release.binaries
     if (!button || !label) return;
 
     button.href = primary.url;
-    label.textContent = `Download GAIA for ${PLATFORM_LABELS[platform]}`;
+    // Name the machine, not just the OS: with an undecidable Mac this button is
+    // a choice the visitor has to be able to check, not a silent pick.
+    label.textContent = `Download GAIA for ${PLATFORM_LABELS[primary.platform]}`;
     button.hidden = false;
     if (rawPrimary) rawPrimary.hidden = true;
     if (meta) {
-      meta.textContent = `${primary.label} · ${primary.name}`;
+      meta.textContent = platform
+        ? `${primary.label} · ${primary.name}`
+        : `${primary.label} · pick ${OS_LABELS[os!]} below if this is not your machine`;
       meta.hidden = false;
     }
 
@@ -247,7 +269,9 @@ const downloads = release.binaries
     const altLabel = root.querySelector('[data-dl-installer-alt-label]');
     if (rest[0] && alt && altLabel) {
       alt.href = rest[0].url;
-      altLabel.textContent = `${rest[0].label} instead`;
+      altLabel.textContent = platform
+        ? `${rest[0].label} instead`
+        : `${PLATFORM_LABELS[rest[0].platform]} instead`;
       alt.hidden = false;
     }
 
