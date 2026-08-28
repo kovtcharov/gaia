@@ -107,6 +107,15 @@ DESKTOP
 INSTALLED_KB=$(du -sk "${PKG}" | cut -f1)
 
 install -d "${PKG}/DEBIAN"
+
+# The one maintainer script this package has. Everything installed ships in the
+# data archive so dpkg owns it -- but `gaia-tui update` writes files afterwards
+# that dpkg has never heard of, and those survive even `apt purge`. postrm
+# removes exactly those and prunes the directory if that leaves it empty.
+POSTRM="$(dirname "${BASH_SOURCE[0]}")/postrm"
+[ -f "${POSTRM}" ] || { echo "error: ${POSTRM} is missing; the package would leak update state on removal." >&2; exit 1; }
+install -m 0755 "${POSTRM}" "${PKG}/DEBIAN/postrm"
+
 cat > "${PKG}/DEBIAN/control" <<CONTROL
 Package: gaia
 Version: ${VERSION}

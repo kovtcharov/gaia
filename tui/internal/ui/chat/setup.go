@@ -128,6 +128,16 @@ func claudeSkipSuffix(claudeMode bool) string {
 // setupCheckResultMsg is delivered once the read-only readiness probe
 // (`gaia init --check`) returns.
 type setupCheckResultMsg struct {
+	// staleCLI marks the one failure with a different fix: a `gaia` CLI that
+	// predates `--check`. Telling that user to run `gaia init` sends them at
+	// the very command that just refused the flag.
+	staleCLI bool
+	// noCLI marks the check as unaskable because there is no `gaia` on PATH at
+	// all. That is the NORMAL state for a standalone install, which ships the
+	// agent and the UI and deliberately no Python CLI -- so it is reported
+	// nowhere. Announcing it told a user who had just installed GAIA that GAIA
+	// was not installed.
+	noCLI bool
 	ready bool
 	// err is non-nil only when the check itself could not run (gaia missing,
 	// the probe timed out) -- never set merely because the profile isn't
@@ -159,7 +169,7 @@ func checkSetupCmd(claudeMode bool) tea.Cmd {
 	return func() tea.Msg {
 		bin, err := gaiaBinary()
 		if err != nil {
-			return setupCheckResultMsg{err: err}
+			return setupCheckResultMsg{noCLI: true, err: err}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), setupCheckTimeout)
 		defer cancel()
@@ -183,6 +193,14 @@ func checkSetupCmd(claudeMode bool) tea.Cmd {
 		// "not ready" ran a full multi-minute `gaia init` on EVERY launch: an
 		// installed gaia older than `--check` exits 2 with "unrecognized
 		// arguments", which looked exactly like a clean machine.
+		if strings.Contains(out.String(), "unrecognized arguments") {
+			// Still quotes what the tool said: the remedy differs, the evidence
+			// must not disappear.
+			return setupCheckResultMsg{staleCLI: true, err: fmt.Errorf(
+				"the `gaia` CLI at %s is older than this build and does not "+
+					"understand `init --check` (it said: %s)",
+				bin, lastMeaningfulLine(out.String()))}
+		}
 		return setupCheckResultMsg{err: fmt.Errorf(
 			"could not check whether setup is needed (%w). GAIA said: %s",
 			runErr, lastMeaningfulLine(out.String()))}
@@ -330,13 +348,36 @@ func (m ChatModel) handleSetupCheckResult(msg setupCheckResultMsg) (tea.Model, t
 	m.setupChecking = false
 
 	if msg.err != nil {
-		m.messages = append(m.messages, Message{
-			Role: RoleError,
-			Content: fmt.Sprintf(
-				"Could not check whether %s is set up: %v\nType /setup to try running it directly, "+
-					"or run `gaia init --profile %s%s` in a terminal.",
-				m.agentName, msg.err, setupProfile, claudeSkipSuffix(m.claudeMode)),
-		})
+		// Nothing here blocks the session -- the gate is released either way.
+		// The flagship runs as a direct child process and never calls the
+		// `gaia` CLI, so an unanswerable setup question is at most a note about
+		// what could not be CHECKED, never a broken agent. Only a genuinely
+		// unexplained failure earns RoleError; the two known-benign shapes are
+		// a dim line or nothing, because the first thing a new user sees must
+		// not be red text that itself says nothing is wrong.
+		switch {
+		case msg.noCLI:
+			// Silent. A standalone install ships no Python CLI by design, so
+			// its absence is the expected state, not news.
+
+		case msg.staleCLI:
+			m.messages = append(m.messages, Message{
+				Role: RoleStatus,
+				Content: fmt.Sprintf(
+					"Setup check skipped -- the `gaia` CLI on PATH predates `init --check`. "+
+						"%s does not need it; `pip install -U amd-gaia` restores the check.",
+					m.agentName),
+			})
+
+		default:
+			m.messages = append(m.messages, Message{
+				Role: RoleError,
+				Content: fmt.Sprintf(
+					"Could not check whether %s is set up: %v\nType /setup to try running it "+
+						"directly, or run `gaia init --profile %s%s` in a terminal.",
+					m.agentName, msg.err, setupProfile, claudeSkipSuffix(m.claudeMode)),
+			})
+		}
 		m.updateViewport()
 		return m, m.releaseAfterSetupGate()
 	}

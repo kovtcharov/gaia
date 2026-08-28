@@ -55,9 +55,14 @@ collide on your `PATH`.
 gaia-tui
 ```
 
-That opens the hub — a list of agents, what each one does, and whether you have
-it. Pick one and it walks you through installing it, then drops you into a chat
-with it.
+That opens the GAIA agent, ready for a question. We ship one agent, so a
+catalogue of mostly-unreleased rows is the wrong first screen.
+
+Type `/hub` (or press Esc) for the agent hub — a list of agents, what each one
+does, and whether you have it. Pick one and it walks you through installing it,
+then drops you into a chat with it. On a machine where the agent binary is
+missing, the hub opens directly instead, because it explains per-row what is and
+is not runnable.
 
 Before an agent starts, the hub checks the few things that would otherwise make
 it fail — is the model server running, is the model downloaded, does the agent

@@ -79,8 +79,8 @@ func binaryName(argv0 string) string {
 
 var rootCmd = &cobra.Command{
 	Use:   defaultBinaryName,
-	Short: "GAIA Terminal Agent Hub",
-	Long:  "Terminal-native hub for browsing, launching, and chatting with GAIA agents.",
+	Short: "GAIA — the AI agent in your terminal",
+	Long:  "Opens the GAIA agent. Type /hub for the agent hub, /help for everything else.",
 	// A one-line refusal followed by 20 lines of command listing pushes the
 	// actual error off a short terminal. Usage is what --help is for.
 	SilenceUsage: true,
@@ -89,11 +89,21 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return ui.RunHub(dev, mockAgent, ctrl, bypassPermissions, useClaude, claudeModelArg())
+		return ui.RunDefault(dev, mockAgent, ctrl, bypassPermissions, useClaude, claudeModelArg())
 	},
 }
 
 func init() {
+	// Cobra refuses to run a Windows console program that Explorer started; it
+	// prints "This is a command line tool. You need to open cmd.exe and run it
+	// from there." and waits for Enter. That text is cobra's, not ours, which is
+	// why grepping this repo for it finds nothing.
+	//
+	// GAIA is a TUI people are meant to double-click, so the guard is wrong here.
+	// Empty string is cobra's documented off switch -- it reads like a no-op and
+	// is not guessable, hence this comment.
+	cobra.MousetrapHelpText = ""
+
 	rootCmd.PersistentFlags().BoolVar(&dev, "dev", false,
 		"developer mode: show per-turn timings, steps, and tool arguments and output "+
 			"(agents the TUI spawns itself also log at DEBUG to ~/.gaia/logs/)")

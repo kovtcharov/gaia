@@ -10,6 +10,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,12 +28,85 @@ var (
 // finish before giving up on a clean reap.
 const closeGrace = 2 * time.Second
 
+// lemonadePorts are the Lemonade Server ports worth probing: 13305 is the
+// default since Lemonade v10.1.0, 8000 the one before it.
+var lemonadePorts = []string{"13305", "8000"}
+
+// lemonadeProbeURLs names what detectLemonadeURL looked at, so a failure can
+// report the same list it actually tried rather than a hardcoded guess.
+func lemonadeProbeURLs() []string {
+	urls := make([]string, 0, len(lemonadePorts))
+	for _, p := range lemonadePorts {
+		urls = append(urls, "http://localhost:"+p)
+	}
+	return urls
+}
+
+// lemonadeInstallPaths are where an installed Lemonade Server lives, per OS.
+// Used only to tell "not installed" apart from "installed but not running":
+// printing "start it with ..." to someone who does not have it is a dead end.
+func lemonadeInstallPaths() []string {
+	if runtime.GOOS != "windows" {
+		return nil // resolved via PATH instead
+	}
+	var paths []string
+	if local := os.Getenv("LOCALAPPDATA"); local != "" {
+		paths = append(paths, filepath.Join(local, "lemonade_server", "bin", "LemonadeServer.exe"))
+	}
+	if pf := os.Getenv("ProgramFiles"); pf != "" {
+		paths = append(paths, filepath.Join(pf, "Lemonade Server", "bin", "LemonadeServer.exe"))
+	}
+	return paths
+}
+
+// lemonadeInstalled reports whether Lemonade Server is on this machine at all.
+func lemonadeInstalled() bool {
+	for _, p := range lemonadeInstallPaths() {
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			return true
+		}
+	}
+	// Non-Windows, and Windows installs that put it on PATH.
+	for _, name := range []string{"lemonade-server", "LemonadeServer"} {
+		if _, err := exec.LookPath(name); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// lemonadeRemedy is the next step for whichever state this machine is in. The
+// two are different problems: one needs an install, the other needs a start.
+func lemonadeRemedy() string {
+	if !lemonadeInstalled() {
+		if runtime.GOOS == "windows" {
+			return "Lemonade Server is not installed. The GAIA installer bundles it -- " +
+				"re-run the installer, or get it from https://lemonade-server.ai"
+		}
+		return "Lemonade Server is not installed. Get it from https://lemonade-server.ai"
+	}
+	if runtime.GOOS == "windows" {
+		return `Start it from the "Lemonade Server" shortcut, or run LemonadeServer.exe`
+	}
+	return "Start it with: lemonade-server serve"
+}
+
+// agentNameForError names the child in a message a user reads, without leaking
+// a full install path into a one-line error.
+func agentNameForError(path string) string {
+	name := filepath.Base(path)
+	name = strings.TrimSuffix(name, filepath.Ext(name))
+	if name == "" {
+		return "the agent"
+	}
+	return name
+}
+
 // detectLemonadeURL probes common Lemonade Server ports and returns the first reachable URL.
 func detectLemonadeURL() string {
-	ports := []string{"13305", "8000"}
 	client := &http.Client{Timeout: 2 * time.Second}
 
-	for _, port := range ports {
+	for _, port := range lemonadePorts {
 		url := "http://localhost:" + port + "/api/v1"
 		resp, err := client.Get(url + "/models")
 		if err == nil {
@@ -81,6 +157,9 @@ type SubprocessClient struct {
 	// canonical selects the event dialect read off the pipe: the frozen legacy
 	// vocabulary (false) or the canonical one (true).
 	canonical bool
+	// needsLemonade refuses the spawn when no Lemonade Server answers, instead
+	// of starting a child that will die building its embedder.
+	needsLemonade bool
 
 	mu      sync.Mutex
 	proc    *procHandle
@@ -105,6 +184,13 @@ func NewSubprocessClient(path string, args []string, debug bool) *SubprocessClie
 		args:  args,
 		debug: debug,
 	}
+}
+
+// RequireLemonade makes a missing Lemonade Server a refusal to spawn rather
+// than a child that starts and dies building its embedder. Off by default: not
+// every subprocess agent needs a model server.
+func (s *SubprocessClient) RequireLemonade(required bool) {
+	s.needsLemonade = required
 }
 
 // NewCanonicalSubprocessClient is NewSubprocessClient for an agent that speaks
@@ -146,9 +232,28 @@ func (s *SubprocessClient) startLocked() (turnState, error) {
 	stderr := &bytes.Buffer{}
 	cmd.Stderr = stderr
 
-	// Auto-detect Lemonade URL if not set in environment
+	// Auto-detect Lemonade URL if not set in environment.
+	//
+	// A miss used to fall through and spawn anyway. For an agent that needs
+	// Lemonade that is a guaranteed death: it builds its embedder during
+	// construction, fails to connect, and exits 1 with the reason in
+	// ~/.gaia/logs/gaia-agent.log -- on screen the user gets a bare exit code
+	// and nothing to act on. Refusing here turns that into one sentence naming
+	// the ports probed and how to start the server.
 	if os.Getenv("LEMONADE_BASE_URL") == "" {
-		if url := detectLemonadeURL(); url != "" {
+		url := detectLemonadeURL()
+		if url == "" && s.needsLemonade {
+			return turnState{}, fmt.Errorf(
+				"%s needs Lemonade Server, and nothing answered on it.\n"+
+					"  Looked on: %s\n"+
+					"  Next:      %s\n"+
+					"  Then send your message again. This is needed even with --use-claude: "+
+					"chat would go to Anthropic, but memory and document embeddings still "+
+					"come from Lemonade.",
+				agentNameForError(s.path), strings.Join(lemonadeProbeURLs(), ", "),
+				lemonadeRemedy())
+		}
+		if url != "" {
 			cmd.Env = append(os.Environ(), "LEMONADE_BASE_URL="+url)
 			if s.debug {
 				fmt.Fprintf(os.Stderr, "[DEBUG] Auto-detected Lemonade at %s\n", url)

@@ -7,6 +7,11 @@ description: Use when integrating the @amd-gaia/gaia npm package — running GAI
 
 `@amd-gaia/gaia` delivers **two binaries** and owns their process lifecycle: the
 frozen **agent sidecar** (`gaia-agent`) and the Go **terminal UI** (`gaia-tui`).
+
+`gaia-agent` picks its transport from argv: bare (or with any stdio flag) it
+speaks stdin/stdout JSONL, which is how the terminal UI runs it; with
+`--host`/`--port` — or `--serve` — it serves the HTTP surface this document
+describes. See [SPEC.md](./SPEC.md) §5.
 It ships no agent logic of its own, and it **builds neither binary at install
 time** — both are published artifacts it downloads and verifies. The terminal UI
 is the published `terminal-hub` component, the same binary a full GAIA install

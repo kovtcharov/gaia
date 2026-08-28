@@ -213,8 +213,9 @@ release_info.json
 # Lemonade MSI downloaded at build time (issue #774)
 installer/lemonade-server-minimal.msi
 
-# Flagship installer build outputs — the staged payload is ~110 MB of published
-# binaries fetched from the hub, and the installers themselves are larger still.
+# Flagship installer build outputs. build.ps1 stages into build/; the CI
+# workflow stages into payload/. Both hold hundreds of MB of fetched binaries.
+installer/tui/build/
 installer/tui/payload/
 dist-installer/
 

@@ -94,10 +94,14 @@ never touch stdout, which the terminal UI owns.
 | Agent sidecar   | `~/.gaia/agents/gaia/gaia-agent[.exe]`   |
 | Terminal UI     | `~/.gaia/npm-cache/gaia-<version>/gaia-tui[.exe]` |
 
-The sidecar goes into the GAIA daemon's own cache directory on purpose: the daemon
-is what spawns and supervises it, and it does its own SHA-256 check on the way. By
-putting an already-verified binary there we save a second download rather than
-racing one.
+The sidecar goes into the GAIA daemon's own cache directory on purpose: when the
+daemon is the one spawning it, it does its own SHA-256 check on the way, so putting
+an already-verified binary there saves a second download rather than racing one.
+
+The terminal UI does not go through the daemon for this agent — it spawns
+`gaia-agent` as a child over stdin/stdout instead, which is why the flagship runs
+with no daemon, no port, and no Python CLI present. The same binary serves the
+HTTP surface when it is given `--host`/`--port`; see [SPEC.md](./SPEC.md) §5.
 
 The terminal UI is installed as `gaia-tui`, **never** as `gaia` — a file named
 `gaia` in a cache directory would shadow the `gaia` shim npm puts on your `PATH`.

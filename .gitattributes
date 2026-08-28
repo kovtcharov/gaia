@@ -26,3 +26,12 @@ hub/agents/email/python/CHANGELOG.md merge=union
 # fixture-hub zips' sha256s are pinned in their manifests — keep both byte-exact.
 tests/fixtures/gaia/fake_gh/gh eol=lf
 tests/fixtures/gaia/fixture_hub/**/*.zip binary
+
+# Shell scripts are LF in the blob. Git checks them out CRLF on Windows
+# under core.autocrlf, which is fine for CI (it reads the blob) but breaks
+# a container that mounts the working tree -- this keeps the two the same.
+*.sh text eol=lf
+
+# Debian maintainer scripts have no extension, so the *.sh rule misses them.
+# A CRLF postrm is a broken postrm on the target machine.
+installer/tui/linux/postrm text eol=lf

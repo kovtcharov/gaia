@@ -21,11 +21,25 @@ import (
 	"github.com/amd/gaia/tui/internal/ui/preflight"
 	"github.com/amd/gaia/tui/internal/ui/root"
 	"github.com/amd/gaia/tui/internal/ui/theme"
+	"github.com/muesli/termenv"
+	"golang.org/x/term"
 )
 
 // prepareTerminal does everything that has to TALK to the terminal before
 // Bubble Tea takes over stdin. Every full-screen launch path calls it.
-func prepareTerminal() {
+func prepareTerminal(dev bool) {
+	// Before anything renders: on Windows, ANSI sequences are only interpreted
+	// when ENABLE_VIRTUAL_TERMINAL_PROCESSING is set on the output handle.
+	// Windows Terminal sets it for us; conhost -- which is where a shortcut, a
+	// wrapper script or an older host can land -- does not, and the styles then
+	// either print as escape gibberish or get stripped to nothing. That is the
+	// "colour sometimes disappears" report: it follows the console host, not the
+	// styles. No-op off Windows and on a non-terminal stdout.
+	if _, err := termenv.EnableVirtualTerminalProcessing(termenv.DefaultOutput()); err != nil && dev {
+		fmt.Fprintf(os.Stderr,
+			"[DEBUG] could not enable virtual terminal processing: %v\n", err)
+	}
+
 	// First: it caches the light/dark answer that PrimeRenderer then reads, so
 	// the markdown style and the palette can never disagree, and a
 	// GAIA_TUI_THEME override reaches both.
@@ -33,6 +47,44 @@ func prepareTerminal() {
 	if err := components.PrimeRenderer(); err != nil {
 		fmt.Fprintf(os.Stderr,
 			"%v — replies will be shown as plain text. Report this with `gaia diagnostics`.\n", err)
+	}
+
+	if dev {
+		logColorProfile()
+	}
+}
+
+// logColorProfile prints what the colour decision actually resolved to, and the
+// inputs that drove it.
+//
+// "Colour sometimes disappears" is unanswerable without this: the profile comes
+// from the console host and the environment, so the same binary is TrueColor in
+// Windows Terminal and Ascii through a pipe, and nothing on screen says which
+// one happened.
+func logColorProfile() {
+	out := termenv.DefaultOutput()
+	fmt.Fprintf(os.Stderr,
+		"[DEBUG] colour profile=%s tty=%t dark=%t | WT_SESSION=%q TERM=%q COLORTERM=%q NO_COLOR=%q CLICOLOR_FORCE=%q\n",
+		colorProfileName(out.ColorProfile()),
+		term.IsTerminal(int(os.Stdout.Fd())),
+		theme.IsDark(),
+		os.Getenv("WT_SESSION"), os.Getenv("TERM"), os.Getenv("COLORTERM"),
+		os.Getenv("NO_COLOR"), os.Getenv("CLICOLOR_FORCE"))
+}
+
+// colorProfileName names a termenv.Profile, which has no String() of its own.
+func colorProfileName(p termenv.Profile) string {
+	switch p {
+	case termenv.Ascii:
+		return "Ascii (no colour)"
+	case termenv.ANSI:
+		return "ANSI (16)"
+	case termenv.ANSI256:
+		return "ANSI256"
+	case termenv.TrueColor:
+		return "TrueColor"
+	default:
+		return fmt.Sprintf("unknown(%d)", int(p))
 	}
 }
 
@@ -98,7 +150,7 @@ func teaOptions() []tea.ProgramOption {
 // run boots the Bubble Tea program, optionally wrapping it with the control
 // recorder so the live session can be driven over HTTP.
 func run(model tea.Model, dev bool, ctrl *control.Options) error {
-	prepareTerminal()
+	prepareTerminal(dev)
 
 	// Swept whether or not this run publishes one of its own: a session started
 	// WITHOUT --control used to leave a dead predecessor's file in place.
@@ -314,4 +366,64 @@ func orDefault(value, fallback string) string {
 func agentNameFromPath(path string) string {
 	name := filepath.Base(path)
 	return strings.TrimSuffix(name, ".exe")
+}
+
+// DefaultAgentID is the agent a bare `gaia-tui` opens.
+const DefaultAgentID = "gaia"
+
+// RunDefault is what `gaia-tui` with no arguments does: open the flagship's
+// chat view.
+//
+// The hub used to be the landing page, which put a catalogue of thirteen
+// mostly-unreleased rows in front of someone who installed a product that ships
+// exactly one agent. The hub is still there -- `/hub` in the chat palette --
+// it is just no longer the first thing anyone sees.
+//
+// Falling back to the hub when the flagship cannot start is deliberate: a
+// missing binary is a broken install, and the hub says so per-row instead of
+// dying with a message about an agent the user never asked for by name.
+//
+// --mock keeps its old behaviour of opening the hub, because that is the
+// surface its tests drive.
+func RunDefault(
+	dev bool,
+	mockAgent string,
+	ctrl *control.Options,
+	bypassPermissions bool,
+	useClaude bool,
+	claudeModel string,
+) error {
+	cat := catalog.NewCatalog()
+	if mockAgent != "" {
+		cat.SetMockBinary(mockAgent)
+	} else {
+		cat.DiscoverBinaries()
+	}
+	m := root.NewRootModel(cat, dev).
+		WithBypassPermissions(bypassPermissions).
+		WithClaude(useClaude, claudeModel)
+
+	// Through the hub's own launch path, not a standalone chat: that is what
+	// leaves a hub behind the chat view for /hub and Esc to return to. Opening
+	// it does not spawn the agent -- the subprocess client starts its child on
+	// the first message, not on construction.
+	if DefaultAgentIsRunnable(mockAgent) {
+		if started, ok := m.StartOnAgent(DefaultAgentID); ok {
+			m = started
+		}
+	}
+	return run(m, dev, ctrl)
+}
+
+// DefaultAgentIsRunnable reports whether a bare launch should open the flagship
+// rather than the hub. Split out so the decision is testable without opening a
+// terminal UI.
+func DefaultAgentIsRunnable(mockAgent string) bool {
+	if mockAgent != "" {
+		return false
+	}
+	cat := catalog.NewCatalog()
+	cat.DiscoverBinaries()
+	agent := cat.Get(DefaultAgentID)
+	return agent != nil && canStart(*agent)
 }

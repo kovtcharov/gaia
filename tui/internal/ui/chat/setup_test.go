@@ -337,3 +337,65 @@ func writeExitScript(t *testing.T, name string, code int, output string) string 
 	}
 	return path
 }
+
+// --- what the first-boot check is allowed to put on screen -------------
+//
+// The first thing a new user sees must not be red text whose own body says
+// nothing is wrong. A standalone install ships no Python CLI at all, so the
+// common case has to be silent; an old CLI is a dim aside; only a genuinely
+// unexplained failure is an error.
+
+func TestNoGaiaCLIIsSilent(t *testing.T) {
+	m := gaiaTestModel(t)
+	before := len(m.messages)
+
+	updated, _ := m.handleSetupCheckResult(setupCheckResultMsg{
+		noCLI: true,
+		err:   errNotOnPath,
+	})
+	m = updated.(ChatModel)
+
+	if len(m.messages) != before {
+		t.Fatalf("a standalone install has no `gaia` CLI by design; that must not "+
+			"be announced. Got: %+v", m.messages[before:])
+	}
+	if m.setupChecking {
+		t.Error("the gate must be released")
+	}
+}
+
+func TestAStaleCLIIsADimNoteNotAnError(t *testing.T) {
+	m := gaiaTestModel(t)
+
+	updated, _ := m.handleSetupCheckResult(setupCheckResultMsg{
+		staleCLI: true,
+		err:      errTest("older than this build"),
+	})
+	m = updated.(ChatModel)
+
+	last := m.messages[len(m.messages)-1]
+	if last.Role == RoleError {
+		t.Errorf("a benign skipped check must not be painted as an error: %q", last.Content)
+	}
+	if last.Role != RoleStatus {
+		t.Errorf("expected a dim status line, got role %q", last.Role)
+	}
+	// One line: this is an aside, not a wall of remediation.
+	if strings.Count(last.Content, "\n") != 0 {
+		t.Errorf("the note should be a single line, got:\n%s", last.Content)
+	}
+}
+
+func TestAnUnexplainedCheckFailureIsStillAnError(t *testing.T) {
+	m := gaiaTestModel(t)
+
+	updated, _ := m.handleSetupCheckResult(setupCheckResultMsg{
+		err: errTest("the probe timed out"),
+	})
+	m = updated.(ChatModel)
+
+	last := m.messages[len(m.messages)-1]
+	if last.Role != RoleError {
+		t.Errorf("an unexplained failure must stay loud, got role %q: %q", last.Role, last.Content)
+	}
+}
