@@ -207,6 +207,11 @@ Both defaults are overridable (`--sidecar-dir`, `--cache-dir`).
 
 Served by `gaia_agent.server`. Bound to `127.0.0.1` only.
 
+Every request must carry a loopback `Host` header. A `Host` that is non-loopback,
+absent or empty is refused with `400` before routing — that check is what defeats
+DNS rebinding, so it fails closed rather than serving a request that simply omits
+the header.
+
 | Property           | Value                                   |
 | ------------------ | --------------------------------------- |
 | Default port       | `8141` (`DEFAULT_PORT` in `server.py`)  |
@@ -266,6 +271,14 @@ response stream's first event is a `{"type":"status","status":"warning",...}`
 telling the caller that per-turn state — most visibly any loaded skill — did
 not survive and should be reloaded.
 
+A second `/query` reusing a `run_id` that is still in flight gets `409` —
+`run_id` is caller-minted, so mint a fresh UUID per request; reusing one would
+leave the earlier run with no way to be cancelled. A `/query` supplying a `model`
+that differs from the one its `session_id` was built with also gets `409`: only
+agent construction reads a model, so the request cannot be honoured on the
+retained agent. Omit `model` to continue on the session's current one, or start a
+new `session_id` to switch.
+
 ### 5.3 Version gate
 
 `checkVersion()` reads `/version` and compares the **major** of `apiVersion`
@@ -290,6 +303,31 @@ This npm package itself mints and sends nothing: `gaia run` reaches the agent
 through the daemon relay (which holds the sidecar bearer), and `gaia serve`
 spawns the sidecar without a token — the unauthenticated dev posture above,
 protected by loopback binding and Host/Origin checks only.
+
+### 5.5 Other transports
+
+The HTTP server above is the surface this package drives, and everything in
+this document describes it. It is not the agent's only transport:
+`gaia_agent.stdio` runs the same agent over newline-delimited JSON on
+stdin/stdout — no port, no token, no discovery file. The terminal UI reaches it
+that way when it spawns the agent as a subprocess; an agent **installed** from
+the hub, which is what this package delivers, is supervised by the daemon over
+the HTTP surface above instead (§6.1).
+
+It emits the identical canonical event vocabulary, but its input channel accepts
+a JSON line carrying a `gaia_control` key, which gives it something HTTP does
+not have: a back-channel that can answer a confirmation prompt *while* a turn is
+in flight. It also takes `--bypass-permissions` (start with gating off) and
+`--use-claude` / `--claude-model` (route chat to the Anthropic API instead of
+local Lemonade; embeddings stay on Lemonade either way). None of that is
+reachable over `/v1/gaia/query`.
+
+`--use-claude` is the one with a reach beyond the machine, and it cannot be
+turned on for what this package delivers: the terminal UI **refuses** it for a
+daemon-transport agent, with an error saying so, because the daemon relay has no
+way to switch inference backends. So the local-only claim in the README holds
+for every path this package installs — it is a property of the transport, not a
+default someone can flip.
 
 ---
 

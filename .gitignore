@@ -303,3 +303,11 @@ eval/results/gaia-local-tui-validation/tui-home/
 eval/results/gaia-local-tui-validation/
 eval/results/gaia-haiku-scorecard/
 docs/plans/flagship-architecture-findings.md
+
+# Session-harvest output (gaia.factory.harvest). Derived from private Claude Code
+# transcripts and belongs in ~/.gaia/cache/factory/; these catch a stray redirect
+# run from the repo root.
+/tables.md
+/context.md
+/savings.md
+/labels.txt
