@@ -1,0 +1,1 @@
+error: Refusing to uninstall: the GAIA home resolves to C:\Users\14255, which is your home directory (or contains it). Purging it would delete C:\Users\14255\documents — on Windows and macOS that is your real Documents folder. GAIA_HOME is set to 'C:/Users/14255'. Point GAIA_HOME at a dedicated GAIA data directory (the default is C:\Users\14255\.gaia).
