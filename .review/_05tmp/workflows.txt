@@ -1,0 +1,94 @@
+GAIA CLI Tests (All Platforms)	active	141057731
+Test Evaluation Tool	active	182593138
+Code Quality (Lint)	active	182593140
+GAIA CLI Tests (Windows)	active	182593141
+GAIA CLI Tests (Linux)	active	182593142
+MCP Bridge Tests	active	189817628
+PyPI Build Check	active	192646622
+Build Electron Apps	active	194056190
+CodeQL	active	194663806
+Dependabot Updates	active	194667011
+Test Electron Framework and Apps	active	206818863
+Test MCPAgent and AgentMCPServer	active	206818864
+API Server Tests	active	206818865
+Test Lemonade Embeddings	active	214790184
+Test RAG	active	214790185
+Security Tests	active	214790186
+Chat Agent Tests	active	216185106
+Unit Tests	active	220962469
+Copilot code review	active	221524684
+Claude AI Assistant	active	221911785
+Auto Label PRs	active	222753158
+Summarizer Agent Tests (Windows)	active	222890479
+Monitor Self-Hosted Runners	active	223325237
+Runner Heartbeat	active	223325238
+Docs Validation	active	224382913
+Lemonade Server Smoke Test	active	225496537
+Update Release Branch	active	226552266
+CodeQL	active	227312837
+Merge Queue Failure Notification	active	227375375
+SD Integration Tests (Windows)	active	228540552
+Example Agents Integration Tests	active	233231237
+C++ Build & Test	active	238267792
+Check Documentation Links	active	245393083
+Agent SDK Tests (Windows)	active	245398850
+C++ Benchmarks	active	254052521
+Publish Release	active	255497631
+Build Installers	active	258756378
+Dependency Graph	active	266354032
+Stale strings check	active	269183472
+TUI Build & Test	active	280597493
+Dependabot Auto-merge	active	281057905
+Dependency Review	active	285298649
+Claude Auth Canary	active	288150608
+Claude run (reusable)	active	288150609
+C++ Email Agent Build & Test	active	288898080
+Email Agent Eval (offline, report mode)	active	288898081
+Email Agent Unit Tests	active	288898082
+Agent Binaries (C++)	active	288995938
+Agent Behavior E2E	active	289273103
+Connectors Demo Agent Tests	active	289314881
+Publish Agent Wheels (PyPI)	active	289487483
+Lemonade Version Bump	active	293231989
+Email Agent Tests	active	293247602
+Share Agent Package (GitHub Release)	active	294210423
+Agent Email npm Package Tests	active	295433244
+Release Agent (email)	active	296562564
+Deploy Website (Railway)	active	297757605
+Test Lemonade Client Integration	active	299784784
+Self-assign issue	active	300827930
+Copilot cloud agent	active	302135122
+Website CI	active	302342765
+Diag Embed Coopmat	active	302555260
+Diag Embed Cleanup	active	302580773
+Diag llama-server direct	active	302588429
+Diag saturate stx-1	active	302769584
+Email Agent Eval — scorecard refresh	active	302785327
+Diag validate retry	active	302819570
+Diag measure fault window	active	302951147
+STX Driver Update (manual)	active	302980382
+Test NPU FLM Embedder	active	309006453
+Weekly Eval	active	310253519
+Claude Nightly Audit	active	310897242
+Agent Hub Worker CI	active	312615374
+Distributed Seams	active	315499658
+Hub Agent Package Tests	active	315864855
+Claude Weekly Doc Walkthrough	active	315915606
+Agent Eval — Gemma-4-E4B consolidation	active	315928174
+Claude Security Audit	active	317605518
+Release Agent (chat)	active	317771436
+Publish Hub Components (R2)	active	321742622
+Copilot	active	323035120
+Skill Audit	active	323668766
+Required Checks Gate	active	326635826
+TMP Nixpacks diag	active	328219320
+Gaia Agent Tests	active	336576671
+Release Agent (gaia)	active	336748190
+Publish Pipeline Tests	active	339660503
+Agent GAIA npm Package Tests	active	341725443
+GAIA Agent Eval (judged scenarios, report mode)	active	343310050
+Build Flagship Installers	active	344412643
+TUI installers	active	344743352
+DevLab Ephemeral CI - smoke	active	346845308
+Eval RAG Quality	disabled_manually	274961948
+Eval RAG Dry-Run (diagnostic)	disabled_manually	286120581

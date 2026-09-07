@@ -1,0 +1,5255 @@
+{
+ "gaia prompt": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--config"
+   ],
+   "default": "None",
+   "help": "Path to a GAIA config file (default: ~/.gaia/config.json or $GAIA_CONFIG_FILE). Used to resolve default_model.",
+   "choices": null
+  },
+  {
+   "opts": [
+    "message"
+   ],
+   "default": "None",
+   "help": "Message to send to Gaia",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-tokens"
+   ],
+   "default": "512",
+   "help": "Maximum number of tokens to generate (default: 512)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--device"
+   ],
+   "default": "None",
+   "help": "Inference device: cpu, gpu (default), or npu (Ryzen AI)",
+   "choices": [
+    "cpu",
+    "gpu",
+    "npu"
+   ]
+  }
+ ],
+ "gaia chat": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--config"
+   ],
+   "default": "None",
+   "help": "Path to a GAIA config file (default: ~/.gaia/config.json or $GAIA_CONFIG_FILE). Used to resolve default_model.",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--query",
+    "-q"
+   ],
+   "default": "None",
+   "help": "Single query to execute (defaults to interactive mode if not provided)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--show-prompts"
+   ],
+   "default": "False",
+   "help": "Display prompts sent to LLM",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--debug"
+   ],
+   "default": "False",
+   "help": "Enable debug output",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--device"
+   ],
+   "default": "None",
+   "help": "Inference device: cpu, gpu (default), or npu (Ryzen AI). Selects the model and backend for this agent session.",
+   "choices": [
+    "cpu",
+    "gpu",
+    "npu"
+   ]
+  },
+  {
+   "opts": [
+    "--index",
+    "-i"
+   ],
+   "default": "None",
+   "help": "PDF document(s) to index for RAG (space-separated)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--watch",
+    "-w"
+   ],
+   "default": "None",
+   "help": "Directories to monitor for new documents",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--chunk-size"
+   ],
+   "default": "500",
+   "help": "Document chunk size (default: 500)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-chunks"
+   ],
+   "default": "3",
+   "help": "Maximum chunks to retrieve (default: 3)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--allowed-paths"
+   ],
+   "default": "None",
+   "help": "Allowed directory paths for file operations (default: current directory)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-indexed-files"
+   ],
+   "default": "100",
+   "help": "Maximum number of files to keep indexed before LRU eviction (default: 100)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-total-chunks"
+   ],
+   "default": "10000",
+   "help": "Maximum total chunks across all indexed files (default: 10000)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--mcp-tool-limit"
+   ],
+   "default": "50",
+   "help": "Maximum MCP tools to register (default: 50). Larger tool sets bloat the system prompt and degrade small-model tool-calling accuracy \u2014 keep t",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--ui"
+   ],
+   "default": "False",
+   "help": "Launch the Agent UI (browser-based chat interface)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--ui-port"
+   ],
+   "default": "4200",
+   "help": "Port for the Agent UI server (default: 4200)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--ui-dist"
+   ],
+   "default": "None",
+   "help": "Path to pre-built Agent UI frontend dist directory (used with --ui)",
+   "choices": null
+  }
+ ],
+ "gaia talk": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-tokens"
+   ],
+   "default": "512",
+   "help": "Maximum number of tokens to generate (default: 512)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-tts"
+   ],
+   "default": "False",
+   "help": "Disable text-to-speech in voice chat mode",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--audio-device-index"
+   ],
+   "default": "None",
+   "help": "Index of the audio input device to use (default: auto-detect)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--whisper-model-size"
+   ],
+   "default": "'base'",
+   "help": "Size of the Whisper model to use (default: base)",
+   "choices": [
+    "tiny",
+    "base",
+    "small",
+    "medium",
+    "large"
+   ]
+  },
+  {
+   "opts": [
+    "--silence-threshold"
+   ],
+   "default": "0.5",
+   "help": "Silence threshold in seconds (default: 0.5)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--mic-threshold"
+   ],
+   "default": "0.003",
+   "help": "Microphone amplitude threshold for voice detection (default: 0.003). Lower = more sensitive",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--index",
+    "-i"
+   ],
+   "default": "None",
+   "help": "Index a PDF document for voice Q&A",
+   "choices": null
+  }
+ ],
+ "gaia email autonomy status": [
+  {
+   "opts": [
+    "--session-id"
+   ],
+   "default": "'cli'",
+   "help": "Session id the autonomy state lives on (default: 'cli', shared across invocations so a level you set stays set).",
+   "choices": null
+  }
+ ],
+ "gaia email autonomy trust": [
+  {
+   "opts": [
+    "--session-id"
+   ],
+   "default": "'cli'",
+   "help": "Session id the autonomy state lives on (default: 'cli', shared across invocations so a level you set stays set).",
+   "choices": null
+  }
+ ],
+ "gaia email autonomy set-level": [
+  {
+   "opts": [
+    "level"
+   ],
+   "default": "None",
+   "help": "",
+   "choices": [
+    "off",
+    "suggest",
+    "earn_trust",
+    "full"
+   ]
+  },
+  {
+   "opts": [
+    "--session-id"
+   ],
+   "default": "'cli'",
+   "help": "Session id the autonomy state lives on (default: 'cli', shared across invocations so a level you set stays set).",
+   "choices": null
+  }
+ ],
+ "gaia email autonomy pause": [
+  {
+   "opts": [
+    "--session-id"
+   ],
+   "default": "'cli'",
+   "help": "Session id the autonomy state lives on (default: 'cli', shared across invocations so a level you set stays set).",
+   "choices": null
+  }
+ ],
+ "gaia email autonomy resume": [
+  {
+   "opts": [
+    "--level"
+   ],
+   "default": "'earn_trust'",
+   "help": "Level to resume at (default: earn_trust).",
+   "choices": [
+    "suggest",
+    "earn_trust",
+    "full"
+   ]
+  },
+  {
+   "opts": [
+    "--session-id"
+   ],
+   "default": "'cli'",
+   "help": "Session id the autonomy state lives on (default: 'cli', shared across invocations so a level you set stays set).",
+   "choices": null
+  }
+ ],
+ "gaia email autonomy kill": [
+  {
+   "opts": [
+    "--session-id"
+   ],
+   "default": "'cli'",
+   "help": "Session id the autonomy state lives on (default: 'cli', shared across invocations so a level you set stays set).",
+   "choices": null
+  }
+ ],
+ "gaia email autonomy run": [
+  {
+   "opts": [
+    "--max-messages"
+   ],
+   "default": "25",
+   "help": "Inbox budget for this cycle (default: 25).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--session-id"
+   ],
+   "default": "'cli'",
+   "help": "Session id the autonomy state lives on (default: 'cli', shared across invocations so a level you set stays set).",
+   "choices": null
+  }
+ ],
+ "gaia email autonomy": [],
+ "gaia email": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "-q",
+    "--query"
+   ],
+   "default": "None",
+   "help": "One-shot query to send to the agent (non-interactive).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "-i",
+    "--interactive"
+   ],
+   "default": "False",
+   "help": "Run in interactive mode (loop reading queries from stdin).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "-v",
+    "--verbose"
+   ],
+   "default": "False",
+   "help": "Verbose mode \u2014 emit structured logs for every triage decision and tool call (recommended when benchmarking against other email agents).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--debug"
+   ],
+   "default": "False",
+   "help": "Debug mode \u2014 adds full prompt + LLM response logging to verbose output. Sensitive payloads in logs.",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--spec"
+   ],
+   "default": "False",
+   "help": "Generate the HTML endpoint spec page, write it to disk, and open it in a browser. No LLM or Lemonade required.",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--output"
+   ],
+   "default": "None",
+   "help": "Path to write the HTML spec (default: ~/.gaia/email/endpoint-spec.html). Only used with --spec.",
+   "choices": null
+  }
+ ],
+ "gaia api": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "subcommand"
+   ],
+   "default": "None",
+   "help": "API server command (start, stop, or status)",
+   "choices": [
+    "start",
+    "stop",
+    "status"
+   ]
+  },
+  {
+   "opts": [
+    "--host"
+   ],
+   "default": "'localhost'",
+   "help": "Host to bind API server (default: localhost)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--port"
+   ],
+   "default": "8080",
+   "help": "Port for API server (default: 8080)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--debug"
+   ],
+   "default": "False",
+   "help": "Enable debug logging",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--show-prompts"
+   ],
+   "default": "False",
+   "help": "Display prompts sent to LLM",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--streaming"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--step-through"
+   ],
+   "default": "False",
+   "help": "Enable step-through debugging mode (pause at each agent step)",
+   "choices": null
+  }
+ ],
+ "gaia telegram start": [
+  {
+   "opts": [
+    "--token"
+   ],
+   "default": "None",
+   "help": "Telegram bot token",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--allowed-users"
+   ],
+   "default": "None",
+   "help": "Comma-separated Telegram user IDs allowed to interact (default: allow all)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--background"
+   ],
+   "default": "False",
+   "help": "Run adapter in background/daemon mode (writes PID and health endpoint)",
+   "choices": null
+  }
+ ],
+ "gaia telegram stop": [
+  {
+   "opts": [
+    "--force"
+   ],
+   "default": "False",
+   "help": "Force stop even if graceful shutdown fails",
+   "choices": null
+  }
+ ],
+ "gaia telegram status": [
+  {
+   "opts": [
+    "--health-host"
+   ],
+   "default": "'127.0.0.1'",
+   "help": "Health server host (default: 127.0.0.1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--health-port"
+   ],
+   "default": "8765",
+   "help": "Health server port (default: 8765)",
+   "choices": null
+  }
+ ],
+ "gaia telegram": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  }
+ ],
+ "gaia schedule add": [
+  {
+   "opts": [
+    "--name"
+   ],
+   "default": "None",
+   "help": "Unique schedule name",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--cron"
+   ],
+   "default": "None",
+   "help": "Cron expression, e.g. \"0 7 * * 1-5\"",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--prompt"
+   ],
+   "default": "None",
+   "help": "One-shot prompt to run on each fire",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--skill"
+   ],
+   "default": "None",
+   "help": "Skill to run \u2014 the scheduler is not wired to the skills runtime yet; rejected at add time. Use --prompt instead.",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--sink"
+   ],
+   "default": "'stdout'",
+   "help": "Where output goes: stdout (default) | file:<path> | notification | telegram",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--to"
+   ],
+   "default": "None",
+   "help": "Recipient for the telegram sink (Telegram user/chat id)",
+   "choices": null
+  }
+ ],
+ "gaia schedule list": [],
+ "gaia schedule show": [
+  {
+   "opts": [
+    "name"
+   ],
+   "default": "None",
+   "help": "Schedule name",
+   "choices": null
+  }
+ ],
+ "gaia schedule remove": [
+  {
+   "opts": [
+    "name"
+   ],
+   "default": "None",
+   "help": "Schedule name",
+   "choices": null
+  }
+ ],
+ "gaia schedule pause": [
+  {
+   "opts": [
+    "name"
+   ],
+   "default": "None",
+   "help": "Schedule name",
+   "choices": null
+  }
+ ],
+ "gaia schedule resume": [
+  {
+   "opts": [
+    "name"
+   ],
+   "default": "None",
+   "help": "Schedule name",
+   "choices": null
+  }
+ ],
+ "gaia schedule run": [
+  {
+   "opts": [
+    "name"
+   ],
+   "default": "None",
+   "help": "Schedule name",
+   "choices": null
+  }
+ ],
+ "gaia schedule daemon": [],
+ "gaia schedule": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  }
+ ],
+ "gaia knowledge search": [
+  {
+   "opts": [
+    "query"
+   ],
+   "default": "None",
+   "help": "Search query",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-results"
+   ],
+   "default": "5",
+   "help": "Max results (default: 5)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--depth"
+   ],
+   "default": "'basic'",
+   "help": "Search depth \u2014 advanced costs more credits (default: basic)",
+   "choices": [
+    "basic",
+    "advanced"
+   ]
+  },
+  {
+   "opts": [
+    "--budget"
+   ],
+   "default": "None",
+   "help": "Credit cap for this session; omit for unlimited",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-block"
+   ],
+   "default": "False",
+   "help": "Warn instead of blocking when the budget cap is exceeded",
+   "choices": null
+  }
+ ],
+ "gaia knowledge extract": [
+  {
+   "opts": [
+    "urls"
+   ],
+   "default": "None",
+   "help": "One or more URLs to extract",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--depth"
+   ],
+   "default": "'basic'",
+   "help": "Extract depth (default: basic)",
+   "choices": [
+    "basic",
+    "advanced"
+   ]
+  },
+  {
+   "opts": [
+    "--budget"
+   ],
+   "default": "None",
+   "help": "Credit cap for this session",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-block"
+   ],
+   "default": "False",
+   "help": "Warn instead of blocking when the budget cap is exceeded",
+   "choices": null
+  }
+ ],
+ "gaia knowledge usage": [],
+ "gaia knowledge": [],
+ "gaia download": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--agent"
+   ],
+   "default": "'all'",
+   "help": "Agent to download models for (default: all)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list"
+   ],
+   "default": "False",
+   "help": "List required models without downloading",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--clear-cache"
+   ],
+   "default": "False",
+   "help": "Delete all downloaded GAIA models to free up disk space",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--timeout"
+   ],
+   "default": "1800",
+   "help": "Timeout per model in seconds (default: 1800)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--host"
+   ],
+   "default": "'localhost'",
+   "help": "Lemonade server host (default: localhost)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--port"
+   ],
+   "default": "13305",
+   "help": "Lemonade server port (default: 13305)",
+   "choices": null
+  }
+ ],
+ "gaia stats": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  }
+ ],
+ "gaia test": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--test-type"
+   ],
+   "default": "None",
+   "help": "Type of test to run",
+   "choices": [
+    "tts-preprocessing",
+    "tts-streaming",
+    "tts-audio-file",
+    "asr-file-transcription",
+    "asr-microphone",
+    "asr-list-audio-devices"
+   ]
+  },
+  {
+   "opts": [
+    "--test-text"
+   ],
+   "default": "None",
+   "help": "Text to use for TTS tests",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--input-audio-file"
+   ],
+   "default": "None",
+   "help": "Input audio file path for ASR file transcription test",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--output-audio-file"
+   ],
+   "default": "'output.wav'",
+   "help": "Output file path for TTS audio file test (default: output.wav)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--recording-duration"
+   ],
+   "default": "10",
+   "help": "Recording duration in seconds for ASR microphone test (default: 10)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--whisper-model-size"
+   ],
+   "default": "'base'",
+   "help": "Size of the Whisper model to use (default: base)",
+   "choices": [
+    "tiny",
+    "base",
+    "small",
+    "medium",
+    "large"
+   ]
+  },
+  {
+   "opts": [
+    "--audio-device-index"
+   ],
+   "default": "1",
+   "help": "Index of audio input device (optional)",
+   "choices": null
+  }
+ ],
+ "gaia youtube": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--download-transcript"
+   ],
+   "default": "None",
+   "help": "Download transcript from a YouTube URL",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--output-path"
+   ],
+   "default": "None",
+   "help": "Output file path for transcript (optional, default: transcript_<video_id>.txt)",
+   "choices": null
+  }
+ ],
+ "gaia kill": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--port"
+   ],
+   "default": "None",
+   "help": "Port number to kill process on",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--lemonade"
+   ],
+   "default": "False",
+   "help": "Kill Lemonade server (port 13305)",
+   "choices": null
+  }
+ ],
+ "gaia llm": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--config"
+   ],
+   "default": "None",
+   "help": "Path to a GAIA config file (default: ~/.gaia/config.json or $GAIA_CONFIG_FILE). Used to resolve default_model.",
+   "choices": null
+  },
+  {
+   "opts": [
+    "query"
+   ],
+   "default": "None",
+   "help": "The query/prompt to send to the LLM",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-tokens"
+   ],
+   "default": "512",
+   "help": "Maximum tokens to generate (default: 512)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-stream"
+   ],
+   "default": "False",
+   "help": "Disable streaming the response (streaming is enabled by default)",
+   "choices": null
+  }
+ ],
+ "gaia eval agent": [
+  {
+   "opts": [
+    "--scenario"
+   ],
+   "default": "None",
+   "help": "Run specific scenario by ID",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--category"
+   ],
+   "default": "None",
+   "help": "Run all scenarios in category",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--audit-only"
+   ],
+   "default": "False",
+   "help": "Run architecture audit only (no LLM calls)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--generate-corpus"
+   ],
+   "default": "False",
+   "help": "Regenerate corpus documents (CSV, etc.) and validate manifest.json",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--backend"
+   ],
+   "default": "'http://localhost:4200'",
+   "help": "Agent UI backend URL (default: http://localhost:4200)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--agent-type"
+   ],
+   "default": "None",
+   "help": "Agent registration ID to target (e.g. 'gaia-lite'). When set, the eval runner instructs the simulator to create sessions with this agent_typ",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "'claude-opus-5'",
+   "help": "Judge model that scores the run (default: claude-opus-5)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--budget"
+   ],
+   "default": "'2.00'",
+   "help": "Max budget per scenario in USD (default: 2.00)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--timeout"
+   ],
+   "default": "900",
+   "help": "Timeout per scenario in seconds (default: 900, scaled up automatically for multi-turn/large-doc scenarios)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--fix"
+   ],
+   "default": "False",
+   "help": "After eval, invoke Claude Code to fix failures and re-eval (up to --max-fix-iterations)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-fix-iterations"
+   ],
+   "default": "3",
+   "help": "Max fix-then-re-eval iterations in --fix mode (default: 3)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--target-pass-rate"
+   ],
+   "default": "0.9",
+   "help": "Stop --fix iterations early when pass rate reaches this threshold (default: 0.90)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--compare"
+   ],
+   "default": "None",
+   "help": "Compare two scorecard.json files (BASELINE CURRENT) or compare a run against saved baseline (CURRENT only)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--save-baseline"
+   ],
+   "default": "False",
+   "help": "After eval, save this run's scorecard as eval/results/baseline.json for future --compare",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--capture-session"
+   ],
+   "default": "None",
+   "help": "Convert an Agent UI session from the database into a YAML scenario file",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--keep-sessions"
+   ],
+   "default": "False",
+   "help": "Do not delete Agent UI sessions after eval \u2014 leave them for manual inspection",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--scenario-dir"
+   ],
+   "default": "None",
+   "help": "Additional directory to scan for scenario YAML files (can be repeated). User scenarios override built-in scenarios with the same ID.",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--iterations"
+   ],
+   "default": "1",
+   "help": "Run each scenario N times for reliability measurement (default: 1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--corpus-dir"
+   ],
+   "default": "None",
+   "help": "Additional corpus directory with documents and manifest.json (can be repeated)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--tag"
+   ],
+   "default": "None",
+   "help": "Run only scenarios with this tag (can be repeated; OR logic \u2014 scenarios matching ANY tag are included)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--output-format"
+   ],
+   "default": "None",
+   "help": "Output format for results (default: json+markdown as today). 'junit' writes a JUnit XML file for CI integration.",
+   "choices": [
+    "json",
+    "markdown",
+    "junit"
+   ]
+  },
+  {
+   "opts": [
+    "--device"
+   ],
+   "default": "None",
+   "help": "Inference device for eval scenarios: cpu, gpu (default), or npu. Selects the model and backend from the agent's device_configs. Results are ",
+   "choices": [
+    "cpu",
+    "gpu",
+    "npu"
+   ]
+  }
+ ],
+ "gaia eval benchmark": [
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "'Gemma-4-E4B-it-GGUF'",
+   "help": "Lemonade model id to benchmark (default: Gemma-4-E4B-it-GGUF).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--limit"
+   ],
+   "default": "50",
+   "help": "Target message count steered to the agent's triage call (default: 50). The committed stub corpus is smaller, so the effective count is min(l",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--experiments"
+   ],
+   "default": "1",
+   "help": "Repeat count per model for variance analysis (default: 1).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--mbox-path"
+   ],
+   "default": "None",
+   "help": "MBOX corpus to triage (default: the committed stub fixture).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--ground-truth"
+   ],
+   "default": "None",
+   "help": "Ground-truth JSON for quality scoring (default: the fixture's).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--backend"
+   ],
+   "default": "None",
+   "help": "Lemonade base URL (default: the agent's configured base URL).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--output-dir"
+   ],
+   "default": "None",
+   "help": "Directory to write scorecard.json / summary.md (optional).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--compare"
+   ],
+   "default": "None",
+   "help": "Compare this run's throughput against a saved baseline scorecard.",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--save-baseline"
+   ],
+   "default": "False",
+   "help": "Save this run's scorecard as the throughput baseline.",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--ctx-size"
+   ],
+   "default": "None",
+   "help": "Exact ctx window to pin the model load to (#1892 envelope: 16384 target / 32768 max; default: the target). The run verifies the pin by readb",
+   "choices": null
+  }
+ ],
+ "gaia eval sessions": [
+  {
+   "opts": [
+    "--control"
+   ],
+   "default": "None",
+   "help": "Path to the running TUI's control.json (default: ~/.gaia/tui/control.json, or $GAIA_TUI_HOME/control.json)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--limit"
+   ],
+   "default": "10",
+   "help": "Number of cases (default: 10)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--project"
+   ],
+   "default": "''",
+   "help": "Only sessions from one project directory under ~/.claude/projects",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--out"
+   ],
+   "default": "None",
+   "help": "Output directory (default: eval/results/sessions-<timestamp>)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--dataset-only"
+   ],
+   "default": "False",
+   "help": "Build the dataset and stop \u2014 no agent run, no judge",
+   "choices": null
+  }
+ ],
+ "gaia eval code": [
+  {
+   "opts": [
+    "--control"
+   ],
+   "default": "None",
+   "help": "Path to the running TUI's control.json",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--out"
+   ],
+   "default": "None",
+   "help": "Output directory (default: eval/results/code-<timestamp>)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--workspace"
+   ],
+   "default": "None",
+   "help": "Where to materialize the task projects (default: a temp directory)",
+   "choices": null
+  }
+ ],
+ "gaia eval": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  }
+ ],
+ "gaia report": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "-d",
+    "--eval-dir"
+   ],
+   "default": "'./output/evaluations'",
+   "help": "Directory containing .eval.json files to analyze (default: ./output/evaluations)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "-o",
+    "--output-file"
+   ],
+   "default": "'LLM_Evaluation_Report.md'",
+   "help": "Output filename for the markdown report (default: LLM_Evaluation_Report.md)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--summary-only"
+   ],
+   "default": "False",
+   "help": "Only display summary to console, don't save report file",
+   "choices": null
+  }
+ ],
+ "gaia perf-vis": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "log_paths"
+   ],
+   "default": "None",
+   "help": "One or more llama.cpp server log files to visualize",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--show"
+   ],
+   "default": "False",
+   "help": "Display plots interactively in addition to saving images",
+   "choices": null
+  }
+ ],
+ "gaia mcp start": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--host"
+   ],
+   "default": "'localhost'",
+   "help": "Host to bind the server to (default: localhost)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--port"
+   ],
+   "default": "8765",
+   "help": "Port to listen on (default: 8765)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--auth-token"
+   ],
+   "default": "None",
+   "help": "Require 'Authorization: Bearer <token>' on every request except /health. Defaults to $GAIA_MCP_AUTH_TOKEN. Without it the bridge is unauthen",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-streaming"
+   ],
+   "default": "False",
+   "help": "Disable streaming responses",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--background"
+   ],
+   "default": "False",
+   "help": "Run MCP bridge in background mode",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--log-file"
+   ],
+   "default": "'gaia.mcp.log'",
+   "help": "Log file path for background mode (default: gaia.mcp.log)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--verbose"
+   ],
+   "default": "False",
+   "help": "Enable verbose logging for all HTTP requests",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--ctx-size"
+   ],
+   "default": "32768",
+   "help": "Context size for Lemonade Server (default: 32768 for coding)",
+   "choices": null
+  }
+ ],
+ "gaia mcp status": [
+  {
+   "opts": [
+    "--host"
+   ],
+   "default": "'localhost'",
+   "help": "Host to check (default: localhost)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--port"
+   ],
+   "default": "8765",
+   "help": "Port to check (default: 8765)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--auth-token"
+   ],
+   "default": "None",
+   "help": "Bearer token if the bridge requires one (default: $GAIA_MCP_AUTH_TOKEN)",
+   "choices": null
+  }
+ ],
+ "gaia mcp stop": [],
+ "gaia mcp test": [
+  {
+   "opts": [
+    "--host"
+   ],
+   "default": "'localhost'",
+   "help": "Host to connect to (default: localhost)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--port"
+   ],
+   "default": "8765",
+   "help": "Port to connect to (default: 8765)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--query"
+   ],
+   "default": "'Hello, GAIA!'",
+   "help": "Test query to send",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--tool"
+   ],
+   "default": "'gaia.chat'",
+   "help": "Tool to test (default: gaia.chat)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--auth-token"
+   ],
+   "default": "None",
+   "help": "Bearer token if the bridge requires one (default: $GAIA_MCP_AUTH_TOKEN)",
+   "choices": null
+  }
+ ],
+ "gaia mcp agent": [
+  {
+   "opts": [
+    "--host"
+   ],
+   "default": "'localhost'",
+   "help": "Host to connect to (default: localhost)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--port"
+   ],
+   "default": "8765",
+   "help": "Port to connect to (default: 8765)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "request"
+   ],
+   "default": "None",
+   "help": "Natural language request for the orchestrator agent",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--domain"
+   ],
+   "default": "'all'",
+   "help": "Tool domain to focus on (e.g., 'atlassian', 'gaia', 'all')",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--context"
+   ],
+   "default": "None",
+   "help": "Optional additional context about the request",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--auth-token"
+   ],
+   "default": "None",
+   "help": "Bearer token if the bridge requires one (default: $GAIA_MCP_AUTH_TOKEN)",
+   "choices": null
+  }
+ ],
+ "gaia mcp serve": [
+  {
+   "opts": [
+    "--host"
+   ],
+   "default": "'localhost'",
+   "help": "Host to bind to (default: localhost)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--port"
+   ],
+   "default": "8766",
+   "help": "Port to listen on (default: 8766)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--backend"
+   ],
+   "default": "'http://localhost:4200'",
+   "help": "GAIA Agent UI backend URL (default: http://localhost:4200)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stdio"
+   ],
+   "default": "False",
+   "help": "Use stdio transport instead of HTTP (for Claude Code / eval runner integration)",
+   "choices": null
+  }
+ ],
+ "gaia mcp tui": [
+  {
+   "opts": [
+    "--host"
+   ],
+   "default": "'localhost'",
+   "help": "Host to bind to (default: localhost)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--port"
+   ],
+   "default": "8767",
+   "help": "Port to listen on (default: 8767)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stdio"
+   ],
+   "default": "False",
+   "help": "Use stdio transport instead of HTTP (for Claude Code integration)",
+   "choices": null
+  }
+ ],
+ "gaia mcp list": [
+  {
+   "opts": [
+    "--config"
+   ],
+   "default": "None",
+   "help": "Path to MCP servers config file (default: ~/.gaia/mcp_servers.json)",
+   "choices": null
+  }
+ ],
+ "gaia mcp tools": [
+  {
+   "opts": [
+    "name"
+   ],
+   "default": "None",
+   "help": "Name of the MCP server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--config"
+   ],
+   "default": "None",
+   "help": "Path to MCP servers config file (default: ~/.gaia/mcp_servers.json)",
+   "choices": null
+  }
+ ],
+ "gaia mcp test-client": [
+  {
+   "opts": [
+    "name"
+   ],
+   "default": "None",
+   "help": "Name of the MCP server to test",
+   "choices": null
+  }
+ ],
+ "gaia mcp": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  }
+ ],
+ "gaia lemonade embedded start": [
+  {
+   "opts": [
+    "--port"
+   ],
+   "default": "None",
+   "help": "Port to bind (default: a free port chosen at start)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-install"
+   ],
+   "default": "False",
+   "help": "Fail instead of downloading when the artifact is missing",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--timeout"
+   ],
+   "default": "60.0",
+   "help": "Seconds to wait for the server to become healthy (default: 60)",
+   "choices": null
+  }
+ ],
+ "gaia lemonade embedded stop": [],
+ "gaia lemonade embedded status": [],
+ "gaia lemonade embedded install": [
+  {
+   "opts": [
+    "--force"
+   ],
+   "default": "False",
+   "help": "Reinstall even if already unpacked",
+   "choices": null
+  }
+ ],
+ "gaia lemonade embedded install-backend": [
+  {
+   "opts": [
+    "spec"
+   ],
+   "default": "None",
+   "help": "Backend spec, e.g. llamacpp:vulkan (recipe:backend)",
+   "choices": null
+  }
+ ],
+ "gaia lemonade embedded": [],
+ "gaia lemonade": [],
+ "gaia daemon start": [],
+ "gaia daemon status": [],
+ "gaia daemon stop": [],
+ "gaia daemon restart": [],
+ "gaia daemon agents": [],
+ "gaia daemon start-agent": [
+  {
+   "opts": [
+    "agent_id"
+   ],
+   "default": "None",
+   "help": "Agent to start (e.g. email)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--mode"
+   ],
+   "default": "None",
+   "help": "Sidecar mode: user (frozen binary, default) or dev (from source)",
+   "choices": [
+    "user",
+    "dev"
+   ]
+  },
+  {
+   "opts": [
+    "--dev-src-dir"
+   ],
+   "default": "None",
+   "help": "Explicit dev-mode source directory (escape hatch for --mode dev when this shell isn't inside a git work tree). Default: resolved from this c",
+   "choices": null
+  }
+ ],
+ "gaia daemon stop-agent": [
+  {
+   "opts": [
+    "agent_id"
+   ],
+   "default": "None",
+   "help": "Agent to stop",
+   "choices": null
+  }
+ ],
+ "gaia daemon logs": [
+  {
+   "opts": [
+    "-n",
+    "--lines"
+   ],
+   "default": "100",
+   "help": "Number of trailing log lines to show (default: 100)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "-f",
+    "--follow"
+   ],
+   "default": "False",
+   "help": "Follow the log (like tail -f); Ctrl-C to stop",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--agent"
+   ],
+   "default": "None",
+   "help": "Show the named sidecar agent's log (the rich agent-loop activity \u2014 tool calls, triage decisions) instead of the host daemon log. E.g. `gaia ",
+   "choices": null
+  }
+ ],
+ "gaia daemon": [],
+ "gaia hub list": [
+  {
+   "opts": [
+    "--installed"
+   ],
+   "default": "False",
+   "help": "Show only agents installed on this machine (works offline)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--refresh"
+   ],
+   "default": "False",
+   "help": "Bypass the 5-minute catalog cache and re-fetch from the hub",
+   "choices": null
+  }
+ ],
+ "gaia hub install": [
+  {
+   "opts": [
+    "agent_id"
+   ],
+   "default": "None",
+   "help": "Agent to install (e.g. email)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--version"
+   ],
+   "default": "None",
+   "help": "Version to install (default: the hub's latest)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trust"
+   ],
+   "default": "False",
+   "help": "Explicitly trust a non-verified agent (it runs third-party code on your machine). Required for any community/experimental package.",
+   "choices": null
+  }
+ ],
+ "gaia hub uninstall": [
+  {
+   "opts": [
+    "agent_id"
+   ],
+   "default": "None",
+   "help": "Agent to uninstall",
+   "choices": null
+  }
+ ],
+ "gaia hub": [],
+ "gaia cache status": [],
+ "gaia cache clear": [
+  {
+   "opts": [
+    "--context7"
+   ],
+   "default": "False",
+   "help": "Clear Context7 cache",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--all"
+   ],
+   "default": "False",
+   "help": "Clear all caches",
+   "choices": null
+  }
+ ],
+ "gaia cache": [],
+ "gaia memory status": [],
+ "gaia memory bootstrap": [
+  {
+   "opts": [
+    "--chat-only"
+   ],
+   "default": "False",
+   "help": "Conversational onboarding only",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--discover"
+   ],
+   "default": "False",
+   "help": "System discovery only (re-scannable)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--reset"
+   ],
+   "default": "False",
+   "help": "Clear source='discovery' items (with confirmation)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--system"
+   ],
+   "default": "False",
+   "help": "Re-scan and refresh system context (OS, hardware, apps, versions)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--reset-system"
+   ],
+   "default": "False",
+   "help": "Clear system context entries and optionally disable auto-collection",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--infer"
+   ],
+   "default": "False",
+   "help": "LLM-assisted profile inference from browser history and installed apps",
+   "choices": null
+  }
+ ],
+ "gaia memory": [],
+ "gaia diagnostics": [
+  {
+   "opts": [
+    "--output"
+   ],
+   "default": "None",
+   "help": "Destination path for the diagnostics tarball (default: ~/.gaia/diagnostics-<YYYYMMDD-HHMMSS>.tgz)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-logs"
+   ],
+   "default": "False",
+   "help": "Omit log files from the bundle (useful when logs may contain sensitive chat content)",
+   "choices": null
+  }
+ ],
+ "gaia agent init": [
+  {
+   "opts": [
+    "name"
+   ],
+   "default": "None",
+   "help": "Agent id/name (lowercase, hyphens allowed), e.g. 'my-agent'",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--language"
+   ],
+   "default": "'python'",
+   "help": "Implementation language for the scaffold (default: python)",
+   "choices": [
+    "python",
+    "cpp"
+   ]
+  },
+  {
+   "opts": [
+    "--output",
+    "-o"
+   ],
+   "default": "'.'",
+   "help": "Parent directory to create the package in (default: current dir)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--layout"
+   ],
+   "default": "'flat'",
+   "help": "Package layout: 'flat' creates <output>/<id>/ (default, for standalone packages); 'hub' creates <output>/<id>/<language>/ to match the hub t",
+   "choices": [
+    "flat",
+    "hub"
+   ]
+  },
+  {
+   "opts": [
+    "--force"
+   ],
+   "default": "False",
+   "help": "Overwrite an existing package directory if it exists",
+   "choices": null
+  }
+ ],
+ "gaia agent version": [
+  {
+   "opts": [
+    "bump"
+   ],
+   "default": "None",
+   "help": "Which SemVer component to increment",
+   "choices": [
+    "patch",
+    "minor",
+    "major"
+   ]
+  },
+  {
+   "opts": [
+    "--path"
+   ],
+   "default": "'.'",
+   "help": "Agent package directory (default: current dir)",
+   "choices": null
+  }
+ ],
+ "gaia agent test": [
+  {
+   "opts": [
+    "--lint"
+   ],
+   "default": "False",
+   "help": "Static quality gates: manifest, structure, syntax, black+isort (default, CI-safe, no LLM required)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--live"
+   ],
+   "default": "False",
+   "help": "Runtime gate: agent answers its conversation_starters (needs Lemonade Server)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--path"
+   ],
+   "default": "'.'",
+   "help": "Agent package directory (default: current dir)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--timeout"
+   ],
+   "default": "60",
+   "help": "Per-prompt timeout in seconds for --live mode (default: 60)",
+   "choices": null
+  }
+ ],
+ "gaia agent pack": [
+  {
+   "opts": [
+    "path"
+   ],
+   "default": "'.'",
+   "help": "Agent package directory (default: current dir)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--output",
+    "-o"
+   ],
+   "default": "None",
+   "help": "Output directory for the wheel (default: <package>/dist)",
+   "choices": null
+  }
+ ],
+ "gaia agent publish": [
+  {
+   "opts": [
+    "path"
+   ],
+   "default": "'.'",
+   "help": "Agent package directory (default: current dir)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--output",
+    "-o"
+   ],
+   "default": "None",
+   "help": "Output directory for the built wheel (default: <package>/dist)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--hub-url"
+   ],
+   "default": "None",
+   "help": "R2 Worker origin (default: GAIA_HUB_URL or https://hub.amd-gaia.ai)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--skip-r2"
+   ],
+   "default": "False",
+   "help": "Publish to PyPI only (skip the R2 Hub upload)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--skip-pypi"
+   ],
+   "default": "False",
+   "help": "Publish to R2 only (skip the PyPI upload)",
+   "choices": null
+  }
+ ],
+ "gaia agent configure": [
+  {
+   "opts": [
+    "id"
+   ],
+   "default": "None",
+   "help": "Agent id to configure, e.g. 'chat'",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Preferred model for this agent (stored as the 'model' setting)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--set"
+   ],
+   "default": "[]",
+   "help": "Set an arbitrary setting (repeatable), e.g. --set temperature=0.2",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--replace"
+   ],
+   "default": "False",
+   "help": "Replace the whole config instead of merging into the existing one",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--show"
+   ],
+   "default": "False",
+   "help": "Print the current config and exit (no changes)",
+   "choices": null
+  }
+ ],
+ "gaia agent health": [
+  {
+   "opts": [
+    "id"
+   ],
+   "default": "None",
+   "help": "Agent id to health-check, e.g. 'chat'",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--json"
+   ],
+   "default": "False",
+   "help": "Emit machine-readable JSON",
+   "choices": null
+  }
+ ],
+ "gaia agent status": [
+  {
+   "opts": [
+    "id"
+   ],
+   "default": "None",
+   "help": "Agent id (omit to show every discovered agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--json"
+   ],
+   "default": "False",
+   "help": "Emit machine-readable JSON",
+   "choices": null
+  }
+ ],
+ "gaia agent login": [
+  {
+   "opts": [
+    "--hub-token"
+   ],
+   "default": "None",
+   "help": "R2 Worker publish token (prompted securely if omitted with --hub)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--pypi-token"
+   ],
+   "default": "None",
+   "help": "PyPI API token (prompted securely if omitted with --pypi)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--hub"
+   ],
+   "default": "False",
+   "help": "Prompt for the R2 Hub token (use instead of --hub-token)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--pypi"
+   ],
+   "default": "False",
+   "help": "Prompt for the PyPI token (use instead of --pypi-token)",
+   "choices": null
+  }
+ ],
+ "gaia agent export": [
+  {
+   "opts": [
+    "--output"
+   ],
+   "default": "None",
+   "help": "Destination path for the .zip bundle (default: ~/.gaia/export.zip)",
+   "choices": null
+  }
+ ],
+ "gaia agent import": [
+  {
+   "opts": [
+    "path"
+   ],
+   "default": "None",
+   "help": "Path to the .zip bundle produced by 'gaia agent export'",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--yes",
+    "-y"
+   ],
+   "default": "False",
+   "help": "Skip interactive confirmation prompt (non-interactive/CI use)",
+   "choices": null
+  }
+ ],
+ "gaia agent install": [
+  {
+   "opts": [
+    "agent_id"
+   ],
+   "default": "None",
+   "help": "Hub agent id to install (e.g. 'email').",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--version"
+   ],
+   "default": "None",
+   "help": "Specific version to install (default: the hub's latest).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trust"
+   ],
+   "default": "False",
+   "help": "Explicitly trust a non-verified agent (it runs third-party code on your machine). Required for any community/experimental package.",
+   "choices": null
+  }
+ ],
+ "gaia agent list": [],
+ "gaia agent": [],
+ "gaia connectors list": [
+  {
+   "opts": [
+    "connector_id"
+   ],
+   "default": "None",
+   "help": "Connector id to inspect; default: list all",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--json"
+   ],
+   "default": "False",
+   "help": "Emit machine-readable JSON",
+   "choices": null
+  }
+ ],
+ "gaia connectors status": [
+  {
+   "opts": [
+    "connector_id"
+   ],
+   "default": "None",
+   "help": "",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--json"
+   ],
+   "default": "False",
+   "help": "",
+   "choices": null
+  }
+ ],
+ "gaia connectors connect": [
+  {
+   "opts": [
+    "connector_id"
+   ],
+   "default": "None",
+   "help": "Connector id (e.g. 'google')",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--scopes"
+   ],
+   "default": "None",
+   "help": "OAuth scopes to request (connector-specific)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--grant-agent"
+   ],
+   "default": "None",
+   "help": "Also grant this connector to the named namespaced agent id (e.g. 'installed:email') in the same flow \u2014 one command instead of a separate `gr",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--device"
+   ],
+   "default": "False",
+   "help": "Use the device-code flow (enter a short code at a URL) instead of the browser redirect. Needed for zero-setup Microsoft sign-in (no Azure ap",
+   "choices": null
+  }
+ ],
+ "gaia connectors configure": [
+  {
+   "opts": [
+    "connector_id"
+   ],
+   "default": "None",
+   "help": "Connector id",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--client-id"
+   ],
+   "default": "None",
+   "help": "OAuth client id for an oauth_pkce connector (e.g. the Google or Microsoft Desktop-app client). Persists to the keyring. Google additionally ",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--client-secret"
+   ],
+   "default": "None",
+   "help": "OAuth client secret (paired with --client-id; stored encrypted in the keyring). Required for Google; omit for providers that use a secretles",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--set"
+   ],
+   "default": "None",
+   "help": "Config key=value pair (repeatable, e.g. --set GITHUB_TOKEN=ghp_\u2026)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--json"
+   ],
+   "default": "None",
+   "help": "Config as a JSON object (alternative to --set)",
+   "choices": null
+  }
+ ],
+ "gaia connectors test": [
+  {
+   "opts": [
+    "connector_id"
+   ],
+   "default": "None",
+   "help": "Connector id",
+   "choices": null
+  }
+ ],
+ "gaia connectors disconnect": [
+  {
+   "opts": [
+    "connector_id"
+   ],
+   "default": "None",
+   "help": "",
+   "choices": null
+  }
+ ],
+ "gaia connectors grants list": [
+  {
+   "opts": [
+    "connector_id"
+   ],
+   "default": "'google'",
+   "help": "Connector id (default: google)",
+   "choices": null
+  }
+ ],
+ "gaia connectors grants grant": [
+  {
+   "opts": [
+    "connector_id"
+   ],
+   "default": "None",
+   "help": "",
+   "choices": null
+  },
+  {
+   "opts": [
+    "agent_id"
+   ],
+   "default": "None",
+   "help": "Namespaced agent id, e.g. 'builtin:chat' or 'custom:abc:inbox'",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--scopes"
+   ],
+   "default": "None",
+   "help": "Scopes to grant (connector-specific)",
+   "choices": null
+  }
+ ],
+ "gaia connectors grants revoke": [
+  {
+   "opts": [
+    "connector_id"
+   ],
+   "default": "None",
+   "help": "",
+   "choices": null
+  },
+  {
+   "opts": [
+    "agent_id"
+   ],
+   "default": "None",
+   "help": "",
+   "choices": null
+  }
+ ],
+ "gaia connectors grants": [],
+ "gaia connectors activations list": [
+  {
+   "opts": [
+    "connector_id"
+   ],
+   "default": "None",
+   "help": "Connector id (lists every connector when omitted)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--json"
+   ],
+   "default": "False",
+   "help": "Emit machine-readable JSON",
+   "choices": null
+  }
+ ],
+ "gaia connectors activations activate": [
+  {
+   "opts": [
+    "connector_id"
+   ],
+   "default": "None",
+   "help": "",
+   "choices": null
+  },
+  {
+   "opts": [
+    "agent_id"
+   ],
+   "default": "None",
+   "help": "Namespaced agent id, e.g. 'builtin:chat' or 'custom:abc:inbox'",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--scopes"
+   ],
+   "default": "None",
+   "help": "Scopes to auto-grant if no grant exists yet. Required when the agent has no prior grant for this connector.",
+   "choices": null
+  }
+ ],
+ "gaia connectors activations deactivate": [
+  {
+   "opts": [
+    "connector_id"
+   ],
+   "default": "None",
+   "help": "",
+   "choices": null
+  },
+  {
+   "opts": [
+    "agent_id"
+   ],
+   "default": "None",
+   "help": "",
+   "choices": null
+  }
+ ],
+ "gaia connectors activations": [],
+ "gaia connectors": [],
+ "gaia skill list": [
+  {
+   "opts": [
+    "--json"
+   ],
+   "default": "False",
+   "help": "Emit JSON instead of a table",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--root"
+   ],
+   "default": "None",
+   "help": "Only show skills from this discovery root (agent-bundled | user | claude-import)",
+   "choices": null
+  }
+ ],
+ "gaia skill info": [
+  {
+   "opts": [
+    "name"
+   ],
+   "default": "None",
+   "help": "Skill name (== its directory name)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--json"
+   ],
+   "default": "False",
+   "help": "Emit JSON instead of text",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--body"
+   ],
+   "default": "False",
+   "help": "Also print the Markdown instructions",
+   "choices": null
+  }
+ ],
+ "gaia skill create": [
+  {
+   "opts": [
+    "name"
+   ],
+   "default": "None",
+   "help": "Skill name (lowercase-with-hyphens)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--dir"
+   ],
+   "default": "None",
+   "help": "Parent directory for the new skill (default: ~/.gaia/skills)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--description"
+   ],
+   "default": "None",
+   "help": "Description / trigger signal",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--with-tools"
+   ],
+   "default": "False",
+   "help": "Also scaffold tools.py with an example @tool function",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--force"
+   ],
+   "default": "False",
+   "help": "Overwrite an existing skill directory",
+   "choices": null
+  }
+ ],
+ "gaia skill import": [
+  {
+   "opts": [
+    "source"
+   ],
+   "default": "None",
+   "help": "Path to a skill directory or .zip, or an https URL",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--name"
+   ],
+   "default": "None",
+   "help": "Install under this name instead of the source's",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--force"
+   ],
+   "default": "False",
+   "help": "Overwrite an existing installed skill",
+   "choices": null
+  }
+ ],
+ "gaia skill export": [
+  {
+   "opts": [
+    "name"
+   ],
+   "default": "None",
+   "help": "Skill name to export",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--output"
+   ],
+   "default": "None",
+   "help": "Destination .zip (default: ./<name>.zip)",
+   "choices": null
+  }
+ ],
+ "gaia skill audit": [
+  {
+   "opts": [
+    "path"
+   ],
+   "default": "None",
+   "help": "Skill directory (the one containing SKILL.md)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--json"
+   ],
+   "default": "False",
+   "help": "Emit the machine-readable report on stdout (the payload the hub publish path consumes as its 'audit' part)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--output"
+   ],
+   "default": "None",
+   "help": "Write the JSON report to this file as well",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--sarif"
+   ],
+   "default": "None",
+   "help": "Write SARIF 2.1.0 to this file, for upload to GitHub code scanning",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--path-prefix"
+   ],
+   "default": "None",
+   "help": "Prefix SARIF result paths with this repository-relative directory, so code scanning anchors findings to real files when the skill is nested ",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--tier"
+   ],
+   "default": "None",
+   "help": "Audit against this tier instead of the one the skill declares \u2014 check a claim before making it",
+   "choices": [
+    "verified",
+    "community",
+    "experimental"
+   ]
+  },
+  {
+   "opts": [
+    "--fail-on"
+   ],
+   "default": "None",
+   "help": "Exit non-zero when any finding reaches this severity, even if the tier's own gate would allow it",
+   "choices": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+   ]
+  },
+  {
+   "opts": [
+    "--show-snippets"
+   ],
+   "default": "False",
+   "help": "Include the offending source text. Withheld by default so exploitable detail stays out of shared logs and artifacts.",
+   "choices": null
+  }
+ ],
+ "gaia skill migrate": [
+  {
+   "opts": [
+    "source"
+   ],
+   "default": "None",
+   "help": "Skill directory, its SKILL.md, or a directory of skills",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--from"
+   ],
+   "default": "'auto'",
+   "help": "Source format (default: auto-detect from metadata.<vendor>)",
+   "choices": [
+    "openclaw",
+    "hermes",
+    "auto"
+   ]
+  },
+  {
+   "opts": [
+    "--out"
+   ],
+   "default": "None",
+   "help": "Write migrated skills here instead of installing into ~/.gaia/skills",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--name"
+   ],
+   "default": "None",
+   "help": "Migrate under this name (single-skill sources only)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--force"
+   ],
+   "default": "False",
+   "help": "Replace an existing skill of the same name",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--dry-run"
+   ],
+   "default": "False",
+   "help": "Report what would be migrated without writing anything",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--json"
+   ],
+   "default": "False",
+   "help": "Emit the migration report as JSON",
+   "choices": null
+  }
+ ],
+ "gaia skill search": [
+  {
+   "opts": [
+    "query"
+   ],
+   "default": "''",
+   "help": "Substring to match (omit to list all)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--json"
+   ],
+   "default": "False",
+   "help": "Emit JSON instead of a table",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--hub-url"
+   ],
+   "default": "None",
+   "help": "Hub origin override",
+   "choices": null
+  }
+ ],
+ "gaia skill install": [
+  {
+   "opts": [
+    "reference"
+   ],
+   "default": "None",
+   "help": "Skill to install: <name> or <name>@<version-range>",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--allow-experimental"
+   ],
+   "default": "False",
+   "help": "Required to install a skill whose signature attests only 'experimental'",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--force"
+   ],
+   "default": "False",
+   "help": "Replace an already-installed copy",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--yes"
+   ],
+   "default": "False",
+   "help": "Grant dangerous permissions without prompting (for CI)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--hub-url"
+   ],
+   "default": "None",
+   "help": "Hub origin override",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--json"
+   ],
+   "default": "False",
+   "help": "Emit JSON instead of text",
+   "choices": null
+  }
+ ],
+ "gaia skill remove": [
+  {
+   "opts": [
+    "name"
+   ],
+   "default": "None",
+   "help": "Skill name to remove",
+   "choices": null
+  }
+ ],
+ "gaia skill publish": [
+  {
+   "opts": [
+    "directory"
+   ],
+   "default": "None",
+   "help": "Skill folder to publish",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--hub-url"
+   ],
+   "default": "None",
+   "help": "Hub origin override (default: GAIA_HUB_URL)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--key-name"
+   ],
+   "default": "'publisher'",
+   "help": "Signing key to use (default: publisher)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--publisher"
+   ],
+   "default": "''",
+   "help": "Publisher identity recorded in the signature",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--unsigned"
+   ],
+   "default": "False",
+   "help": "Publish without a signature (only valid for 'experimental')",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--audit-report"
+   ],
+   "default": "None",
+   "help": "Use this security-audit report JSON instead of running the audit engine",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--dry-run"
+   ],
+   "default": "False",
+   "help": "Run every gate and build the upload, but do not send it",
+   "choices": null
+  }
+ ],
+ "gaia skill keygen": [
+  {
+   "opts": [
+    "--key-name"
+   ],
+   "default": "'publisher'",
+   "help": "Key name (default: publisher)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--force"
+   ],
+   "default": "False",
+   "help": "Overwrite an existing key of that name",
+   "choices": null
+  }
+ ],
+ "gaia skill trust list": [],
+ "gaia skill trust add": [
+  {
+   "opts": [
+    "public_key"
+   ],
+   "default": "None",
+   "help": "Base64 Ed25519 public key, or a path to a .pub file",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--publisher"
+   ],
+   "default": "''",
+   "help": "Publisher name shown for this key",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--role"
+   ],
+   "default": "'publisher'",
+   "help": "'publisher' attests 'community'; 'amd' attests 'verified'",
+   "choices": [
+    "publisher",
+    "amd"
+   ]
+  }
+ ],
+ "gaia skill trust remove": [
+  {
+   "opts": [
+    "key_id"
+   ],
+   "default": "None",
+   "help": "Key id to remove (see 'trust list')",
+   "choices": null
+  }
+ ],
+ "gaia skill trust": [],
+ "gaia skill": [],
+ "gaia config show": [
+  {
+   "opts": [
+    "--config"
+   ],
+   "default": "None",
+   "help": "Path to a GAIA config file (default: ~/.gaia/config.json or $GAIA_CONFIG_FILE). Used to resolve default_model.",
+   "choices": null
+  }
+ ],
+ "gaia config get": [
+  {
+   "opts": [
+    "--config"
+   ],
+   "default": "None",
+   "help": "Path to a GAIA config file (default: ~/.gaia/config.json or $GAIA_CONFIG_FILE). Used to resolve default_model.",
+   "choices": null
+  },
+  {
+   "opts": [
+    "key"
+   ],
+   "default": "None",
+   "help": "Config key to read",
+   "choices": null
+  }
+ ],
+ "gaia config set": [
+  {
+   "opts": [
+    "--config"
+   ],
+   "default": "None",
+   "help": "Path to a GAIA config file (default: ~/.gaia/config.json or $GAIA_CONFIG_FILE). Used to resolve default_model.",
+   "choices": null
+  },
+  {
+   "opts": [
+    "key"
+   ],
+   "default": "None",
+   "help": "Config key to set",
+   "choices": null
+  },
+  {
+   "opts": [
+    "value"
+   ],
+   "default": "None",
+   "help": "Value to assign",
+   "choices": null
+  }
+ ],
+ "gaia config": [],
+ "gaia init": [
+  {
+   "opts": [
+    "--profile",
+    "-p"
+   ],
+   "default": "'chat'",
+   "help": "Profile to initialize: minimal, sd (image gen), chat, rag, mcp, vlm (vision), email (Gmail/Outlook triage), npu (Ryzen AI NPU), all (default",
+   "choices": [
+    "minimal",
+    "sd",
+    "chat",
+    "rag",
+    "mcp",
+    "vlm",
+    "email",
+    "npu",
+    "all"
+   ]
+  },
+  {
+   "opts": [
+    "--minimal"
+   ],
+   "default": "False",
+   "help": "Use minimal profile (~400 MB) - shortcut for --profile minimal",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--skip-models"
+   ],
+   "default": "False",
+   "help": "Skip model downloads (only install Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--skip-lemonade"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade installation check (for CI with pre-installed Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--skip-webui-build"
+   ],
+   "default": "False",
+   "help": "Skip building the Agent UI frontend (same effect as GAIA_SKIP_WEBUI_BUILD)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--force-reinstall"
+   ],
+   "default": "False",
+   "help": "Force reinstall even if compatible version exists",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--force-models"
+   ],
+   "default": "False",
+   "help": "Force re-download models (deletes then re-downloads each model)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--yes",
+    "-y"
+   ],
+   "default": "False",
+   "help": "Skip confirmation prompts (non-interactive)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--verbose"
+   ],
+   "default": "False",
+   "help": "Enable verbose output",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--remote"
+   ],
+   "default": "False",
+   "help": "Use remote Lemonade Server (skip local install/start; downloads models via API). Auto-detected when LEMONADE_BASE_URL points to a non-localh",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--skip-chat-model"
+   ],
+   "default": "False",
+   "help": "Skip the profile's chat LLM (e.g. Gemma-4-E4B-it-GGUF) but still install Lemonade and any embedding model the profile needs. For a session b",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--check"
+   ],
+   "default": "False",
+   "help": "Report whether this profile is already set up and exit \u2014 no install, no download, no side effects. Exit code 0 means ready, 1 means `gaia in",
+   "choices": null
+  }
+ ],
+ "gaia install": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--lemonade"
+   ],
+   "default": "False",
+   "help": "Install Lemonade Server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--yes",
+    "-y"
+   ],
+   "default": "False",
+   "help": "Skip confirmation prompts",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--silent"
+   ],
+   "default": "False",
+   "help": "Silent installation (no UI, no desktop shortcuts)",
+   "choices": null
+  }
+ ],
+ "gaia uninstall": [
+  {
+   "opts": [
+    "--logging-level"
+   ],
+   "default": "'INFO'",
+   "help": "Set the logging level (default: INFO)",
+   "choices": [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL"
+   ]
+  },
+  {
+   "opts": [
+    "--use-claude"
+   ],
+   "default": "False",
+   "help": "Use Claude API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--use-chatgpt"
+   ],
+   "default": "False",
+   "help": "Use ChatGPT/OpenAI API instead of local Lemonade server",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--claude-model"
+   ],
+   "default": "'claude-sonnet-4-20250514'",
+   "help": "Claude model to use when --use-claude is specified (default: claude-sonnet-4-20250514)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Lemonade LLM server base URL (default: from LEMONADE_BASE_URL env or http://localhost:13305/api/v1)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--model"
+   ],
+   "default": "None",
+   "help": "Model ID to use (default: auto-selected by each agent)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--trace"
+   ],
+   "default": "False",
+   "help": "Save detailed JSON trace of agent execution (default: disabled)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--max-steps"
+   ],
+   "default": "None",
+   "help": "Maximum conversation steps. Defaults to the global agent step limit (50, or $GAIA_AGENT_MAX_STEPS if set).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--list-tools"
+   ],
+   "default": "False",
+   "help": "List available tools and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stats",
+    "--show-stats"
+   ],
+   "default": "False",
+   "help": "Show performance statistics",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--stream"
+   ],
+   "default": "False",
+   "help": "Enable real-time streaming of LLM responses (shows raw JSON)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--no-lemonade-check"
+   ],
+   "default": "False",
+   "help": "Skip Lemonade server check (for CI/testing without Lemonade)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--venv"
+   ],
+   "default": "False",
+   "help": "Tier 2: remove ~/.gaia/venv/",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--purge"
+   ],
+   "default": "False",
+   "help": "Tier 3: remove venv + chat + documents + electron config + install logs. Implies --venv.",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--purge-lemonade"
+   ],
+   "default": "False",
+   "help": "Also uninstall Lemonade Server (requires --purge).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--purge-models"
+   ],
+   "default": "False",
+   "help": "Also remove the Lemonade models cache (requires --purge).",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--purge-hf-cache"
+   ],
+   "default": "False",
+   "help": "Also remove the HuggingFace hub cache (~/.cache/huggingface/hub or $HF_HOME/hub). Requires --purge. Restores the cleanup behavior of the leg",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--dry-run"
+   ],
+   "default": "False",
+   "help": "Show what would be removed without touching the filesystem.",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--yes",
+    "-y"
+   ],
+   "default": "False",
+   "help": "Skip the interactive confirmation prompt. Also auto-skipped when stdin is not a TTY (Tier 2 only; --purge always needs --yes on non-TTY stdi",
+   "choices": null
+  }
+ ],
+ "gaia": [
+  {
+   "opts": [
+    "-v",
+    "--version"
+   ],
+   "default": "'SUPPRESS'",
+   "help": "Show program's version number and exit",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--ui"
+   ],
+   "default": "False",
+   "help": "Launch the Agent UI (browser-based chat interface)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--ui-port"
+   ],
+   "default": "4200",
+   "help": "Port for the Agent UI server (default: 4200, used with --ui)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--ui-dist"
+   ],
+   "default": "None",
+   "help": "Path to pre-built Agent UI frontend dist directory (used with --ui)",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--cli"
+   ],
+   "default": "False",
+   "help": "Launch interactive CLI chat",
+   "choices": null
+  },
+  {
+   "opts": [
+    "--base-url"
+   ],
+   "default": "None",
+   "help": "Remote Lemonade server base URL (e.g. https://host:13305/api/v1). Used with --ui.",
+   "choices": null
+  }
+ ]
+}

@@ -1,0 +1,8715 @@
+[
+{
+"comments": 1,
+"createdAt": "2026-09-02T17:41:40Z",
+"labels": [
+"bug",
+"agent"
+],
+"number": 3316,
+"reactions": 0,
+"title": "fix(agents): tool mixins require host attributes nothing sets, failing only at first tool call"
+},
+{
+"comments": 1,
+"createdAt": "2026-09-02T17:41:18Z",
+"labels": [
+"bug",
+"agent",
+"rag"
+],
+"number": 3315,
+"reactions": 0,
+"title": "fix(rag): query_documents hides tool errors behind an answer-from-general-knowledge fallback"
+},
+{
+"comments": 1,
+"createdAt": "2026-09-02T17:23:15Z",
+"labels": [
+"documentation",
+"agent",
+"rag"
+],
+"number": 3312,
+"reactions": 0,
+"title": "docs(custom-agent): RAG example is missing the RAGSDK setup its tools require"
+},
+{
+"comments": 1,
+"createdAt": "2026-09-02T16:55:40Z",
+"labels": [
+"bug",
+"p1",
+"tests"
+],
+"number": 3309,
+"reactions": 0,
+"title": "CI: Windows integration jobs fail at random on runner xsj-aimlab-stxp-08"
+},
+{
+"comments": 1,
+"createdAt": "2026-09-02T16:49:10Z",
+"labels": [
+"documentation"
+],
+"number": 3308,
+"reactions": 0,
+"title": "Docs and shipped templates still reference deleted agents and screens"
+},
+{
+"comments": 2,
+"createdAt": "2026-09-02T16:49:02Z",
+"labels": [
+"bug"
+],
+"number": 3307,
+"reactions": 0,
+"title": "Commands report success for operations that did not happen"
+},
+{
+"comments": 0,
+"createdAt": "2026-09-02T11:09:14Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3297,
+"reactions": 0,
+"title": "Nightly audit \u2014 normal \u2014 33620854963"
+},
+{
+"comments": 0,
+"createdAt": "2026-09-02T11:08:57Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3296,
+"reactions": 0,
+"title": "The Go-to-Python `artifact_kind` sentinel contract is asserted only against hand-written fixtures"
+},
+{
+"comments": 0,
+"createdAt": "2026-09-02T11:08:55Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3295,
+"reactions": 0,
+"title": "The Windows one-line installer's download and checksum logic is only string-asserted, never executed"
+},
+{
+"comments": 0,
+"createdAt": "2026-09-02T11:08:39Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3294,
+"reactions": 0,
+"title": "The tool-prompt cost baseline test never runs in CI, and it is currently failing"
+},
+{
+"comments": 0,
+"createdAt": "2026-09-02T11:08:38Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3293,
+"reactions": 0,
+"title": "Quickstart's install checklist omits the terminal hub and flagship agent the installer now lays down"
+},
+{
+"comments": 0,
+"createdAt": "2026-09-02T11:08:23Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3292,
+"reactions": 0,
+"title": "Published flagship agent's SPEC and SKILL never mention the per-turn tool selection that ships default-on"
+},
+{
+"comments": 0,
+"createdAt": "2026-09-02T11:08:21Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3291,
+"reactions": 0,
+"title": "Chat guide still calls per-turn tool loading off-by-default and doc-profile-only; the flagship ships it on"
+},
+{
+"comments": 0,
+"createdAt": "2026-09-02T11:08:05Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3290,
+"reactions": 0,
+"title": "`gaia uninstall --purge` leaves the installer's ~/.gaia/bin binaries behind"
+},
+{
+"comments": 0,
+"createdAt": "2026-09-02T11:07:56Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3289,
+"reactions": 0,
+"title": "save_current_session swallows every exception, so the reason a session failed to persist never reaches the caller"
+},
+{
+"comments": 0,
+"createdAt": "2026-09-02T11:07:47Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3288,
+"reactions": 0,
+"title": "Chat agent says it saved your session on /quit and /reset even when the save failed"
+},
+{
+"comments": 1,
+"createdAt": "2026-09-01T17:16:42Z",
+"labels": [
+"bug",
+"p2",
+"dependencies",
+"tech debt",
+"devops",
+"github-actions"
+],
+"number": 3260,
+"reactions": 0,
+"title": "ci(dependabot): auto-merge never enables \u2014 fail-open guard, and no required checks behind it"
+},
+{
+"comments": 1,
+"createdAt": "2026-09-01T15:10:58Z",
+"labels": [
+"bug"
+],
+"number": 3254,
+"reactions": 0,
+"title": "fix(api): `--step-through` is a dead flag \u2014 it sets an env var nothing reads"
+},
+{
+"comments": 0,
+"createdAt": "2026-09-01T11:10:08Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3239,
+"reactions": 0,
+"title": "The Telegram guide says off-allowlist messages are ignored \u2014 the bot now replies to them"
+},
+{
+"comments": 0,
+"createdAt": "2026-09-01T11:10:06Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3238,
+"reactions": 0,
+"title": "The skills spec presents proactive discovery as universal, but it is opt-in and only the flagship enables it"
+},
+{
+"comments": 1,
+"createdAt": "2026-09-01T11:09:58Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3236,
+"reactions": 0,
+"title": "`gaia lemonade embedded install` has no uninstall \u2014 even `gaia uninstall --purge` leaves ~/.gaia/lemonade behind"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:11:16Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3225,
+"reactions": 0,
+"title": "The Windows tab tells readers to run `nvm alias default 20.20.0`, but NVM for Windows has no `alias` command"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:11:08Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3223,
+"reactions": 0,
+"title": "The documented gaia uninstall --dry-run preview shows nothing -- --dry-run must be paired with a tier flag"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:11:01Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3221,
+"reactions": 0,
+"title": "gaia cache status reports only the Context7 cache and prints no sizes, contradicting size and location of each cache directory"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:10:55Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3219,
+"reactions": 0,
+"title": "gaia tui is not a subcommand of the CLI this page documents -- every gaia tui example errors out on a pip-installed GAIA"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:10:52Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3218,
+"reactions": 0,
+"title": "`gaia init --profile minimal` is billed as \"a single command\" but can drop into a manual \"Press Enter\" prompt and exit 1"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:10:49Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3217,
+"reactions": 0,
+"title": "Profile download sizes are wrong for `minimal` and `chat` (~400MB vs ~3 GB, ~25GB vs ~4 GB)"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:10:30Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3211,
+"reactions": 0,
+"title": "'one of six categories' contradicts the same doc and the categories actually written to the DB"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:10:26Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3210,
+"reactions": 0,
+"title": "The enable toggle is an Agent UI setting, but the doc presents it as machine-wide for gaia chat"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:10:10Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3205,
+"reactions": 0,
+"title": "First-launch stage 5 names Qwen3-0.6B, but the installer downloads Gemma-4-E4B-it-GGUF (~3 GB)"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:10:07Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3204,
+"reactions": 0,
+"title": "lemonade-server serve does not exist on a current Lemonade install"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:10:04Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3203,
+"reactions": 0,
+"title": "LEMONADE_BASE_URL needs a bare origin, but the GAIA CLI documents the /api/v1-suffixed form - the suffixed value produces a false 503"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:10:01Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3202,
+"reactions": 0,
+"title": "The documented error string is wrong: the real message is Access denied: <path> is not in allowed paths, and it names only one path"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:09:57Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3201,
+"reactions": 0,
+"title": "The /query request body is under-documented: query and context are required and run_id must be a UUID"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:09:54Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3200,
+"reactions": 0,
+"title": "GAIA_SKILL_SET=research starts normally and answers queries - it does not fail at startup"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:09:48Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3198,
+"reactions": 0,
+"title": "Agent Eval silently requires a repo checkout; from a non-editable install every scenario command reports 'No scenarios found'"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:09:41Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3196,
+"reactions": 0,
+"title": "Tag filtering can never match anything: not one of the 91 shipped scenarios declares a tags field"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:09:37Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3195,
+"reactions": 0,
+"title": "The three sample output blocks show labels and a layout the tool never prints"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:09:21Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3190,
+"reactions": 0,
+"title": "gaia email --help advertises --use-claude and --use-chatgpt, contradicting the guide's local-only privacy claim"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:09:14Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3188,
+"reactions": 0,
+"title": "The benchmark table's file and chunk counts are ~2.6x and ~3x below what indexing this repo actually produces"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:09:10Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3187,
+"reactions": 0,
+"title": "The promised missing-dependency error is not what a reader with FAISS missing actually sees"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:09:07Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3186,
+"reactions": 0,
+"title": "The documented eval command fails pre-flight - it needs the Agent UI backend on port 4200 and the doc never says so"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:08:45Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3180,
+"reactions": 0,
+"title": "asr-file-transcription needs an ffmpeg binary the doc never mentions - and the Windows tab claims none is needed"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:08:29Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3175,
+"reactions": 0,
+"title": "The doc's one Setup command fails at step 4/7: GAIA's flm:npu install request is rejected by Lemonade with HTTP 400"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:08:22Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3173,
+"reactions": 0,
+"title": "Neither documented way to turn memory on works after following the Prerequisites"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-31T18:08:09Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3169,
+"reactions": 0,
+"title": "The documented compare command points at eval/results/latest/, a path the runner never creates"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-29T22:47:16Z",
+"labels": [
+"bug",
+"p2",
+"agent::email"
+],
+"number": 3152,
+"reactions": 0,
+"title": "fix(email): the email profile's sidecar loads the npu profile's models (gemma4-it-e2b-FLM) and silently clears stored embeddings"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-28T17:56:39Z",
+"labels": [
+"bug",
+"p0",
+"agent::email"
+],
+"number": 3149,
+"reactions": 0,
+"title": "[Bug]: several gaia email CLI flags parse but have no effect (--trace, --list-tools, --stats, --stream, --logging-level, --debug)"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-28T16:56:59Z",
+"labels": [
+"documentation"
+],
+"number": 3145,
+"reactions": 0,
+"title": "docs(hub): email install docs still say --trust, but the agent is verified"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-28T15:06:07Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3140,
+"reactions": 0,
+"title": "The TUI's --use-claude, --claude-model, --bypass-permissions and --dev flags are documented nowhere on the docs site"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-28T15:05:57Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3136,
+"reactions": 0,
+"title": "Cancelling a `gaia init` run leaks both stream goroutines and never reaps the child"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-28T15:05:53Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3133,
+"reactions": 0,
+"title": "`gaia telegram start --background` writes a PID file and exits without ever polling"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-28T05:15:57Z",
+"labels": [],
+"number": 3127,
+"reactions": 0,
+"title": "26 C++ SkillCorpus tests fail on main; suite went dark behind a path filter"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-28T04:45:32Z",
+"labels": [
+"p1"
+],
+"number": 3126,
+"reactions": 0,
+"title": "The flagship TUI launch still asks the user to start Lemonade"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-28T03:39:33Z",
+"labels": [
+"bug",
+"p1",
+"linux"
+],
+"number": 3124,
+"reactions": 0,
+"title": "Linux CI: Lemonade PPA has no installable lemonade-server for noble, and our version pin can't be satisfied by apt"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-28T02:49:23Z",
+"labels": [],
+"number": 3123,
+"reactions": 0,
+"title": "Gateway models score poorly on tool_selection; multi-step planning collapses"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-26T17:09:19Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3104,
+"reactions": 0,
+"title": "Outlook email triage costs one HTTP round-trip per message; Gmail batches them"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-26T17:09:17Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3103,
+"reactions": 0,
+"title": "/health's `rag` component is a hardcoded constant \u2014 no RAG probe was ever written"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-26T17:09:11Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3102,
+"reactions": 0,
+"title": "Homepage's \"Install the GAIA agent\" button dead-ends: the follow-up setup steps were deleted"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-26T17:09:10Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3101,
+"reactions": 0,
+"title": "Published chat agent's README leads with a PyPI install that fails, and ships no SPEC/SKILL/CHANGELOG"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-26T16:50:09Z",
+"labels": [
+"enhancement",
+"p1",
+"security"
+],
+"number": 3096,
+"reactions": 0,
+"title": "feat(governance): wire GovernedAgentMixin into ChatAgent for a durable approval/denial audit trail"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-26T16:43:01Z",
+"labels": [
+"p1",
+"eval",
+"tests",
+"domain:quality",
+"track:platform",
+"agent::email"
+],
+"number": 3095,
+"reactions": 0,
+"title": "test(email): measure the Specific AI SLM classifiers against the committed email-agent baseline"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-26T13:35:51Z",
+"labels": [
+"bug",
+"tests"
+],
+"number": 3092,
+"reactions": 0,
+"title": "tests: reconcile 503 test fails on the documented dev install (`[rag]` provides faiss)"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-25T11:57:29Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3090,
+"reactions": 0,
+"title": "No pipeline publishes the starter-pack skills to the Agent Hub, so gaia skill install cannot find them"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-25T11:57:27Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3088,
+"reactions": 0,
+"title": "The starter-skills guide says ten skills and omits coding, file-ops, and summarize"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-25T11:57:25Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3087,
+"reactions": 0,
+"title": "cli.mdx duplicates the Hub/TUI reference and the second copy contradicts the first on exit codes"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-25T11:57:19Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3086,
+"reactions": 0,
+"title": "The flagship and chat release pipelines publish with no eval/scorecard gate"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-25T11:57:15Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3083,
+"reactions": 0,
+"title": "MCP tools/list advertises every tool without inputSchema, so spec-compliant clients cannot call them"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-25T11:57:11Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3081,
+"reactions": 0,
+"title": "gaia init --profile sd downloads ~10 GB but nothing shipped can enable the SD tools"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-24T19:11:55Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3064,
+"reactions": 0,
+"title": "Quickstart's `model_id` warning describes a ~20GB default that does not exist"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-24T17:46:11Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3060,
+"reactions": 0,
+"title": "EXPECTED_LENSES is hand-synced to the lens matrix by comment only \u2014 adding a lens re-opens the empty-SARIF hole"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-24T17:45:59Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3059,
+"reactions": 0,
+"title": "allowed_bots omits github-actions[bot], so the first nightly audit after a release is still rejected"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-24T17:45:42Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3058,
+"reactions": 0,
+"title": "Doc walkthrough still reports green when the judge wrote no findings at all"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-24T17:45:31Z",
+"labels": [
+"weekly-audit"
+],
+"number": 3057,
+"reactions": 0,
+"title": "Flagship agent ships with only 1 of its 12 skills \u2014 the starter pack is never staged into the release artifact"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-19T17:45:14Z",
+"labels": [],
+"number": 3016,
+"reactions": 0,
+"title": "ci(eval): the agent eval gate has never produced a scorecard \u2014 embedder will not load on its runner"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-19T14:05:00Z",
+"labels": [],
+"number": 3013,
+"reactions": 0,
+"title": "feat: Add OrcaRouter as a named LLM provider"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-18T14:33:40Z",
+"labels": [
+"enhancement",
+"p3",
+"agent::email"
+],
+"number": 2999,
+"reactions": 0,
+"title": "chore(email): extract Gmail query grammar from read_tools.py, and put hub/ under the lint gate"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-18T14:33:18Z",
+"labels": [
+"enhancement",
+"p2",
+"agent::email"
+],
+"number": 2997,
+"reactions": 0,
+"title": "feat(email): widen an over-narrow operator query on zero results, without dropping its scoping terms"
+},
+{
+"comments": 4,
+"createdAt": "2026-08-18T14:32:57Z",
+"labels": [
+"bug",
+"p1",
+"agent::email"
+],
+"number": 2996,
+"reactions": 0,
+"title": "fix(email): Gmail operator syntax is never translated for Microsoft Graph \u2014 operator search against Outlook returns nothing"
+},
+{
+"comments": 3,
+"createdAt": "2026-08-18T08:18:45Z",
+"labels": [
+"bug",
+"triage"
+],
+"number": 2992,
+"reactions": 0,
+"title": "[Bug]: GAIA reports 65,536-token context while effective llama.cpp context remains 40,960"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-18T08:02:53Z",
+"labels": [],
+"number": 2990,
+"reactions": 0,
+"title": "feat(connectors): re-implement Docker as a connector after the agent deletion"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-18T08:02:49Z",
+"labels": [],
+"number": 2989,
+"reactions": 0,
+"title": "feat(connectors): re-implement Jira as a connector after the agent deletion"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-17T23:15:04Z",
+"labels": [],
+"number": 2988,
+"reactions": 0,
+"title": "tracking: test-coverage gaps from the Aug 2026 maturity inventory"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-17T23:14:46Z",
+"labels": [],
+"number": 2985,
+"reactions": 0,
+"title": "test: voice stack's degraded and streaming-lifecycle paths are untested"
+},
+{
+"comments": 2,
+"createdAt": "2026-08-17T23:14:41Z",
+"labels": [
+"good first issue"
+],
+"number": 2984,
+"reactions": 0,
+"title": "test: skill-library tool mixin has zero dedicated tests, including the audit-gate refusal"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-17T23:14:40Z",
+"labels": [],
+"number": 2983,
+"reactions": 0,
+"title": "eval: flagship gaia agent has no scorecard or release eval gate"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-17T23:12:09Z",
+"labels": [],
+"number": 2982,
+"reactions": 0,
+"title": "hub: collapse example agents into the flagship agent + skills; keep them off the hub"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-14T00:01:50Z",
+"labels": [
+"documentation",
+"p0",
+"agent::email"
+],
+"number": 2974,
+"reactions": 0,
+"title": "docs(email): hub page tells users to run a nonexistent command"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-14T00:01:11Z",
+"labels": [
+"p2"
+],
+"number": 2973,
+"reactions": 0,
+"title": "perf(deps): amd-gaia pulls full NVIDIA CUDA stack on AMD hardware"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-14T00:01:08Z",
+"labels": [
+"bug",
+"p0"
+],
+"number": 2972,
+"reactions": 0,
+"title": "fix(init): npu profile skips chat agent, UI shows zero agents"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-14T00:00:58Z",
+"labels": [
+"bug",
+"p0",
+"agent::email"
+],
+"number": 2970,
+"reactions": 0,
+"title": "fix(ui): email agent Details panel shows no version, empty section"
+},
+{
+"comments": 2,
+"createdAt": "2026-08-13T23:59:38Z",
+"labels": [
+"bug",
+"p0",
+"agent::email"
+],
+"number": 2968,
+"reactions": 0,
+"title": "fix(email): CLI triage skips categories; UI path works fine"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-13T23:44:46Z",
+"labels": [
+"documentation",
+"p0",
+"agent::email"
+],
+"number": 2965,
+"reactions": 0,
+"title": "fix(email): published eval score for 0.6.0 is the 0.5.0 measurement"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-13T21:54:01Z",
+"labels": [
+"bug"
+],
+"number": 2960,
+"reactions": 0,
+"title": "ci(eval): agent-eval gate fails preflight on every PR \u2014 judge key arrives empty, so no scorecard is trustworthy"
+},
+{
+"comments": 2,
+"createdAt": "2026-08-13T21:32:32Z",
+"labels": [
+"bug"
+],
+"number": 2959,
+"reactions": 0,
+"title": "ci(hub): deployed Agent Hub Worker predates #2530 \u2014 rejects both hub components on every release, and nothing deploys it"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-13T20:43:53Z",
+"labels": [
+"bug"
+],
+"number": 2958,
+"reactions": 0,
+"title": "ci(release): the 80-minute email eval blocks every release but runs in report mode \u2014 gate it or unblock it"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-13T19:17:11Z",
+"labels": [
+"bug"
+],
+"number": 2955,
+"reactions": 0,
+"title": "fix(cpp): SkillCorpus round-trip fixtures failing on both platforms since the v0.23.0 merge \u2014 main is red"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-13T18:43:06Z",
+"labels": [
+"p1",
+"security-remediation",
+"devops",
+"security"
+],
+"number": 2953,
+"reactions": 0,
+"title": "ci(security): tune the Semgrep ruleset and clear 51 verified false-positive alerts"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-13T18:43:01Z",
+"labels": [
+"p2",
+"security-remediation",
+"tech debt",
+"security"
+],
+"number": 2952,
+"reactions": 0,
+"title": "chore(security): shell=True templates to arg arrays, defusedxml for the XBEL parse"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-13T18:42:56Z",
+"labels": [
+"p2",
+"security-remediation",
+"security",
+"server",
+"agent::emr"
+],
+"number": 2951,
+"reactions": 0,
+"title": "fix(security): narrow wildcard CORS on the EMR dashboard and base agent server"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-13T18:42:50Z",
+"labels": [
+"p1",
+"security-remediation",
+"electron",
+"security"
+],
+"number": 2950,
+"reactions": 0,
+"title": "fix(webui): remove shell string interpolation from Electron process spawning"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-13T18:41:00Z",
+"labels": [
+"p0",
+"security-remediation",
+"devops",
+"security"
+],
+"number": 2948,
+"reactions": 0,
+"title": "ci(security): enforce the fork-execution invariant in claude-run.yml, then resolve CodeQL #428"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-13T14:55:45Z",
+"labels": [
+"bug"
+],
+"number": 2939,
+"reactions": 0,
+"title": "ci: the ready_for_ci label is inert on 37 of the 39 workflows that check for it"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-12T17:08:13Z",
+"labels": [],
+"number": 2927,
+"reactions": 0,
+"title": "test(ci): network guard skips on no-network but errors on a flaky remote, reddening unrelated PRs"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-12T16:53:34Z",
+"labels": [],
+"number": 2925,
+"reactions": 0,
+"title": "ci(docs): external-link check reports valid URLs as broken, intermittently, including on main"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-12T16:42:23Z",
+"labels": [],
+"number": 2924,
+"reactions": 0,
+"title": "fix(tui): ttft excludes cold model-load latency \u2014 a 44.5s cold query reports ttft 7.6s"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-12T15:11:05Z",
+"labels": [],
+"number": 2919,
+"reactions": 0,
+"title": "fix(email): session lock releases after the done-sentinel, so a client can see 'finished' while the lock is held"
+},
+{
+"comments": 3,
+"createdAt": "2026-08-12T14:55:57Z",
+"labels": [],
+"number": 2918,
+"reactions": 0,
+"title": "fix(email): a live agent session cannot be pinned to a non-default model, so per-profile behaviour is unmeasurable"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-12T14:49:04Z",
+"labels": [],
+"number": 2917,
+"reactions": 0,
+"title": "fix(email): a cancelled free-text turn holds its session lock until generation finishes, so a resend conflicts"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-12T14:07:21Z",
+"labels": [],
+"number": 2916,
+"reactions": 0,
+"title": "fix(email): audit-write failures still mask successful archive/label/star/trash/delete operations"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-12T13:09:03Z",
+"labels": [],
+"number": 2915,
+"reactions": 0,
+"title": "fix(eval): the triage accuracy gate never pins ctx, so it silently compares across context windows"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-12T12:58:58Z",
+"labels": [],
+"number": 2914,
+"reactions": 0,
+"title": "fix(email): agent reported a draft as created with no backing tool call \u2014 fabricated success on a mutating action"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-12T12:56:31Z",
+"labels": [],
+"number": 2913,
+"reactions": 0,
+"title": "fix(email): two relay tests assert a pre_scan render card the code deliberately no longer draws \u2014 main is red"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-12T12:29:48Z",
+"labels": [],
+"number": 2909,
+"reactions": 0,
+"title": "fix(tui): per-query duration under-reports wall-clock \u2014 terminal SSE frame fires before post-answer work"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-10T20:03:38Z",
+"labels": [
+"bug",
+"agent::email"
+],
+"number": 2894,
+"reactions": 0,
+"title": "fix(email-agent): CLI autonomy commands 404 against an out-of-date installed sidecar with no version check"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-10T19:02:03Z",
+"labels": [],
+"number": 2888,
+"reactions": 0,
+"title": "fix(email): SLM dependency ships unconditionally yet cannot load in the frozen sidecar"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-10T18:03:45Z",
+"labels": [
+"bug"
+],
+"number": 2884,
+"reactions": 0,
+"title": "fix(agent): NPU context-overflow always misrouted to a reload, not trim-and-retry"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-10T17:55:49Z",
+"labels": [],
+"number": 2881,
+"reactions": 0,
+"title": "build(uv): stop relying on a documented flag for CPU-only PyTorch"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-10T07:08:00Z",
+"labels": [],
+"number": 2875,
+"reactions": 0,
+"title": "feat: add Atlas Cloud as an LLM provider"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-07T16:35:33Z",
+"labels": [
+"enhancement",
+"p1",
+"security",
+"skill"
+],
+"number": 2867,
+"reactions": 0,
+"title": "feat(skills-v2): privacy, retention, and deletion of learned data"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-07T16:35:28Z",
+"labels": [
+"enhancement",
+"p1",
+"skill"
+],
+"number": 2866,
+"reactions": 0,
+"title": "feat(skills-v2): the learning trigger \u2014 when is a delta proposed at all?"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-07T08:09:22Z",
+"labels": [
+"bug",
+"p1",
+"agent"
+],
+"number": 2865,
+"reactions": 0,
+"title": "fix(memory): learned-procedure outcome counters never update, so a failing procedure is never demoted"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-07T08:08:09Z",
+"labels": [
+"enhancement",
+"p1",
+"security",
+"skill"
+],
+"number": 2863,
+"reactions": 0,
+"title": "feat(skills): Phase 2 \u2014 local-capability permission sandbox (filesystem/shell/database/desktop/env)"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-05T23:23:53Z",
+"labels": [
+"enhancement"
+],
+"number": 2850,
+"reactions": 0,
+"title": "Detect a stale email SCORECARD.md at release time, not per-PR"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-05T17:51:43Z",
+"labels": [
+"bug",
+"p2"
+],
+"number": 2842,
+"reactions": 0,
+"title": "fix(agents): @tool silently swallows unknown kwargs, so an unimplemented risk_tier gates nothing"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-05T17:47:48Z",
+"labels": [],
+"number": 2841,
+"reactions": 0,
+"title": "fix(tui): triage card no longer appears under the question that asked for it"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-05T17:46:39Z",
+"labels": [
+"bug",
+"p2"
+],
+"number": 2840,
+"reactions": 0,
+"title": "fix(agents): @tool silently discards unknown keyword arguments, so a typo'd timeout or an unsupported risk_tier registers with the default"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-05T17:04:22Z",
+"labels": [
+"enhancement",
+"p0",
+"agent::email"
+],
+"number": 2836,
+"reactions": 0,
+"title": "perf(email-agent): adopt the dynamic ToolLoader (70 tools in-prompt \u2192 ~12-14)"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-05T17:03:41Z",
+"labels": [
+"enhancement",
+"p0",
+"agent::email"
+],
+"number": 2835,
+"reactions": 0,
+"title": "perf(email-agent): cut the model-facing tool surface 65 \u2192 49 (consolidate duplicates, demote redundant scanners)"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-05T14:33:51Z",
+"labels": [
+"bug",
+"p0",
+"p1"
+],
+"number": 2834,
+"reactions": 0,
+"title": "fix(email): a follow-up about a thread's content fails \u2014 nothing carries the thread id across a turn"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T15:42:06Z",
+"labels": [],
+"number": 2832,
+"reactions": 0,
+"title": "fix(email): counting question answered with a summary instead of a count"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-04T15:41:42Z",
+"labels": [
+"bug",
+"p1"
+],
+"number": 2831,
+"reactions": 0,
+"title": "fix(memory): agent silently runs with memory disabled when the embedding model is missing"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-04T14:41:44Z",
+"labels": [
+"bug",
+"p2"
+],
+"number": 2828,
+"reactions": 0,
+"title": "fix(email): set_low_priority_sender applies the preference to a different address than the one requested"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T14:41:14Z",
+"labels": [
+"enhancement",
+"p1"
+],
+"number": 2827,
+"reactions": 0,
+"title": "feat(email/tui): on-open triage card should show the bucket breakdown it already computes"
+},
+{
+"comments": 2,
+"createdAt": "2026-08-04T14:08:54Z",
+"labels": [
+"bug"
+],
+"number": 2826,
+"reactions": 0,
+"title": "ci: self-hosted Windows stx runner broken \u2014 uv.exe blocked by Application Control, CMake missing CMAKE_ROOT"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T10:47:29Z",
+"labels": [
+"enhancement",
+"mcp",
+"cpp"
+],
+"number": 2819,
+"reactions": 0,
+"title": "feat(cpp): resolve $keyring credential references so connector-configured MCP servers work from C++"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T10:07:10Z",
+"labels": [
+"enhancement",
+"eval",
+"cpp",
+"skill",
+"agent::code"
+],
+"number": 2815,
+"reactions": 0,
+"title": "feat(cpp): coding skill set and gaia-bash supersession gate"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T10:06:36Z",
+"labels": [
+"enhancement",
+"tests",
+"cpp",
+"gui"
+],
+"number": 2814,
+"reactions": 0,
+"title": "feat(cpp): TUI loopback control API for headless driving"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T10:06:34Z",
+"labels": [
+"enhancement",
+"mcp",
+"cpp",
+"gui",
+"skill"
+],
+"number": 2813,
+"reactions": 0,
+"title": "feat(cpp): TUI skill and MCP management screens"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T10:05:36Z",
+"labels": [
+"enhancement",
+"cpp",
+"skill"
+],
+"number": 2811,
+"reactions": 0,
+"title": "feat(cpp): paste-to-install skills and progressive disclosure"
+},
+{
+"comments": 2,
+"createdAt": "2026-08-04T09:26:22Z",
+"labels": [
+"documentation",
+"tests",
+"cpp",
+"skill"
+],
+"number": 2805,
+"reactions": 0,
+"title": "test(cpp): cross-runtime conformance suite and documentation"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T09:26:19Z",
+"labels": [
+"enhancement",
+"agent",
+"cpp",
+"skill",
+"agent::code"
+],
+"number": 2804,
+"reactions": 0,
+"title": "feat(cpp): gaia-agent \u2014 generic skill-programmable native agent"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T09:26:17Z",
+"labels": [
+"bug",
+"mcp",
+"cpp"
+],
+"number": 2803,
+"reactions": 0,
+"title": "fix(cpp): MCP protocol correctness \u2014 handshake, notifications, resources, prompts"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T09:26:15Z",
+"labels": [
+"enhancement",
+"mcp",
+"cpp"
+],
+"number": 2802,
+"reactions": 0,
+"title": "feat(cpp): HTTP / streamable-HTTP MCP transport"
+},
+{
+"comments": 2,
+"createdAt": "2026-08-04T09:25:36Z",
+"labels": [
+"enhancement",
+"agent",
+"cpp",
+"skill"
+],
+"number": 2800,
+"reactions": 0,
+"title": "feat(cpp): SkillManager discovery and Agent load/unload/prompt injection"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-04T09:25:34Z",
+"labels": [
+"enhancement",
+"security",
+"cpp",
+"skill"
+],
+"number": 2799,
+"reactions": 0,
+"title": "feat(cpp): skill permissions \u2014 connector-bridged vs refused"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T09:25:29Z",
+"labels": [
+"enhancement",
+"rag",
+"cpp",
+"agent::code"
+],
+"number": 2797,
+"reactions": 0,
+"title": "feat(cpp): code index \u2014 semantic code search"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T09:25:26Z",
+"labels": [
+"enhancement",
+"rag",
+"sdk",
+"cpp"
+],
+"number": 2796,
+"reactions": 0,
+"title": "feat(cpp): RAG SDK and rag tools"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T09:24:14Z",
+"labels": [
+"enhancement",
+"rag",
+"lemonade \ud83c\udf4b",
+"cpp"
+],
+"number": 2791,
+"reactions": 0,
+"title": "feat(cpp): embeddings API on LemonadeClient"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-04T02:54:21Z",
+"labels": [
+"bug",
+"agent::email"
+],
+"number": 2787,
+"reactions": 0,
+"title": "fix(email-agent): guard 6 disclaims genuinely-received invites \u2014 organizer.self not surfaced"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T02:47:28Z",
+"labels": [
+"bug",
+"domain:quality",
+"agent::email"
+],
+"number": 2786,
+"reactions": 0,
+"title": "ci: email agent test suite reports failure after 100% pass \u2014 interpreter crash at shutdown"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T02:42:51Z",
+"labels": [
+"documentation"
+],
+"number": 2785,
+"reactions": 0,
+"title": "security-model.mdx classifies run_shell_command as auto-approve READ tier, contradicting the stricter shipped code"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T02:24:34Z",
+"labels": [
+"bug",
+"agent::email"
+],
+"number": 2781,
+"reactions": 0,
+"title": "email-agent: cross-turn conversation history is the confirmed primary cause of #2763's context overflow"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-04T02:23:42Z",
+"labels": [
+"bug"
+],
+"number": 2780,
+"reactions": 0,
+"title": "fix(agent): context-overflow shrink-and-retry recovers 81 tokens of a 6,902-token overflow"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T01:46:24Z",
+"labels": [
+"bug"
+],
+"number": 2778,
+"reactions": 0,
+"title": "fix(email-agent): meeting answers can fabricate non-invite, non-attendee content no grounding guard covers"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-04T01:46:00Z",
+"labels": [
+"bug",
+"p2",
+"agent::email"
+],
+"number": 2777,
+"reactions": 0,
+"title": "email: preference_applied tag has no reader \u2014 muting/prioritizing a sender has no observable effect in interactive triage"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-04T01:33:28Z",
+"labels": [
+"bug",
+"p1",
+"eval",
+"agent::email"
+],
+"number": 2776,
+"reactions": 0,
+"title": "email-triage benchmark harness scores nothing \u2014 stale ctx envelope, id-mismatch scoring join, zero LLM escalation"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T01:25:36Z",
+"labels": [
+"bug",
+"agent::email"
+],
+"number": 2772,
+"reactions": 0,
+"title": "fix(email-agent): context_budget's token estimator overshoots real tokenization by 2.9-3.8x on JSON payloads"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T01:24:14Z",
+"labels": [
+"bug",
+"p1",
+"agent::email"
+],
+"number": 2771,
+"reactions": 0,
+"title": "email: chat-surface triage card cannot ever surface CATEGORY_URGENT (pre_scan_inbox wires no classifier)"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T01:21:05Z",
+"labels": [
+"p2",
+"agent::email"
+],
+"number": 2770,
+"reactions": 0,
+"title": "email: first-contact direct-question mail has no path to needs_you (waiting-on-you's corroboration bar)"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T00:50:52Z",
+"labels": [
+"bug"
+],
+"number": 2768,
+"reactions": 0,
+"title": "Audit ALLOWED_COMMANDS for remaining write/exec side-doors (sysctl -w, date -s)"
+},
+{
+"comments": 0,
+"createdAt": "2026-08-04T00:40:42Z",
+"labels": [
+"bug",
+"p0"
+],
+"number": 2767,
+"reactions": 0,
+"title": "fix(ci): a PR based on any branch but main runs no unit tests, no lint and no agent suites \u2014 and looks green"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-03T22:38:49Z",
+"labels": [
+"bug",
+"p1"
+],
+"number": 2764,
+"reactions": 0,
+"title": "fix(email): the triage card is reachable by one phrasing \u2014 natural questions route to prose instead"
+},
+{
+"comments": 8,
+"createdAt": "2026-08-03T22:21:24Z",
+"labels": [
+"epic",
+"agent::email"
+],
+"number": 2762,
+"reactions": 0,
+"title": "Email Agent Validation Index \u2014 four sense-making jobs, tested by intent not by phrasing"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-03T21:51:15Z",
+"labels": [
+"bug"
+],
+"number": 2759,
+"reactions": 0,
+"title": "fix(email): get_briefing serves a week-old record as current, and the staleness silently no-ops a test"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-03T21:48:28Z",
+"labels": [
+"enhancement"
+],
+"number": 2758,
+"reactions": 0,
+"title": "feat(email): per-row detail on the triage card, without making the fast path slow"
+},
+{
+"comments": 2,
+"createdAt": "2026-08-03T18:50:55Z",
+"labels": [
+"bug"
+],
+"number": 2755,
+"reactions": 0,
+"title": "fix(ci): ready_for_ci label does not re-trigger skipped jobs \u2014 'labeled' is not a PR trigger type"
+},
+{
+"comments": 2,
+"createdAt": "2026-08-03T00:23:00Z",
+"labels": [
+"bug"
+],
+"number": 2746,
+"reactions": 0,
+"title": "fix(email-npm): tests hardcode schema 2.4 against a 2.10 sidecar, hidden by a silently-skipped suite"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-02T18:03:14Z",
+"labels": [
+"bug"
+],
+"number": 2742,
+"reactions": 0,
+"title": "fix(daemon): --dev-src-dir rejects a repo root and never says what shape it wants"
+},
+{
+"comments": 1,
+"createdAt": "2026-08-01T20:00:16Z",
+"labels": [],
+"number": 2741,
+"reactions": 0,
+"title": "I upload an xlsx file and want AI to comment on the LDL level but this erro occured"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-31T00:56:41Z",
+"labels": [
+"bug",
+"p3",
+"connectors"
+],
+"number": 2738,
+"reactions": 0,
+"title": "fix(connectors): two spellings of the Google identity scopes across surfaces"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-31T00:56:38Z",
+"labels": [
+"bug",
+"p2",
+"security",
+"connectors"
+],
+"number": 2736,
+"reactions": 0,
+"title": "fix(connectors): the CLI's verbatim --scopes branch bypasses the available_scopes ceiling"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-31T00:56:13Z",
+"labels": [
+"bug",
+"p2"
+],
+"number": 2735,
+"reactions": 0,
+"title": "fix(tests): one email test can hang CI indefinitely on a locked macOS Keychain"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T20:16:23Z",
+"labels": [
+"bug",
+"p2"
+],
+"number": 2724,
+"reactions": 0,
+"title": "fix(tui): a failed tool that draws no card shows the user nothing at all"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T20:10:54Z",
+"labels": [
+"documentation",
+"p2",
+"cli",
+"skill"
+],
+"number": 2722,
+"reactions": 0,
+"title": "docs(skills): no skill for BUILDING the TUI \u2014 every change re-derives the architecture"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T16:50:31Z",
+"labels": [
+"bug"
+],
+"number": 2713,
+"reactions": 0,
+"title": "test(tui): TestSubprocessClient_ProcessExitWithError is flaky \u2014 go build runs inside its own 5s deadline"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T16:22:48Z",
+"labels": [
+"bug"
+],
+"number": 2709,
+"reactions": 0,
+"title": "fix(tui): 16 hints tell users to run `gaia tui \u2026`, which is not a command on either binary"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-30T09:16:46Z",
+"labels": [
+"bug",
+"agent"
+],
+"number": 2686,
+"reactions": 0,
+"title": "fix(memory): recall rebuilds the system prompt from its head, discarding the KV prefix"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T08:56:51Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 2683,
+"reactions": 0,
+"title": "feat(email,skills-v2): email agent as the adaptive-skills reference example"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T08:56:49Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 2682,
+"reactions": 0,
+"title": "feat(skills-v2): learning budget, consolidation (umbrella merge), and decay policy"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T08:56:47Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 2681,
+"reactions": 0,
+"title": "feat(skills-v2): make learning legible \u2014 gaia skill deltas, diffs, revert, and reset"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T08:56:45Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 2680,
+"reactions": 0,
+"title": "feat(skills-v2): rebase learned deltas when the authored base updates (highest risk, no prior art)"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T08:55:53Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 2679,
+"reactions": 0,
+"title": "feat(skills-v2): staged write path, trust classes, and the injection-resistant consent gate"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T08:55:51Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 2678,
+"reactions": 0,
+"title": "feat(skills-v2): effective-skill resolution, prefix stability, and off-states"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T08:55:49Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 2677,
+"reactions": 0,
+"title": "feat(skills-v2): tiered delta store + tier classifier \u2014 learning at the cheapest representation"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-30T08:54:02Z",
+"labels": [
+"bug",
+"agent"
+],
+"number": 2676,
+"reactions": 0,
+"title": "fix(memory): recalled procedures are truncated mid-step but framed as complete proven steps"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T08:48:05Z",
+"labels": [
+"agent"
+],
+"number": 2675,
+"reactions": 0,
+"title": "feat(hub,skills): REVIEW quarantine lane + maintainer sign-off for skill publishes"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-30T08:44:21Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 2674,
+"reactions": 0,
+"title": "feat(skills): Agent Skills v2 \u2014 adaptive skills via an immutable base + learned memory overlay"
+},
+{
+"comments": 3,
+"createdAt": "2026-07-30T08:34:18Z",
+"labels": [
+"bug",
+"p2",
+"agent::email"
+],
+"number": 2673,
+"reactions": 0,
+"title": "fix(email): agent ignores an explicit tool directive, zeroing the email benchmark"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T08:33:55Z",
+"labels": [
+"enhancement",
+"agent"
+],
+"number": 2672,
+"reactions": 0,
+"title": "feat(email,skills): extract email capabilities into portable tool skills (needs Phase 2 sandbox)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-30T08:33:23Z",
+"labels": [
+"enhancement",
+"agent"
+],
+"number": 2671,
+"reactions": 0,
+"title": "feat(skills,memory): graduate a learned procedure into a shareable SKILL.md"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T08:32:27Z",
+"labels": [
+"enhancement",
+"agent"
+],
+"number": 2670,
+"reactions": 0,
+"title": "feat(skills,tui): paste a SKILL.md into the prompt to install it into the skill library"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T07:43:51Z",
+"labels": [
+"bug",
+"p1",
+"agent::email"
+],
+"number": 2667,
+"reactions": 0,
+"title": "fix(email): personal_recall stuck at 0.182 \u2014 PERSONAL barely recognized"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T07:43:15Z",
+"labels": [
+"bug",
+"p1",
+"agent::email"
+],
+"number": 2665,
+"reactions": 0,
+"title": "fix(email): behavioral sender promotion is silent and unconfirmed"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-30T07:42:58Z",
+"labels": [
+"bug",
+"p1",
+"agent::email"
+],
+"number": 2664,
+"reactions": 0,
+"title": "fix(email): list_calendar_events silently truncates past 25"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-30T07:42:40Z",
+"labels": [
+"bug",
+"p1",
+"eval",
+"agent::email"
+],
+"number": 2663,
+"reactions": 0,
+"title": "fix(eval): benchmark's default 16K ctx crashes its own documented call"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-29T21:04:03Z",
+"labels": [
+"bug",
+"p2",
+"agent::email"
+],
+"number": 2626,
+"reactions": 0,
+"title": "fix(email-agent): move_to_label unconditionally archives, so it cannot restore a message to the inbox"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-29T20:41:57Z",
+"labels": [
+"enhancement",
+"triage"
+],
+"number": 2619,
+"reactions": 0,
+"title": "feat: Add a generic email provider for the email agent"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-29T19:24:58Z",
+"labels": [
+"bug"
+],
+"number": 2618,
+"reactions": 0,
+"title": "fix(email-agent): an autonomy cycle's report is unreachable \u2014 120s relay timeout, and nothing records what the cycle did"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-29T19:13:36Z",
+"labels": [
+"enhancement"
+],
+"number": 2615,
+"reactions": 0,
+"title": "feat(tui): autonomy has no control surface in the terminal hub \u2014 the unshipped half of #2516"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-29T18:34:27Z",
+"labels": [
+"bug"
+],
+"number": 2614,
+"reactions": 0,
+"title": "fix(connectors): `connect --device --grant-agent` silently ignores the agent \u2014 no scopes derived, no grant created"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-29T15:24:23Z",
+"labels": [],
+"number": 2606,
+"reactions": 0,
+"title": "connectors: consolidate forward_connection onto the shared scope resolver"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-29T15:24:06Z",
+"labels": [],
+"number": 2605,
+"reactions": 0,
+"title": "connectors: reconcile Google's include_granted_scopes with what was actually granted"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-28T22:17:30Z",
+"labels": [
+"bug",
+"p2"
+],
+"number": 2600,
+"reactions": 0,
+"title": "fix(agents): abandoned tool-timeout threads leak log records and state into unrelated code"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-28T21:00:21Z",
+"labels": [
+"bug",
+"p2"
+],
+"number": 2597,
+"reactions": 0,
+"title": "fix(tui): EnsureAgent sends an empty body, so the TUI never gets #2588's checkout check"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-28T20:59:58Z",
+"labels": [
+"bug",
+"agent-hub",
+"p3"
+],
+"number": 2596,
+"reactions": 0,
+"title": "fix(daemon): user-mode binary resolution is anchored to the daemon's checkout, same as #2588"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-28T20:40:50Z",
+"labels": [],
+"number": 2595,
+"reactions": 0,
+"title": "fix(agent-ui): needs_input is never rendered, so mid-run questions fail in the Agent UI"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-28T20:40:49Z",
+"labels": [],
+"number": 2594,
+"reactions": 0,
+"title": "feat(connectors): guided Gmail setup \u2014 the Google half of #2590"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-28T20:01:59Z",
+"labels": [],
+"number": 2591,
+"reactions": 0,
+"title": "feat(connectors): mailbox lifecycle \u2014 expired sign-ins, switching address, and disconnecting for real"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-28T19:49:27Z",
+"labels": [],
+"number": 2590,
+"reactions": 0,
+"title": "feat(connectors): guided mailbox onboarding \u2014 route, walk, verify, and answer questions in chat"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-28T17:10:45Z",
+"labels": [
+"enhancement",
+"p1"
+],
+"number": 2585,
+"reactions": 0,
+"title": "feat(daemon): attach email jobs to the daemon clock via a token-safe execution seam"
+},
+{
+"comments": 4,
+"createdAt": "2026-07-27T23:37:42Z",
+"labels": [],
+"number": 2564,
+"reactions": 0,
+"title": "[Bug] HTTP 409: {\"detail\":\"A chat request is already in progress for this session. Ple"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-27T23:01:28Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 2563,
+"reactions": 0,
+"title": "feat(github): skills track \u2014 modes as SKILL.md + skill_sets + port repo-manager skill bodies to typed tools"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-27T23:01:24Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 2562,
+"reactions": 0,
+"title": "feat(eval): GitHub-agent eval tripwire \u2014 transport adapter + seed scenarios + --compare CI gate"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-27T23:01:20Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 2561,
+"reactions": 0,
+"title": "feat(github): security model & fork-safety carry-over"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-27T23:01:14Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 2559,
+"reactions": 0,
+"title": "feat(ci): reusable gaia-github-agent.yml + base-ref config + fork-safety + rate-limit budget"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-27T23:01:11Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 2558,
+"reactions": 0,
+"title": "feat(github): proactive audit mode (findings-only, human-gated)"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-27T23:01:08Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 2557,
+"reactions": 0,
+"title": "feat(github): auto_fix mode (bug label -> branch -> lint+unit -> draft PR)"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-27T23:01:05Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 2556,
+"reactions": 0,
+"title": "feat(github): converse + issue_review modes (@mention Q&A, actionability)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-27T23:01:01Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 2555,
+"reactions": 0,
+"title": "feat(github): review modes \u2014 pr_review + pr_rereview (two-part output, security escalation, suggestions)"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-27T23:00:58Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 2554,
+"reactions": 0,
+"title": "feat(github): triage modes \u2014 issue_triage + pr_triage (label/route, dry-run first) [MVP]"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-27T23:00:51Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 2552,
+"reactions": 0,
+"title": "feat(github): typed write tools + write-policy layer (dry_run/allow-deny/human-gate)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-27T18:51:05Z",
+"labels": [
+"enhancement",
+"p2",
+"agent::email"
+],
+"number": 2540,
+"reactions": 0,
+"title": "feat(email-agent): a calendar event the agent creates cannot be removed \u2014 no delete tool exists"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-27T18:16:33Z",
+"labels": [
+"p2",
+"tui"
+],
+"number": 2539,
+"reactions": 0,
+"title": "test(tui): two of four preflight-gate failure conditions cannot be created (S3)"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-27T17:36:35Z",
+"labels": [],
+"number": 2527,
+"reactions": 0,
+"title": "feat: headless server mode for container/sandbox deployment (Web UI without the desktop app)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-27T17:04:04Z",
+"labels": [
+"bug",
+"p3",
+"tui"
+],
+"number": 2518,
+"reactions": 0,
+"title": "fix(tui): reply card wraps ragged at narrow terminal widths"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-25T12:32:06Z",
+"labels": [
+"bug"
+],
+"number": 2495,
+"reactions": 0,
+"title": "SSE contract: tool_result carries no success flag, so callers cannot tell a failed tool from a successful one"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-25T07:12:32Z",
+"labels": [
+"bug"
+],
+"number": 2489,
+"reactions": 0,
+"title": "fix(tui): one-shot remedy text says \"press r\", and an abandoned turn is never cancelled"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-25T03:20:52Z",
+"labels": [
+"bug"
+],
+"number": 2474,
+"reactions": 0,
+"title": "fix(daemon): sidecars orphaned across daemon restarts are never reaped"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-25T00:56:21Z",
+"labels": [
+"enhancement"
+],
+"number": 2471,
+"reactions": 0,
+"title": "feat(email): expose scheduled jobs over HTTP \u2014 cancelling needs an LLM round trip today"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-25T00:56:19Z",
+"labels": [
+"enhancement"
+],
+"number": 2470,
+"reactions": 0,
+"title": "feat(email): persist agent config \u2014 settings currently vanish on restart"
+},
+{
+"comments": 3,
+"createdAt": "2026-07-23T23:25:33Z",
+"labels": [
+"bug",
+"agent::email"
+],
+"number": 2440,
+"reactions": 0,
+"title": "fix(email-agent/packaging): darwin sidecar binary never published \u2014 lock keeps #1648 placeholder, macOS user-mode install fails"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-23T17:55:54Z",
+"labels": [
+"enhancement"
+],
+"number": 2425,
+"reactions": 0,
+"title": "feat: classifier-based agent routing via /v1/classify (unlocked by Lemonade v11.5.0)"
+},
+{
+"comments": 3,
+"createdAt": "2026-07-22T23:59:02Z",
+"labels": [
+"devops",
+"tests"
+],
+"number": 2413,
+"reactions": 0,
+"title": "ci(review): fold real-world test evidence into the PR review comment via the gaia-testing skill (strix-halo)"
+},
+{
+"comments": 4,
+"createdAt": "2026-07-22T17:02:40Z",
+"labels": [
+"bug",
+"agent-ui"
+],
+"number": 2404,
+"reactions": 0,
+"title": "fix(email-agent/ui): send confirmation is a developer-facing dead-end in Agent UI (raw send_now card + REST-POST guidance; can't actually send)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-21T17:17:36Z",
+"labels": [
+"enhancement"
+],
+"number": 2372,
+"reactions": 0,
+"title": "demos: record \u2192 compress \u2192 R2 \u2192 share on a GitHub issue (end-to-end workflow)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-21T17:17:34Z",
+"labels": [
+"tests"
+],
+"number": 2371,
+"reactions": 0,
+"title": "testing: Playwright video recording of Agent UI test runs \u2192 R2 \u2192 PR link"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-21T17:17:31Z",
+"labels": [
+"tests"
+],
+"number": 2370,
+"reactions": 0,
+"title": "testing: sanitization gate before any upload to the public R2 evidence bucket"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-21T17:17:20Z",
+"labels": [
+"tests"
+],
+"number": 2369,
+"reactions": 0,
+"title": "testing: R2 evidence-upload helper for PR screenshots (machine-local creds)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-21T12:43:57Z",
+"labels": [],
+"number": 2366,
+"reactions": 0,
+"title": "[Bug]: Agent error: Requested device 'gpu' is not available on this host (detected: ['cpu', 'nvidia_gpu'])"
+},
+{
+"comments": 0,
+"createdAt": "2026-07-21T04:50:26Z",
+"labels": [
+"enhancement",
+"agent",
+"chat",
+"domain:agent-core"
+],
+"number": 2361,
+"reactions": 0,
+"title": "chat: decompose the 41-field ChatAgentConfig into consumed sub-configs (split from #2323)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-21T01:15:42Z",
+"labels": [
+"tech debt",
+"agent-hub",
+"epic",
+"tui",
+"daemon",
+"sidecar"
+],
+"number": 2355,
+"reactions": 0,
+"title": "[Meta] gaia-tui \u2194 v2 daemon: converge the terminal hub on the REST/SSE sidecar contract (email first)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-21T01:14:59Z",
+"labels": [
+"tech debt",
+"tui"
+],
+"number": 2354,
+"reactions": 0,
+"title": "test: real end-to-end coverage for the gaia-tui \u2192 daemon \u2192 sidecar run chain (stx)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-21T01:14:55Z",
+"labels": [
+"enhancement",
+"tech debt",
+"tui",
+"daemon"
+],
+"number": 2353,
+"reactions": 0,
+"title": "spike: native (Go) daemon feasibility behind the stable HTTP contract"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-21T01:14:50Z",
+"labels": [
+"enhancement",
+"agent-hub",
+"tui"
+],
+"number": 2352,
+"reactions": 0,
+"title": "feat(tui): connector/grant onboarding UX (actionable setup, not a 502)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-21T01:14:45Z",
+"labels": [
+"enhancement",
+"agent-hub",
+"tui",
+"sidecar"
+],
+"number": 2351,
+"reactions": 0,
+"title": "feat(tui): rich-rendering parity \u2014 adopt tool_result.render cards + additive status kind/data"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-19T02:04:00Z",
+"labels": [
+"enhancement",
+"p1",
+"devops",
+"agent",
+"domain:distribution"
+],
+"number": 2336,
+"reactions": 0,
+"title": "Per-agent independent versioning + CI/CD lanes, templated from the email agent"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-19T02:03:02Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"agent-ui",
+"domain:surfaces"
+],
+"number": 2335,
+"reactions": 0,
+"title": "Day-one Agent UI v2 usability: docs, playground, and the catalog\u2192install\u2192launch\u2192use loop"
+},
+{
+"comments": 3,
+"createdAt": "2026-07-19T02:01:41Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:quality",
+"epic"
+],
+"number": 2334,
+"reactions": 0,
+"title": "Definition of Done: the publish quality bar every ported agent must clear"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-19T02:01:39Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"eval",
+"domain:quality"
+],
+"number": 2333,
+"reactions": 0,
+"title": "Per-agent eval corpus + deterministic harness \u2014 the oracle the factory can't automate"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-19T01:57:27Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"cli",
+"domain:agent-core"
+],
+"number": 2331,
+"reactions": 0,
+"title": "hello-world + word-count: DISCARD from catalog \u2014 promote to gaia agent init templates"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-19T01:57:23Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"security",
+"domain:agent-core",
+"agent::emr"
+],
+"number": 2329,
+"reactions": 0,
+"title": "emr: do not publish \u2014 merge into A12 health (#1496) + layer AH-L4.2"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-19T01:57:17Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"image-generation",
+"domain:agent-core",
+"agent::sd"
+],
+"number": 2326,
+"reactions": 0,
+"title": "sd: package's only tool is storytelling, not image generation \u2014 promote generation to a shared layer"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-19T01:48:55Z",
+"labels": [
+"bug",
+"p1",
+"agent",
+"domain:quality"
+],
+"number": 2316,
+"reactions": 0,
+"title": "Fail-loudly sweep: 40 silent fallbacks across the hub agents (email included)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-19T01:48:47Z",
+"labels": [
+"enhancement",
+"p1",
+"devops",
+"agent",
+"domain:distribution"
+],
+"number": 2314,
+"reactions": 0,
+"title": "Port kit: settle the release lane \u2014 publish_agents.yml is hard-paused, zero agent wheels on PyPI"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-19T01:48:45Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"tests",
+"domain:quality"
+],
+"number": 2313,
+"reactions": 0,
+"title": "Port kit: generate per-tool behavioral tests (tool coverage is ~0% on 5 of 6 audited agents)"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-19T01:48:43Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"eval",
+"domain:quality"
+],
+"number": 2312,
+"reactions": 0,
+"title": "Port kit: generic eval scorecard adapter + scorecard-gate CI (1 of 18 agents has one today)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-19T01:48:41Z",
+"labels": [
+"documentation",
+"enhancement",
+"p1",
+"agent",
+"domain:distribution"
+],
+"number": 2311,
+"reactions": 0,
+"title": "Port kit: generate the SPEC/SKILL/CHANGELOG doc bundle + four-file presence lint"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-19T01:48:39Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"sdk",
+"domain:distribution"
+],
+"number": 2310,
+"reactions": 0,
+"title": "Port kit: generate the sidecar REST surface, npm client, packaging/ and release workflow per agent"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-19T01:48:37Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"sdk",
+"domain:quality"
+],
+"number": 2309,
+"reactions": 0,
+"title": "Port kit: generate tools_count + CAPABILITY_MATRIX by AST introspection, with a drift guard"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-19T01:48:35Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"sdk",
+"domain:agent-core"
+],
+"number": 2308,
+"reactions": 0,
+"title": "Port kit: manifest v2 (\u00a70.28 policy fields) + declared-interface conformance gate"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-18T21:19:40Z",
+"labels": [
+"enhancement",
+"agent",
+"agent-hub",
+"epic"
+],
+"number": 2275,
+"reactions": 0,
+"title": "Epic 6 \u2014 Remove agents from core, publish the wheels, fix `gaia init`"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-18T21:19:05Z",
+"labels": [
+"enhancement",
+"agent",
+"eval",
+"epic"
+],
+"number": 2274,
+"reactions": 0,
+"title": "Epic 5 \u2014 Eval datasets and scorecards (long pole \u2014 start immediately)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-18T21:14:12Z",
+"labels": [
+"enhancement",
+"agent",
+"security",
+"epic"
+],
+"number": 2271,
+"reactions": 0,
+"title": "Epic 2 \u2014 Permissions, grants, and content passing"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-18T21:14:09Z",
+"labels": [
+"enhancement",
+"agent",
+"epic"
+],
+"number": 2269,
+"reactions": 0,
+"title": "Epic 0 \u2014 Core contract hardening (blocks the entire mesh milestone)"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-18T20:00:38Z",
+"labels": [
+"bug",
+"p2",
+"agent",
+"domain:agent-core"
+],
+"number": 2261,
+"reactions": 0,
+"title": "[Bug] Seven hub agents fall back to a hardcoded 35B model when their only preferred model is absent"
+},
+{
+"comments": 3,
+"createdAt": "2026-07-18T19:46:06Z",
+"labels": [
+"bug",
+"enhancement",
+"agent",
+"agent-hub"
+],
+"number": 2260,
+"reactions": 0,
+"title": "Ship ChatAgent in the core wheel: `gaia init` \u2192 `gaia chat` fails from a plain PyPI install"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-18T18:54:59Z",
+"labels": [
+"enhancement"
+],
+"number": 2256,
+"reactions": 0,
+"title": "ops-core: shared RAG code-index service for review/audit fleets + Claude Code MCP integration"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-18T18:53:38Z",
+"labels": [
+"enhancement"
+],
+"number": 2255,
+"reactions": 0,
+"title": "ops-agent: Memory-Backed Permission Broker \u2014 advanced permission memory for Claude Code"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-18T18:18:52Z",
+"labels": [
+"enhancement"
+],
+"number": 2249,
+"reactions": 0,
+"title": "release(email): file-aware frozen email binary so V2-3 secret file-delivery reaches shipped installs"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-18T17:14:56Z",
+"labels": [
+"bug",
+"p2",
+"agent",
+"cli",
+"domain:agent-core"
+],
+"number": 2242,
+"reactions": 0,
+"title": "[Bug] No CLI path to run a registered custom agent \u2014 `gaia chat` hardcodes the chat agent"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-18T05:58:22Z",
+"labels": [],
+"number": 2235,
+"reactions": 0,
+"title": "feat(hub): Agent Ideas Board \u2014 weekly-researched, community-voted, factory-built agents"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-18T05:35:05Z",
+"labels": [
+"enhancement"
+],
+"number": 2232,
+"reactions": 0,
+"title": "ops-agent: Session-Intelligence Miner \u2014 local pattern mining with mechanical redaction"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-18T05:35:03Z",
+"labels": [
+"enhancement"
+],
+"number": 2231,
+"reactions": 0,
+"title": "ops-agent: Workspace Hygiene \u2014 stale workspace/worktree detection and cleanup proposals"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-18T05:35:01Z",
+"labels": [
+"enhancement"
+],
+"number": 2230,
+"reactions": 0,
+"title": "ops-agent: Release Gating Checklist \u2014 structured go/no-go verification"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-18T05:34:55Z",
+"labels": [
+"enhancement"
+],
+"number": 2227,
+"reactions": 0,
+"title": "ops-agent: Codebase Health Monitor \u2014 coverage/lint/staleness scorecards"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-18T05:34:54Z",
+"labels": [
+"enhancement"
+],
+"number": 2226,
+"reactions": 0,
+"title": "ops-agent: Docs-vs-Code Drift Detector \u2014 scheduled reconciliation, findings only"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-18T05:34:52Z",
+"labels": [
+"enhancement"
+],
+"number": 2225,
+"reactions": 0,
+"title": "ops-agent: Weekly Impact Digest \u2014 git history to executive summary"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-18T05:34:48Z",
+"labels": [
+"enhancement"
+],
+"number": 2223,
+"reactions": 0,
+"title": "ops-agent: Pre-flight Environment Validator + sibling resource ledger"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-18T05:34:47Z",
+"labels": [
+"enhancement"
+],
+"number": 2222,
+"reactions": 0,
+"title": "ops-agent: Long-Running Eval/CI Monitor \u2014 patient never-cancel watcher"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-18T05:34:45Z",
+"labels": [
+"enhancement"
+],
+"number": 2221,
+"reactions": 0,
+"title": "ops-agent: Fleet Observer \u2014 stall classification and status digests for orchestrator tasks"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-18T05:34:43Z",
+"labels": [
+"enhancement"
+],
+"number": 2220,
+"reactions": 0,
+"title": "ops-agent: Task\u2194PR Reconciliation \u2014 landed/duplicate/orphaned claudia-task detection"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-18T05:34:38Z",
+"labels": [
+"enhancement"
+],
+"number": 2217,
+"reactions": 0,
+"title": "ops-agent: Daily PR Audit Reporter \u2014 scheduled read-only PR state sweep"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-18T05:34:37Z",
+"labels": [
+"enhancement"
+],
+"number": 2216,
+"reactions": 0,
+"title": "ops-agent: GitHub Inbox Ops \u2014 always-on triage with graduated autonomy"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-18T05:34:23Z",
+"labels": [
+"enhancement"
+],
+"number": 2215,
+"reactions": 0,
+"title": "ops-core: memory\u2192adaptation loop \u2014 learn from approvals, per-user customization"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-18T05:34:21Z",
+"labels": [
+"enhancement"
+],
+"number": 2214,
+"reactions": 0,
+"title": "ops-core: decision-trace observability log for every agent decision"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-18T05:34:19Z",
+"labels": [
+"enhancement"
+],
+"number": 2213,
+"reactions": 0,
+"title": "ops-core: run registry \u2014 status, result-by-id, reconnect-safe streams"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-18T05:34:17Z",
+"labels": [
+"enhancement"
+],
+"number": 2212,
+"reactions": 0,
+"title": "ops-core: resumable permission confirmations + graduated autonomy profiles"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-17T23:12:41Z",
+"labels": [
+"enhancement",
+"tests",
+"agent::email"
+],
+"number": 2182,
+"reactions": 0,
+"title": "feat(eval): dual-segment scorecard + AND release gate (corporate AND consumer must pass)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-17T23:12:39Z",
+"labels": [
+"enhancement",
+"tests",
+"agent::email"
+],
+"number": 2181,
+"reactions": 0,
+"title": "feat(eval): consumer-inbox corpus at parity with the corporate corpus (all dimensions)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-17T23:11:58Z",
+"labels": [
+"enhancement",
+"agent-ui"
+],
+"number": 2177,
+"reactions": 0,
+"title": "feat(hub): agent manifest schema + install-time model provisioning (V2-16)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-17T19:46:20Z",
+"labels": [
+"agent::email"
+],
+"number": 2160,
+"reactions": 0,
+"title": "fix(email): sessions poison permanently after a transient error \u2014 agent gives up from history with no recovery probe"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-17T16:18:25Z",
+"labels": [
+"enhancement"
+],
+"number": 2148,
+"reactions": 0,
+"title": "feat(email): surface mailbox provenance and partial failures through REST /v1/email/prescan"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-17T15:56:32Z",
+"labels": [
+"enhancement",
+"agent-ui"
+],
+"number": 2147,
+"reactions": 0,
+"title": "test(e2e): re-run the consumer golden-path smoke against daemon-supervised sidecars"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-17T15:56:28Z",
+"labels": [
+"bug",
+"agent-ui"
+],
+"number": 2146,
+"reactions": 0,
+"title": "fix(ui): sweep pre-daemon orphan sidecars \u2014 upgrade/crash can leave a double email sidecar"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-17T15:56:21Z",
+"labels": [
+"enhancement",
+"agent-ui"
+],
+"number": 2145,
+"reactions": 0,
+"title": "feat(electron): surface daemon/sidecar state in the tray + a 'Stop background agents' action"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-16T22:46:04Z",
+"labels": [
+"tech debt",
+"tests",
+"lemonade \ud83c\udf4b"
+],
+"number": 2135,
+"reactions": 0,
+"title": "ci: no PR-time check exercises the pinned Lemonade version against a real server"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-16T13:55:33Z",
+"labels": [
+"bug"
+],
+"number": 2122,
+"reactions": 0,
+"title": "ci(eval): six workflows share the stx runner outside lemonade-eval and force-kill its port"
+},
+{
+"comments": 2,
+"createdAt": "2026-07-15T23:41:11Z",
+"labels": [
+"enhancement",
+"p1",
+"agent-ui",
+"domain:surfaces",
+"connectors"
+],
+"number": 2104,
+"reactions": 0,
+"title": "feat(connectors): first-party OAuth clients \u2014 Connect Google/Outlook works out of the box in the Agent UI"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-15T14:58:18Z",
+"labels": [
+"enhancement",
+"p2",
+"eval",
+"domain:quality",
+"agent::email"
+],
+"number": 2090,
+"reactions": 0,
+"title": "eval(npu): settle the gemma4-it-e2b-FLM default against the 0.80 bar"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-15T00:26:00Z",
+"labels": [],
+"number": 2085,
+"reactions": 0,
+"title": "hub: deferred follow-ups from #2084 \u2014 binary-agent trust gate, wheel-publishing hazards, install hardening"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-13T22:35:03Z",
+"labels": [
+"agent-hub"
+],
+"number": 2065,
+"reactions": 0,
+"title": "refactor(hub): table-driven doc-part publishing + /publish response echo of stored docs"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-13T22:32:43Z",
+"labels": [],
+"number": 2063,
+"reactions": 0,
+"title": "perf(email-eval): speed up per-email triage (prefix caching, max_tokens cap, batching)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-13T22:29:55Z",
+"labels": [],
+"number": 2062,
+"reactions": 0,
+"title": "test(messaging): Telegram adapter has no end-to-end coverage \u2014 'does it actually work' is unverified"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-13T20:41:59Z",
+"labels": [],
+"number": 2051,
+"reactions": 0,
+"title": "Email eval workflows land on the Linux stx runner and fail in ~9s (powershell: command not found)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-13T19:47:18Z",
+"labels": [
+"tests",
+"agent::email"
+],
+"number": 2046,
+"reactions": 0,
+"title": "test(email): mcp_stdio_parity thread/batch summaries diverge between REST and MCP surfaces (reproducible)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-13T18:49:06Z",
+"labels": [
+"agent",
+"eval"
+],
+"number": 2040,
+"reactions": 0,
+"title": "Wire the followups email eval into CI (report script + workflow step)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-13T18:15:46Z",
+"labels": [],
+"number": 2039,
+"reactions": 0,
+"title": "email: re-enforce drafting + briefing judge gates once hardware-validated"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-13T15:25:43Z",
+"labels": [
+"security",
+"domain:agent-core",
+"agent::email"
+],
+"number": 2034,
+"reactions": 0,
+"title": "security(email): untrusted-email-body delimiter is forgeable \u2014 harden wrap_untrusted_body"
+},
+{
+"comments": 3,
+"createdAt": "2026-07-12T08:58:02Z",
+"labels": [
+"eval-failure"
+],
+"number": 2026,
+"reactions": 0,
+"title": "Weekly eval failure: email eval suite"
+},
+{
+"comments": 8,
+"createdAt": "2026-07-10T21:25:46Z",
+"labels": [
+"agent-ui",
+"epic"
+],
+"number": 2014,
+"reactions": 0,
+"title": "[Epic] Agent UI v2: thin host over sidecar agents"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-09T18:17:38Z",
+"labels": [
+"mcp",
+"domain:integrations"
+],
+"number": 1974,
+"reactions": 0,
+"title": "WS3 (optional/Phase 3): PII pass-through for connector-to-connector flows"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-09T18:17:29Z",
+"labels": [
+"mcp",
+"performance",
+"domain:agent-core"
+],
+"number": 1973,
+"reactions": 0,
+"title": "WS2: Keep large MCP tool results out of context (artifact store + handle resolution)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-09T18:16:44Z",
+"labels": [
+"mcp",
+"performance",
+"spec-ready",
+"domain:agent-core"
+],
+"number": 1972,
+"reactions": 0,
+"title": "WS1: Route MCP tools through the dynamic tool loader (progressive disclosure)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-09T18:16:08Z",
+"labels": [
+"mcp",
+"performance",
+"domain:quality"
+],
+"number": 1971,
+"reactions": 0,
+"title": "MCP context-efficiency: measurement harness (token cost + recall)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-06T19:31:56Z",
+"labels": [
+"installer",
+"lemonade \ud83c\udf4b"
+],
+"number": 1941,
+"reactions": 0,
+"title": "Consolidate duplicated Lemonade binary detection (Python primitive vs PowerShell copies)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-06T18:26:16Z",
+"labels": [],
+"number": 1937,
+"reactions": 0,
+"title": "Flaky Vitest: SettingsPage dynamic-tools tests race the settings fetch (checked/disabled asserted before load)"
+},
+{
+"comments": 1,
+"createdAt": "2026-07-01T00:27:33Z",
+"labels": [],
+"number": 1912,
+"reactions": 0,
+"title": "feat(email): improve spam-detection recall beyond the #1906 baseline"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-30T20:22:34Z",
+"labels": [],
+"number": 1908,
+"reactions": 0,
+"title": "Context window too small error AND Zoo Agent"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-29T20:54:49Z",
+"labels": [
+"enhancement",
+"security",
+"p3",
+"domain:platform",
+"track:oem-pc"
+],
+"number": 1899,
+"reactions": 0,
+"title": "chore(security): keep the encrypted-at-rest contract portable to the C++ runtime"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-29T18:14:55Z",
+"labels": [
+"enhancement",
+"p2",
+"domain:distribution",
+"agent::email"
+],
+"number": 1898,
+"reactions": 0,
+"title": "feat(packaging): add win-arm64 + linux-arm64 frozen email-agent binaries (complete the OS/arch target set)"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-29T16:31:55Z",
+"labels": [
+"enhancement",
+"p2",
+"domain:platform",
+"domain:quality",
+"track:consumer-app",
+"agent::email"
+],
+"number": 1895,
+"reactions": 0,
+"title": "test(email): cross-platform OS/arch support matrix + CI coverage (macOS, ARM64, Win/macOS CI)"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-29T16:08:52Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"eval",
+"domain:quality",
+"agent::email"
+],
+"number": 1890,
+"reactions": 0,
+"title": "spike(email): identify techniques to reduce context footprint"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-28T10:25:16Z",
+"labels": [],
+"number": 1885,
+"reactions": 0,
+"title": "[Feature] Support image file indexing and OCR"
+},
+{
+"comments": 3,
+"createdAt": "2026-06-23T17:46:40Z",
+"labels": [],
+"number": 1832,
+"reactions": 0,
+"title": "Publish email-agent README assets to R2 + restore versioned image URL + re-enable stamp check"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-23T17:24:03Z",
+"labels": [
+"devops",
+"tests"
+],
+"number": 1831,
+"reactions": 0,
+"title": "CI: Lemonade v10.7.0 breaks embedding-model jobs (nomic-embed-text-v2-moe / llama-server \u2265 b6524)"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-22T20:40:11Z",
+"labels": [
+"enhancement",
+"devops",
+"scope",
+"website"
+],
+"number": 1821,
+"reactions": 0,
+"title": "feat(hub): auth-gated admin analytics dashboard (all adoption tiers)"
+},
+{
+"comments": 3,
+"createdAt": "2026-06-22T20:40:09Z",
+"labels": [
+"enhancement",
+"devops",
+"agent",
+"scope",
+"cli"
+],
+"number": 1820,
+"reactions": 0,
+"title": "feat(hub): opt-in usage analytics \u2014 one-time first-install consent, fully disclosed"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-22T20:26:35Z",
+"labels": [
+"enhancement",
+"devops",
+"agent",
+"scope",
+"website"
+],
+"number": 1819,
+"reactions": 0,
+"title": "feat(hub): track R2 download counts per agent and show them in the hub"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-22T15:58:52Z",
+"labels": [
+"enhancement",
+"agent"
+],
+"number": 1812,
+"reactions": 0,
+"title": "ci(agent-hub): Claude PR review to verify agent packages are correct before publish"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-19T20:45:23Z",
+"labels": [
+"enhancement",
+"scope",
+"cli",
+"lemonade \ud83c\udf4b"
+],
+"number": 1783,
+"reactions": 0,
+"title": "feat(cli): auto-detect NPU and prefer it, with automatic GPU/CPU fallback"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-18T21:17:08Z",
+"labels": [
+"enhancement",
+"p1"
+],
+"number": 1754,
+"reactions": 0,
+"title": "feat(metrics): aggregate external-registry adoption counts (npm + PyPI + GitHub releases)"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-18T19:08:55Z",
+"labels": [
+"bug",
+"p1",
+"performance",
+"lemonade \ud83c\udf4b",
+"epic"
+],
+"number": 1746,
+"reactions": 0,
+"title": "[Epic] NPU profile model thrash: kill the FLM\u2194Vulkan load loop (#1676)"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-18T17:52:23Z",
+"labels": [
+"enhancement",
+"installer",
+"p1",
+"domain:platform"
+],
+"number": 1740,
+"reactions": 0,
+"title": "Publish the gaia CLI to npm as `@amd-gaia/cli` (Node-first install)"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-18T00:04:01Z",
+"labels": [
+"agent-hub",
+"agent-ui",
+"domain:distribution",
+"epic"
+],
+"number": 1731,
+"reactions": 0,
+"title": "[Epic] Multi-Component Agent Hub + Agent UI Distribution"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-17T23:49:05Z",
+"labels": [
+"enhancement",
+"p2",
+"security",
+"agent-hub",
+"agent-ui",
+"domain:quality"
+],
+"number": 1729,
+"reactions": 0,
+"title": "Security, resilience & polish: signing/provenance, permission enforcement, resumable installs, update banner"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-17T23:49:03Z",
+"labels": [
+"enhancement",
+"p2",
+"scope",
+"foundation",
+"agent-hub",
+"domain:distribution"
+],
+"number": 1728,
+"reactions": 0,
+"title": "Component lane: provides/requires dependency contract + extract RAG/memory + Python SDK by type"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-17T23:48:54Z",
+"labels": [
+"enhancement",
+"p1",
+"foundation",
+"agent-ui",
+"domain:surfaces"
+],
+"number": 1723,
+"reactions": 0,
+"title": "Frozen/prebuilt UI backend to cut first-use time (measure baseline first)"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-17T23:48:15Z",
+"labels": [
+"enhancement",
+"p1",
+"agent-hub",
+"agent-ui",
+"domain:distribution"
+],
+"number": 1720,
+"reactions": 0,
+"title": "Agent UI npm wrapper: R2-fetch package + multi-file binaries.lock + name collision"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-17T23:48:10Z",
+"labels": [
+"enhancement",
+"p1",
+"foundation",
+"agent-hub",
+"domain:distribution"
+],
+"number": 1717,
+"reactions": 0,
+"title": "Hub: catalog schema v2 \u2014 `type` field + Apps/Components/Agents lanes"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-17T22:13:22Z",
+"labels": [
+"installer",
+"p1",
+"agent-hub",
+"domain:distribution"
+],
+"number": 1710,
+"reactions": 0,
+"title": "Code-sign & notarize all Agent Hub artifacts (installers + agent binaries)"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-17T18:22:21Z",
+"labels": [],
+"number": 1703,
+"reactions": 0,
+"title": "ci: HF model-pull 429 retry for remaining workflows (apply reactively if they flake)"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-15T22:39:10Z",
+"labels": [],
+"number": 1684,
+"reactions": 0,
+"title": "feat(release): promote Agent UI to a registry package"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-15T22:38:50Z",
+"labels": [],
+"number": 1683,
+"reactions": 0,
+"title": "chore(release): cut over email + delete release_agent_email.yml"
+},
+{
+"comments": 0,
+"createdAt": "2026-06-15T22:38:29Z",
+"labels": [],
+"number": 1682,
+"reactions": 0,
+"title": "feat(release): release.yml dispatcher (tag + selective dispatch)"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-15T22:38:08Z",
+"labels": [],
+"number": 1681,
+"reactions": 0,
+"title": "feat(release): reusable publish_packages.yml"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-15T22:37:44Z",
+"labels": [],
+"number": 1680,
+"reactions": 0,
+"title": "feat(release): package registry + resolver"
+},
+{
+"comments": 11,
+"createdAt": "2026-06-15T20:43:39Z",
+"labels": [
+"bug",
+"p1"
+],
+"number": 1676,
+"reactions": 0,
+"title": "[Bug] Infinite model loading loop between Gemma FLM (NPU) and Gemma GGUF (Vulkan) on every prompt"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-15T15:45:44Z",
+"labels": [],
+"number": 1667,
+"reactions": 0,
+"title": "Agent loop can emit 2+ trailing assistant messages \u2192 llama-server 400 \"Cannot have 2 or more assistant messages at the end of the list\""
+},
+{
+"comments": 1,
+"createdAt": "2026-06-12T22:39:13Z",
+"labels": [
+"enhancement",
+"p1",
+"domain:distribution"
+],
+"number": 1650,
+"reactions": 0,
+"title": "[packaging] Code-sign & notarize email agent binaries"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-11T21:44:20Z",
+"labels": [
+"triage"
+],
+"number": 1612,
+"reactions": 0,
+"title": "fix(connectors): narrow broad except in tokens.py 401-handling (No-Silent-Fallbacks)"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-10T20:08:45Z",
+"labels": [
+"enhancement",
+"user-feedback",
+"gui"
+],
+"number": 1577,
+"reactions": 0,
+"title": "Improve Mobile Access UX when ngrok is not installed"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-09T00:31:59Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"cpp",
+"track:consumer-app"
+],
+"number": 1543,
+"reactions": 0,
+"title": "feat(cpp): native C++ email-agent package \u2014 cold-runnable signed artifact + parity gate"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-08T23:24:16Z",
+"labels": [
+"enhancement",
+"agent-ui",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 1537,
+"reactions": 0,
+"title": "Lemonade: model-management dashboard in Agent UI (Phase 2)"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-08T23:24:10Z",
+"labels": [
+"enhancement",
+"installer",
+"domain:platform",
+"track:consumer-app"
+],
+"number": 1536,
+"reactions": 0,
+"title": "Lemonade: bundle lemond binary + own server lifecycle (Phase 1)"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-05T22:39:57Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"agent-hub-agent"
+],
+"number": 1529,
+"reactions": 0,
+"title": "feat(agent): ambient meeting-notes capture + diarization + dependency bootstrapping"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-05T17:14:27Z",
+"labels": [
+"enhancement",
+"user-feedback",
+"chat",
+"rag",
+"agent-ui",
+"domain:surfaces"
+],
+"number": 1528,
+"reactions": 0,
+"title": "feat(ui): embedding-model selector in Agent UI Settings + add embedding-gemma"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-05T00:27:08Z",
+"labels": [
+"enhancement",
+"p1",
+"gui",
+"domain:surfaces",
+"agent-hub-layer"
+],
+"number": 1525,
+"reactions": 0,
+"title": "L8.4 \u2014 Unified Tasks panel (Agent UI) + tasks in the morning brief"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-05T00:27:05Z",
+"labels": [
+"enhancement",
+"p1",
+"domain:agent-core",
+"agent-hub-layer"
+],
+"number": 1524,
+"reactions": 0,
+"title": "L8.3 \u2014 Cross-agent task wiring (source_ref back to originating item)"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-05T00:27:02Z",
+"labels": [
+"enhancement",
+"p1",
+"domain:agent-core",
+"agent-hub-layer"
+],
+"number": 1523,
+"reactions": 0,
+"title": "L8.2 \u2014 TaskToolsMixin (tasks in KNOWN_TOOLS)"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-05T00:26:59Z",
+"labels": [
+"enhancement",
+"p1",
+"domain:agent-core",
+"agent-hub-layer"
+],
+"number": 1522,
+"reactions": 0,
+"title": "L8.1 \u2014 TaskStore backend (namespaced, cross-agent task persistence)"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-05T00:26:56Z",
+"labels": [
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-layer",
+"epic"
+],
+"number": 1521,
+"reactions": 0,
+"title": "EPIC: L8 Task & To-Do Store (cross-agent, core)"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:54:55Z",
+"labels": [
+"enhancement",
+"p1",
+"agent-hub",
+"domain:distribution"
+],
+"number": 1516,
+"reactions": 0,
+"title": "AH-X10 \u2014 R2 publish + Worker index consumed by website AND Agent UI (one index.json)"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:54:52Z",
+"labels": [
+"enhancement",
+"p1",
+"cli",
+"agent-hub",
+"domain:distribution"
+],
+"number": 1515,
+"reactions": 0,
+"title": "AH-X9 \u2014 gaia agent pack compile step (wheel/static binary + OpenAPI + manifest)"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:54:49Z",
+"labels": [
+"enhancement",
+"p1",
+"sdk",
+"agent-hub",
+"domain:agent-core"
+],
+"number": 1514,
+"reactions": 0,
+"title": "AH-X8 \u2014 5-interface harness (one agent class \u2192 TUI/CLI/pipe/API+OpenAPI/MCP)"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:54:42Z",
+"labels": [
+"enhancement",
+"p1",
+"security",
+"domain:quality"
+],
+"number": 1512,
+"reactions": 0,
+"title": "AH-X6 \u2014 Least-privilege permission audit per agent"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:54:39Z",
+"labels": [
+"enhancement",
+"p1",
+"eval",
+"tests",
+"domain:quality"
+],
+"number": 1511,
+"reactions": 0,
+"title": "AH-X5 \u2014 Per-agent eval baselines committed to tests/fixtures/eval_baselines"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:54:33Z",
+"labels": [
+"enhancement",
+"p1",
+"cli",
+"sdk",
+"domain:agent-core"
+],
+"number": 1509,
+"reactions": 0,
+"title": "AH-X3 \u2014 gaia agent init --proactive scaffold template"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:54:30Z",
+"labels": [
+"enhancement",
+"p1",
+"eval",
+"tests",
+"domain:quality"
+],
+"number": 1508,
+"reactions": 0,
+"title": "AH-X2 \u2014 Eval harness for proactive agents (first-run + heartbeat simulation)"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:54:27Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"sdk",
+"domain:agent-core"
+],
+"number": 1507,
+"reactions": 0,
+"title": "AH-X1 \u2014 Proactive interaction contract on base Agent (approve/deny UI)"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:54:24Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1506,
+"reactions": 0,
+"title": "hub/agents/python/maintenance \u2014 Home & Vehicle Maintenance Agent"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:54:21Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1505,
+"reactions": 0,
+"title": "hub/agents/python/presentation \u2014 Presentation & Content Agent"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:54:18Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1504,
+"reactions": 0,
+"title": "hub/agents/python/security \u2014 Security & Privacy Guardian"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:54:15Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1503,
+"reactions": 0,
+"title": "hub/agents/python/travel \u2014 Travel Companion Agent"
+},
+{
+"comments": 3,
+"createdAt": "2026-06-04T22:54:12Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1502,
+"reactions": 0,
+"title": "hub/agents/python/deals \u2014 Deal & Price Watch Agent"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:54:09Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1501,
+"reactions": 0,
+"title": "hub/agents/python/learning \u2014 Learning & Self-Improvement Agent"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:54:06Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1500,
+"reactions": 0,
+"title": "hub/agents/python/freelance \u2014 Freelancer Business Agent"
+},
+{
+"comments": 3,
+"createdAt": "2026-06-04T22:54:02Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1499,
+"reactions": 0,
+"title": "hub/agents/python/finance \u2014 Personal Finance Agent"
+},
+{
+"comments": 3,
+"createdAt": "2026-06-04T22:53:59Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1498,
+"reactions": 0,
+"title": "hub/agents/python/meeting \u2014 Meeting Companion"
+},
+{
+"comments": 3,
+"createdAt": "2026-06-04T22:53:56Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1497,
+"reactions": 0,
+"title": "hub/agents/python/photo \u2014 Photo & Memory Agent"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:53:53Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1496,
+"reactions": 0,
+"title": "hub/agents/python/health \u2014 Health & Wellness Agent"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:53:49Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1495,
+"reactions": 0,
+"title": "hub/agents/python/habit \u2014 Habit & Routine Agent"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:53:46Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1494,
+"reactions": 0,
+"title": "hub/agents/python/journal \u2014 Journal & Reflection Agent"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:53:43Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1493,
+"reactions": 0,
+"title": "hub/agents/python/writing \u2014 Writing & Communication Agent"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:53:39Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1492,
+"reactions": 0,
+"title": "hub/agents/python/family \u2014 Family Command Center"
+},
+{
+"comments": 4,
+"createdAt": "2026-06-04T22:53:36Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1491,
+"reactions": 0,
+"title": "hub/agents/python/crm \u2014 Personal CRM & Contacts Agent"
+},
+{
+"comments": 3,
+"createdAt": "2026-06-04T22:53:32Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1490,
+"reactions": 0,
+"title": "hub/agents/python/email \u2014 Email Companion"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:53:29Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1489,
+"reactions": 0,
+"title": "hub/agents/python/morning \u2014 Morning Intelligence Agent"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:53:26Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1488,
+"reactions": 0,
+"title": "hub/agents/python/code-context \u2014 Code & Project Context Agent"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:53:23Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1487,
+"reactions": 0,
+"title": "hub/agents/python/smarthome \u2014 Smart Home Voice Agent"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:53:20Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1486,
+"reactions": 0,
+"title": "hub/agents/python/files \u2014 File & Desktop Organizer"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:53:16Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-agent"
+],
+"number": 1485,
+"reactions": 0,
+"title": "hub/agents/python/knowledge \u2014 Knowledge & Research Agent"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:53:10Z",
+"labels": [
+"enhancement",
+"p1",
+"domain:agent-core",
+"agent-hub-layer"
+],
+"number": 1483,
+"reactions": 0,
+"title": "L7.3 \u2014 Graduated trust model"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:53:07Z",
+"labels": [
+"enhancement",
+"p3",
+"domain:surfaces",
+"agent-hub-layer"
+],
+"number": 1482,
+"reactions": 0,
+"title": "L6.2 \u2014 Notification preferences (quiet hours, batching, channel)"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:53:03Z",
+"labels": [
+"enhancement",
+"p3",
+"domain:surfaces",
+"agent-hub-layer"
+],
+"number": 1481,
+"reactions": 0,
+"title": "L6.1 \u2014 Notification primitive (toast + in-UI feed + webhook)"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:53:00Z",
+"labels": [
+"enhancement",
+"p2",
+"domain:agent-core",
+"agent-hub-layer"
+],
+"number": 1480,
+"reactions": 0,
+"title": "L5.3 \u2014 Safe write/move/dedup with confirmation tiers"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:52:56Z",
+"labels": [
+"enhancement",
+"p2",
+"domain:automation",
+"agent-hub-layer"
+],
+"number": 1479,
+"reactions": 0,
+"title": "L5.2 \u2014 Semantic filesystem index"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:52:53Z",
+"labels": [
+"enhancement",
+"p2",
+"domain:multimodal",
+"agent-hub-layer"
+],
+"number": 1478,
+"reactions": 0,
+"title": "L4.3 \u2014 media_search natural-language tool"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:52:49Z",
+"labels": [
+"enhancement",
+"p1",
+"domain:integrations",
+"connectors",
+"agent-hub-layer"
+],
+"number": 1477,
+"reactions": 0,
+"title": "L3.4 \u2014 Contacts connector"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:52:46Z",
+"labels": [
+"enhancement",
+"p1",
+"domain:integrations",
+"connectors",
+"agent-hub-layer"
+],
+"number": 1476,
+"reactions": 0,
+"title": "L3.3 \u2014 Calendar connector (Google Calendar + MS Graph)"
+},
+{
+"comments": 3,
+"createdAt": "2026-06-04T22:52:40Z",
+"labels": [
+"enhancement",
+"p1",
+"domain:agent-core",
+"agent-hub-layer"
+],
+"number": 1474,
+"reactions": 0,
+"title": "L1.4 \u2014 Per-agent memory-schema declaration API"
+},
+{
+"comments": 3,
+"createdAt": "2026-06-04T22:52:36Z",
+"labels": [
+"enhancement",
+"p1",
+"domain:agent-core",
+"agent-hub-layer"
+],
+"number": 1473,
+"reactions": 0,
+"title": "L1.3 \u2014 Implicit feedback capture (accept / edit / ignore / reject)"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:52:33Z",
+"labels": [
+"enhancement",
+"p1",
+"domain:agent-core",
+"agent-hub-layer"
+],
+"number": 1472,
+"reactions": 0,
+"title": "L1.2 \u2014 Behavioral pattern detection engine"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:26:01Z",
+"labels": [
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-layer",
+"epic"
+],
+"number": 1465,
+"reactions": 0,
+"title": "EPIC: L7 Autonomy Engine & Graduated Trust"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:25:55Z",
+"labels": [
+"p1",
+"agent",
+"domain:surfaces",
+"agent-hub-layer",
+"epic"
+],
+"number": 1464,
+"reactions": 0,
+"title": "EPIC: L6 Proactive Notifications"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:25:50Z",
+"labels": [
+"p1",
+"agent",
+"domain:automation",
+"agent-hub-layer",
+"epic"
+],
+"number": 1463,
+"reactions": 0,
+"title": "EPIC: L5 Filesystem & System Discovery"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:25:45Z",
+"labels": [
+"p1",
+"agent",
+"domain:multimodal",
+"agent-hub-layer",
+"epic"
+],
+"number": 1462,
+"reactions": 0,
+"title": "EPIC: L4 VLM & Media Processing"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:25:40Z",
+"labels": [
+"p1",
+"agent",
+"domain:distribution",
+"agent-hub-layer",
+"epic"
+],
+"number": 1461,
+"reactions": 0,
+"title": "EPIC: L3 Connectors (Email/Calendar/Contacts/OAuth)"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-04T22:25:35Z",
+"labels": [
+"p1",
+"agent",
+"domain:automation",
+"agent-hub-layer",
+"epic"
+],
+"number": 1460,
+"reactions": 0,
+"title": "EPIC: L2 Web Search & Extraction"
+},
+{
+"comments": 3,
+"createdAt": "2026-06-04T22:25:30Z",
+"labels": [
+"p1",
+"agent",
+"domain:agent-core",
+"agent-hub-layer",
+"epic"
+],
+"number": 1459,
+"reactions": 0,
+"title": "EPIC: L1 Memory & Personalization Engine"
+},
+{
+"comments": 7,
+"createdAt": "2026-06-04T06:01:06Z",
+"labels": [
+"enhancement",
+"p1",
+"claude"
+],
+"number": 1408,
+"reactions": 0,
+"title": "Update Claude's GitHub integration"
+},
+{
+"comments": 10,
+"createdAt": "2026-06-04T00:23:35Z",
+"labels": [
+"bug",
+"p1",
+"agent",
+"domain:agent-core",
+"triage"
+],
+"number": 1394,
+"reactions": 0,
+"title": "[Bug]: GAIA hangs creating a custom agent"
+},
+{
+"comments": 6,
+"createdAt": "2026-06-03T21:17:21Z",
+"labels": [
+"bug",
+"agent",
+"agent-ui",
+"domain:agent-core",
+"triage"
+],
+"number": 1382,
+"reactions": 0,
+"title": "[Bug]: Custom Agent not working"
+},
+{
+"comments": 4,
+"createdAt": "2026-06-02T00:17:22Z",
+"labels": [
+"enhancement",
+"scope",
+"eval",
+"domain:quality"
+],
+"number": 1344,
+"reactions": 0,
+"title": "eval: route remaining direct-Anthropic-API eval paths through Claude Code (subscription auth)"
+},
+{
+"comments": 5,
+"createdAt": "2026-06-01T22:38:57Z",
+"labels": [
+"documentation"
+],
+"number": 1339,
+"reactions": 0,
+"title": "docs: close residual CLAUDE.md/docs/code alignment gaps (summarize guide, telegram dup, connectors)"
+},
+{
+"comments": 3,
+"createdAt": "2026-06-01T20:51:19Z",
+"labels": [
+"enhancement",
+"p1",
+"eval",
+"domain:quality"
+],
+"number": 1335,
+"reactions": 0,
+"title": "feat(eval/npu): gemma4-it email-triage baseline on Ryzen AI NPU via FastFlowLM (e4b serve blocker)"
+},
+{
+"comments": 1,
+"createdAt": "2026-06-01T19:13:02Z",
+"labels": [
+"release",
+"tech debt",
+"devops",
+"domain:platform"
+],
+"number": 1331,
+"reactions": 0,
+"title": "Harden the gaia-release skill: rollback/recovery, post-release monitoring, SBOM, changelog hygiene"
+},
+{
+"comments": 2,
+"createdAt": "2026-06-01T13:23:17Z",
+"labels": [
+"eval",
+"tests",
+"performance",
+"domain:quality"
+],
+"number": 1315,
+"reactions": 0,
+"title": "ci(eval): RAG eval gate (test_eval_rag.yml) has never run \u2014 disabled pending rebuild (7 bugs + perf ceiling)"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-29T16:16:14Z",
+"labels": [
+"bug",
+"user-feedback",
+"p2",
+"linux",
+"llm",
+"performance",
+"lemonade \ud83c\udf4b",
+"domain:platform"
+],
+"number": 1295,
+"reactions": 0,
+"title": "perf: Ryzen AI 350 (Strix Point) LLM inference appears CPU-bound / not GPU-accelerated by default \u2014 slower than a discrete RX 6600 desktop"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-29T14:09:15Z",
+"labels": [
+"enhancement",
+"agent",
+"p3",
+"domain:agent-core"
+],
+"number": 1287,
+"reactions": 0,
+"title": "feat(email): self-learning loop design outline"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-29T14:09:13Z",
+"labels": [
+"enhancement",
+"agent",
+"p3",
+"domain:agent-core"
+],
+"number": 1286,
+"reactions": 0,
+"title": "feat(email): fine-tuning pipeline scoping"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-29T14:09:08Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"domain:agent-core"
+],
+"number": 1283,
+"reactions": 0,
+"title": "feat(email): stretch model evaluation (lfm2.5-it-1.2b-FLM)"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-29T14:09:03Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"domain:integrations",
+"connectors"
+],
+"number": 1281,
+"reactions": 0,
+"title": "feat(email): enterprise calendar connector via MS Graph (gated)"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-29T07:54:24Z",
+"labels": [
+"enhancement",
+"domain:agent-core"
+],
+"number": 1254,
+"reactions": 0,
+"title": "feat(code): add examples for code translation, optimization, and parallel programming"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-29T02:03:36Z",
+"labels": [
+"enhancement",
+"rag",
+"domain:automation"
+],
+"number": 1238,
+"reactions": 0,
+"title": "Add configurable chunking strategies for RAG document processing"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-29T02:03:07Z",
+"labels": [
+"enhancement",
+"rag",
+"domain:automation"
+],
+"number": 1237,
+"reactions": 0,
+"title": "Add programmatic document management API (CRUD) for RAG index"
+},
+{
+"comments": 4,
+"createdAt": "2026-05-29T02:02:47Z",
+"labels": [
+"enhancement",
+"rag",
+"llm",
+"domain:platform"
+],
+"number": 1236,
+"reactions": 0,
+"title": "Add cloud LLM backend support (Claude API, OpenAI) for RAG synthesis"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-29T02:02:04Z",
+"labels": [
+"enhancement",
+"rag",
+"domain:automation"
+],
+"number": 1235,
+"reactions": 0,
+"title": "Support JSON document ingestion for RAG indexing"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-28T20:21:44Z",
+"labels": [
+"enhancement",
+"performance",
+"agent-ui",
+"domain:surfaces"
+],
+"number": 1223,
+"reactions": 0,
+"title": "feat(ui): preload agent context so first query is as fast as subsequent ones"
+},
+{
+"comments": 4,
+"createdAt": "2026-05-27T20:25:13Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"llm",
+"lemonade \ud83c\udf4b",
+"domain:platform"
+],
+"number": 1220,
+"reactions": 0,
+"title": "Feature Request: Native FLM format and Ryzen AI NPU support via dedicated Agent/Profile"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-21T15:12:48Z",
+"labels": [
+"enhancement",
+"tech debt",
+"cli"
+],
+"number": 1192,
+"reactions": 0,
+"title": "Refactor: split gaia.cli.build_parser into per-subcommand factory functions"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-21T01:03:13Z",
+"labels": [
+"enhancement",
+"cli",
+"domain:surfaces"
+],
+"number": 1185,
+"reactions": 0,
+"title": "gaia-tui: Mock agent binary for development testing"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-21T01:02:41Z",
+"labels": [
+"enhancement",
+"cli",
+"domain:surfaces"
+],
+"number": 1184,
+"reactions": 0,
+"title": "gaia-tui: /help and /init slash commands in chat"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-21T01:02:10Z",
+"labels": [
+"enhancement",
+"cli",
+"domain:surfaces"
+],
+"number": 1183,
+"reactions": 0,
+"title": "gaia-tui: Live-region streaming \u2014 overwrite intermediate output"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-21T01:01:19Z",
+"labels": [
+"enhancement",
+"cli",
+"domain:surfaces"
+],
+"number": 1182,
+"reactions": 0,
+"title": "gaia-tui: Port Rich console formatting patterns to lipgloss"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-20T19:04:01Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:distribution",
+"track:consumer-app"
+],
+"number": 1179,
+"reactions": 0,
+"title": "Agent Hub: Publish Python agent wheels to PyPI"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-20T17:42:01Z",
+"labels": [
+"enhancement",
+"agent",
+"cli",
+"domain:surfaces",
+"tui"
+],
+"number": 1177,
+"reactions": 0,
+"title": "gaia-tui: Python CLI delegation for init, mcp, eval, and agent subcommands"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-20T17:40:20Z",
+"labels": [
+"enhancement",
+"agent",
+"cli",
+"agent-hub",
+"domain:distribution",
+"tui"
+],
+"number": 1175,
+"reactions": 0,
+"title": "gaia-tui: Agent lifecycle management (download, update, remove)"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-20T17:39:58Z",
+"labels": [
+"enhancement",
+"agent",
+"cli",
+"agent-hub",
+"domain:distribution",
+"tui"
+],
+"number": 1174,
+"reactions": 0,
+"title": "gaia-tui: Agent detail view with metadata, starters, and run"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-20T17:39:37Z",
+"labels": [
+"enhancement",
+"agent",
+"cli",
+"agent-hub",
+"domain:distribution",
+"tui"
+],
+"number": 1173,
+"reactions": 0,
+"title": "gaia-tui: Agent Hub browser \u2014 search, filter, and install agents"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-20T17:24:51Z",
+"labels": [
+"enhancement",
+"agent",
+"cli",
+"sdk",
+"domain:surfaces",
+"tui"
+],
+"number": 1169,
+"reactions": 0,
+"title": "gaia: Go TUI binary supersedes current Python CLI as primary entry point"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-20T17:24:29Z",
+"labels": [
+"enhancement",
+"agent",
+"agent-hub",
+"domain:distribution",
+"tui"
+],
+"number": 1168,
+"reactions": 0,
+"title": "gaia-tui: Agent Hub validation harness (`gaia-tui validate`)"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-20T17:24:07Z",
+"labels": [
+"enhancement",
+"agent",
+"cpp",
+"domain:surfaces",
+"tui"
+],
+"number": 1167,
+"reactions": 0,
+"title": "gaia-tui: JSONL subprocess mode for C++ agents"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-19T19:24:49Z",
+"labels": [
+"enhancement",
+"p1",
+"scope",
+"lemonade \ud83c\udf4b",
+"sdk",
+"domain:agent-core"
+],
+"number": 1150,
+"reactions": 0,
+"title": "feat(sdk): hardware-aware agent initialization \u2014 Phase 2 (config + recipe wiring)"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-19T16:01:04Z",
+"labels": [
+"enhancement",
+"agent",
+"browser-use",
+"domain:automation"
+],
+"number": 1148,
+"reactions": 0,
+"title": "feat(knowledge): search backend abstraction + ecosystem search upgrade"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-19T16:00:44Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:automation"
+],
+"number": 1147,
+"reactions": 0,
+"title": "feat(knowledge): topic monitoring \u2014 ambient web intelligence with weekly delta digests"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-19T15:59:59Z",
+"labels": [
+"enhancement",
+"agent",
+"rag",
+"domain:automation"
+],
+"number": 1146,
+"reactions": 0,
+"title": "feat(knowledge): hybrid research \u2014 multi-step web + local knowledge fusion"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-19T15:58:39Z",
+"labels": [
+"enhancement",
+"agent",
+"rag",
+"domain:automation"
+],
+"number": 1143,
+"reactions": 0,
+"title": "feat(knowledge): local KB query \u2014 ask questions against indexed knowledge bases"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-19T15:58:02Z",
+"labels": [
+"enhancement",
+"agent",
+"rag",
+"domain:automation"
+],
+"number": 1142,
+"reactions": 0,
+"title": "feat(knowledge): crawl-to-index pipeline \u2014 turn any website into a local knowledge base"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-19T15:56:39Z",
+"labels": [
+"linux",
+"llm",
+"eval",
+"performance",
+"lemonade \ud83c\udf4b",
+"domain:quality"
+],
+"number": 1140,
+"reactions": 0,
+"title": "eval: benchmark Lemonade 10.4 vLLM / 10.5.1 MTP vs. pinned 10.2 baseline"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:45:52Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 1136,
+"reactions": 0,
+"title": "feat(github): ambient autonomy \u2014 CI regression alerts, auto-triage, adaptive quiet mode"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:44:53Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 1134,
+"reactions": 0,
+"title": "feat(github): issue clustering \u2014 semantic similarity grouping and duplicate detection"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:44:35Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 1133,
+"reactions": 0,
+"title": "feat(github): situational Q&A \u2014 natural language queries about repo state"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:43:57Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 1132,
+"reactions": 0,
+"title": "feat(github): upstream dependency intelligence \u2014 llama.cpp bump analysis"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:43:39Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 1131,
+"reactions": 0,
+"title": "feat(github): daily digest \u2014 pull-based summary of overnight activity"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:42:59Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 1130,
+"reactions": 0,
+"title": "feat(github): background poller \u2014 ambient event ingestion with rate limiting"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:42:42Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 1129,
+"reactions": 0,
+"title": "feat(github): community contributor dashboard \u2014 PR status, draft responses, SLA tracking"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:41:56Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 1128,
+"reactions": 0,
+"title": "feat(github): release-prep \u2014 changelog generation, CI check, draft release notes"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:40:44Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 1125,
+"reactions": 0,
+"title": "feat(github): PR re-review briefing \u2014 what changed since your last review"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:40:09Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 1124,
+"reactions": 0,
+"title": "feat(github): PR review queue \u2014 ranked by impact, sorted for review sprints"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-18T23:39:50Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:integrations"
+],
+"number": 1123,
+"reactions": 0,
+"title": "feat(github): GitHub API client wrapper (gh CLI + REST fallback)"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:29:07Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"sdk",
+"domain:agent-core"
+],
+"number": 1122,
+"reactions": 0,
+"title": "Agent Factory: End-to-end integration test \u2014 email triage pipeline"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:28:30Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"cli",
+"domain:agent-core"
+],
+"number": 1120,
+"reactions": 0,
+"title": "Agent Factory: Factory CLI \u2014 gaia factory subcommand group"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:28:11Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"sdk",
+"domain:agent-core"
+],
+"number": 1119,
+"reactions": 0,
+"title": "Agent Factory: Hardware-aware packaging \u2014 multi-variant builds for target systems"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:27:06Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"sdk",
+"cpp",
+"domain:agent-core"
+],
+"number": 1118,
+"reactions": 0,
+"title": "Agent Factory: Transpile skill \u2014 Python agent to C++ native binary"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-18T23:26:46Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"sdk",
+"domain:agent-core"
+],
+"number": 1117,
+"reactions": 0,
+"title": "Agent Factory: Model distillation \u2014 training data capture + fine-tuning export"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:26:26Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"sdk",
+"domain:agent-core"
+],
+"number": 1116,
+"reactions": 0,
+"title": "Agent Factory: Optimize loop \u2014 eval-driven iterative agent improvement"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:25:38Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:agent-core"
+],
+"number": 1115,
+"reactions": 0,
+"title": "feat(autonomy): heartbeat scheduler, event hooks, and email agent as first consumer"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:24:33Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"sdk",
+"domain:quality"
+],
+"number": 1113,
+"reactions": 0,
+"title": "Agent Factory: Eval sandbox infrastructure for interactive agents"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:24:13Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"sdk",
+"domain:agent-core"
+],
+"number": 1111,
+"reactions": 0,
+"title": "Agent Factory: SKILL.md parser + scaffold stage"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T23:23:52Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"sdk",
+"domain:agent-core"
+],
+"number": 1109,
+"reactions": 0,
+"title": "Agent Factory: Orchestrator protocol + Hermes integration"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T19:58:40Z",
+"labels": [
+"p2",
+"cli",
+"domain:platform"
+],
+"number": 1090,
+"reactions": 0,
+"title": "First-run polish bundle"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T19:58:17Z",
+"labels": [
+"documentation",
+"good first issue",
+"p1",
+"cli",
+"domain:platform"
+],
+"number": 1085,
+"reactions": 0,
+"title": "Undocumented CLI surface and phantom `telegram --token` flag"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T19:58:10Z",
+"labels": [
+"documentation",
+"good first issue",
+"p1",
+"domain:integrations",
+"connectors"
+],
+"number": 1083,
+"reactions": 0,
+"title": "Connector pages don't link to upstream provider docs for credential setup"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T19:57:57Z",
+"labels": [
+"documentation",
+"good first issue",
+"p1",
+"website",
+"domain:surfaces"
+],
+"number": 1081,
+"reactions": 0,
+"title": "Stale port `:8000` and version `0.17.2` across docs; misc doc-lint follow-ups"
+},
+{
+"comments": 4,
+"createdAt": "2026-05-18T19:57:35Z",
+"labels": [
+"documentation",
+"p1",
+"onboarding",
+"domain:platform"
+],
+"number": 1077,
+"reactions": 0,
+"title": "Guide prerequisites missing across ~14 guides"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T19:57:28Z",
+"labels": [
+"bug",
+"p1",
+"domain:platform"
+],
+"number": 1075,
+"reactions": 0,
+"title": "`--profile vlm` ships no VLM model; profiles collapse to Gemma-4-E4B"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T19:57:07Z",
+"labels": [
+"bug",
+"documentation",
+"p1",
+"onboarding",
+"domain:platform"
+],
+"number": 1074,
+"reactions": 0,
+"title": "`For developers` Quickstart omits `[rag]` and `[ui]` extras \u2014 first commands in Agent Memory, Document Q&A, and MCP Client guides fail on a clean install"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-18T16:03:38Z",
+"labels": [
+"enhancement",
+"rag",
+"domain:automation"
+],
+"number": 1071,
+"reactions": 0,
+"title": "[Feature] Support .epub file indexing"
+},
+{
+"comments": 4,
+"createdAt": "2026-05-16T16:23:30Z",
+"labels": [
+"bug",
+"linux",
+"electron",
+"domain:surfaces",
+"triage"
+],
+"number": 1068,
+"reactions": 0,
+"title": "[Bug]: GAIA window decorations broken fed44"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-11T09:05:16Z",
+"labels": [
+"dependencies",
+"tech debt",
+"devops",
+"security",
+"domain:quality"
+],
+"number": 1037,
+"reactions": 0,
+"title": "Investigate 173 npm dependabot vulnerabilities (71 high / 75 moderate / 27 low)"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-08T19:19:47Z",
+"labels": [
+"enhancement",
+"agent-ui",
+"domain:surfaces",
+"domain:integrations",
+"connectors"
+],
+"number": 1021,
+"reactions": 0,
+"title": "ux(connectors): File System and Web Fetch MCP tiles have no consumers among built-in agents"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-08T18:42:02Z",
+"labels": [
+"enhancement",
+"mcp",
+"agent-ui",
+"domain:integrations",
+"connectors"
+],
+"number": 1020,
+"reactions": 0,
+"title": "feat(connectors): show custom-agent MCP servers in Settings \u2192 Connectors panel"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-08T18:10:17Z",
+"labels": [
+"enhancement",
+"agent",
+"sdk",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 1019,
+"reactions": 0,
+"title": "feat(skills): SKILL.md support \u2014 build, load, share agent skills via agentskills.io standard"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-08T17:04:57Z",
+"labels": [
+"enhancement",
+"mcp",
+"domain:integrations",
+"connectors"
+],
+"number": 1003,
+"reactions": 0,
+"title": "feat(connectors): Discord MCP connector"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-08T17:04:43Z",
+"labels": [
+"enhancement",
+"mcp",
+"domain:integrations",
+"connectors"
+],
+"number": 1002,
+"reactions": 0,
+"title": "feat(connectors): Slack MCP connector"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-08T16:55:54Z",
+"labels": [
+"enhancement",
+"p2",
+"gui",
+"agent-ui",
+"consumer",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 1001,
+"reactions": 0,
+"title": "feat(ui): Agent UI visual design uplift via Claude Design"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-08T16:48:57Z",
+"labels": [
+"enhancement",
+"agent",
+"llm",
+"lemonade \ud83c\udf4b",
+"domain:agent-core"
+],
+"number": 1000,
+"reactions": 0,
+"title": "feat(agents): multi-model parallelism \u2014 small classifier + large writer via Lemonade multi-model loading"
+},
+{
+"comments": 4,
+"createdAt": "2026-05-08T16:38:08Z",
+"labels": [
+"bug",
+"electron",
+"domain:surfaces",
+"triage"
+],
+"number": 999,
+"reactions": 0,
+"title": "[Bug]: AppImage crashes on custom Fedora Kinoite Image"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-08T13:05:30Z",
+"labels": [
+"installer",
+"p1",
+"p2",
+"devops",
+"tests",
+"domain:quality"
+],
+"number": 992,
+"reactions": 0,
+"title": "Installer tests: scenario matrix (OS x UV x Lemonade)"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-08T13:05:25Z",
+"labels": [
+"installer",
+"p1",
+"p2",
+"devops",
+"tests",
+"domain:quality"
+],
+"number": 990,
+"reactions": 0,
+"title": "Installer tests: pre-release artifact handling (test the build, not the published version)"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-08T13:03:28Z",
+"labels": [
+"installer",
+"p1",
+"p2",
+"devops",
+"tests",
+"domain:quality"
+],
+"number": 989,
+"reactions": 0,
+"title": "Installer release integration test suite (matrix + pre-release gate)"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-08T10:20:32Z",
+"labels": [
+"enhancement",
+"good first issue",
+"tech debt",
+"agent-ui",
+"domain:surfaces"
+],
+"number": 988,
+"reactions": 0,
+"title": "[policy-alert] Extract usePolicyToast hook; consolidate 3 alert surfaces in ChatView.tsx"
+},
+{
+"comments": 1,
+"createdAt": "2026-05-08T10:20:29Z",
+"labels": [
+"tests",
+"electron",
+"agent-ui",
+"domain:quality"
+],
+"number": 986,
+"reactions": 0,
+"title": "[policy-alert] Add Playwright/RTL live-DOM tests for toast \u2192 receipt \u2192 notification flow"
+},
+{
+"comments": 0,
+"createdAt": "2026-05-07T15:32:20Z",
+"labels": [
+"enhancement",
+"mcp",
+"electron",
+"domain:integrations",
+"connectors"
+],
+"number": 978,
+"reactions": 0,
+"title": "feat(connectors): framework polish + missing tests + UI cleanup"
+},
+{
+"comments": 0,
+"createdAt": "2026-05-07T15:32:20Z",
+"labels": [
+"enhancement",
+"mcp",
+"electron",
+"security",
+"domain:integrations",
+"connectors"
+],
+"number": 977,
+"reactions": 0,
+"title": "feat(connectors): custom MCP server support (gaia connectors mcp)"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-06T23:27:44Z",
+"labels": [
+"enhancement",
+"chat",
+"performance",
+"domain:agent-core"
+],
+"number": 972,
+"reactions": 0,
+"title": "perf(chat): system prompt is ~6K tokens \u2014 trim for faster TTFT on local models"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-05T13:05:01Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"domain:automation",
+"track:consumer-app",
+"connectors"
+],
+"number": 961,
+"reactions": 0,
+"title": "feat(connectors): Outlook/Exchange via Power Automate webhook (#954)"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-01T18:46:31Z",
+"labels": [
+"enhancement",
+"p1",
+"electron",
+"domain:quality",
+"track:platform"
+],
+"number": 938,
+"reactions": 0,
+"title": "feat(electron): wire crash-loop counter into safe-mode launch"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-01T18:37:55Z",
+"labels": [
+"documentation",
+"domain:integrations",
+"connectors"
+],
+"number": 937,
+"reactions": 0,
+"title": "docs(connectors): write setup guides for remaining catalog entries"
+},
+{
+"comments": 2,
+"createdAt": "2026-05-01T18:20:16Z",
+"labels": [
+"installer",
+"p1",
+"devops",
+"tests",
+"electron",
+"domain:quality"
+],
+"number": 936,
+"reactions": 0,
+"title": "ci: automated installer smoke tests on PRs to main (Win/Linux/macOS)"
+},
+{
+"comments": 1,
+"createdAt": "2026-04-26T07:21:05Z",
+"labels": [
+"documentation",
+"p1",
+"consumer",
+"domain:quality",
+"track:platform"
+],
+"number": 900,
+"reactions": 0,
+"title": "Pre-flight implementation specs for under-specified consumer-critical issues"
+},
+{
+"comments": 1,
+"createdAt": "2026-04-26T07:21:03Z",
+"labels": [
+"documentation",
+"p1",
+"devops",
+"orchestration",
+"consumer",
+"domain:quality",
+"track:platform"
+],
+"number": 899,
+"reactions": 0,
+"title": "Agent-orchestration playbook for v0.20.0 (parallel coding agents)"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-26T06:57:49Z",
+"labels": [
+"enhancement",
+"p1",
+"gui",
+"consumer",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 898,
+"reactions": 0,
+"title": "Tunnel share UX: QR code + Add-to-Home-Screen + URL persistence"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-26T06:57:47Z",
+"labels": [
+"enhancement",
+"p2",
+"consumer",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 897,
+"reactions": 0,
+"title": "Web Push notifications via PWA \u2014 async delivery without Telegram"
+},
+{
+"comments": 1,
+"createdAt": "2026-04-26T06:57:46Z",
+"labels": [
+"enhancement",
+"p1",
+"audio",
+"consumer",
+"spec-ready",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 896,
+"reactions": 0,
+"title": "Voice via mobile browser: ASR + TTS on iOS Safari + Android Chrome"
+},
+{
+"comments": 1,
+"createdAt": "2026-04-26T06:57:44Z",
+"labels": [
+"enhancement",
+"p1",
+"electron",
+"gui",
+"agent-ui",
+"consumer",
+"spec-ready",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 895,
+"reactions": 0,
+"title": "Mobile-responsive Agent UI: touch targets, single-pane layout, virtual keyboard"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-26T06:57:43Z",
+"labels": [
+"enhancement",
+"p1",
+"electron",
+"agent-ui",
+"consumer",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 894,
+"reactions": 0,
+"title": "Mobile PWA: installable Agent UI on iOS + Android"
+},
+{
+"comments": 3,
+"createdAt": "2026-04-26T06:05:23Z",
+"labels": [
+"documentation",
+"p1",
+"security",
+"consumer",
+"spec-ready",
+"domain:quality",
+"track:platform"
+],
+"number": 890,
+"reactions": 0,
+"title": "Privacy & telemetry audit + verification UX \u2014 make zero-telemetry a property"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-26T04:43:12Z",
+"labels": [
+"p1",
+"devops",
+"tests",
+"electron",
+"agent-ui",
+"consumer",
+"tier-0",
+"domain:quality",
+"track:platform"
+],
+"number": 883,
+"reactions": 0,
+"title": "Agent UI: Playwright + Strix Halo E2E suite (validate every UI feature on real AMD hardware)"
+},
+{
+"comments": 1,
+"createdAt": "2026-04-26T04:36:16Z",
+"labels": [
+"p1",
+"tech debt",
+"devops",
+"tests",
+"consumer",
+"domain:quality",
+"track:platform"
+],
+"number": 875,
+"reactions": 0,
+"title": "Deep audit: CI/CD and test coverage gaps + Playwright/Strix Halo E2E plan"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-24T23:06:03Z",
+"labels": [
+"enhancement",
+"cpp",
+"domain:agent-core",
+"track:platform"
+],
+"number": 871,
+"reactions": 0,
+"title": "feat(code-index): add Verilog/VHDL parsers for HDL codebases"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-24T23:05:54Z",
+"labels": [
+"enhancement",
+"domain:agent-core",
+"track:platform"
+],
+"number": 870,
+"reactions": 0,
+"title": "feat(code-index): support indexing multiple repositories in a single namespace"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-24T23:05:47Z",
+"labels": [
+"enhancement",
+"mcp",
+"domain:integrations",
+"track:consumer-app"
+],
+"number": 869,
+"reactions": 0,
+"title": "feat(mcp): expose CodeIndexSDK as an MCP server for external code assistants"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-24T23:05:40Z",
+"labels": [
+"enhancement",
+"eval",
+"domain:quality",
+"track:platform"
+],
+"number": 868,
+"reactions": 0,
+"title": "feat(eval): retrieval-quality eval harness for code_index"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-24T17:06:23Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 862,
+"reactions": 0,
+"title": "feat(agents): NewsAgent \u2014 RSS feeds, web search, and LLM-powered news digests"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-24T17:06:14Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 861,
+"reactions": 0,
+"title": "feat(agents): GitAgent \u2014 clone, analyze, and explore repositories in a sandboxed workspace"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-21T03:27:17Z",
+"labels": [
+"enhancement",
+"installer",
+"domain:platform",
+"track:platform"
+],
+"number": 844,
+"reactions": 1,
+"title": "Feature Request: Adherence to AM/APPMAN AppImage guidelines"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-17T15:50:41Z",
+"labels": [
+"bug",
+"p2",
+"rag",
+"robustness",
+"domain:platform",
+"track:platform"
+],
+"number": 786,
+"reactions": 0,
+"title": "RAG: VLM image blocks can be split across chunks when section-based splitting path is used"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-14T09:55:15Z",
+"labels": [
+"enhancement",
+"installer",
+"lemonade \ud83c\udf4b",
+"domain:platform",
+"track:consumer-app",
+"epic"
+],
+"number": 775,
+"reactions": 0,
+"title": "Installer: Integrate lemond binary and model management UI"
+},
+{
+"comments": 2,
+"createdAt": "2026-04-13T20:19:13Z",
+"labels": [
+"enhancement",
+"installer",
+"domain:platform",
+"track:consumer-app"
+],
+"number": 767,
+"reactions": 0,
+"title": "feat: Add GAIA to Homebrew for macOS installation"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-10T18:07:04Z",
+"labels": [
+"enhancement",
+"installer",
+"electron",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 742,
+"reactions": 0,
+"title": "Desktop installer: show loading screen while backend starts"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-10T05:37:49Z",
+"labels": [
+"enhancement",
+"p1",
+"security",
+"sdk",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 741,
+"reactions": 0,
+"title": "[Connector Hub] Split #545: credential vault as standalone deliverable"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-10T05:37:36Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:distribution",
+"track:consumer-app",
+"connectors"
+],
+"number": 740,
+"reactions": 0,
+"title": "[Connector Hub Phase 5] Catalog migration + docs"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-10T05:37:27Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"cli",
+"domain:distribution",
+"track:consumer-app",
+"connectors"
+],
+"number": 739,
+"reactions": 0,
+"title": "[Connector Hub Phase 4] CLI parity + Discord custom adapter"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-10T05:37:18Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:automation",
+"track:consumer-app",
+"connectors"
+],
+"number": 738,
+"reactions": 0,
+"title": "[Connector Hub Phase 3] OAuth device-flow + Playwright connectors"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-10T05:37:06Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"sdk",
+"domain:agent-core",
+"track:consumer-app",
+"connectors"
+],
+"number": 737,
+"reactions": 0,
+"title": "[Connector Hub Phase 2] Token-auth connectors: Slack, GitHub, Notion"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-10T05:36:51Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"agent-ui",
+"domain:surfaces",
+"track:consumer-app",
+"connectors"
+],
+"number": 736,
+"reactions": 0,
+"title": "[Connector Hub Phase 1] Catalog UI + Obsidian smoke test"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-10T00:35:02Z",
+"labels": [
+"installer",
+"domain:platform",
+"track:platform"
+],
+"number": 734,
+"reactions": 0,
+"title": "Migrate desktop installer distribution to R2 / amd-gaia.ai when website lands"
+},
+{
+"comments": 1,
+"createdAt": "2026-04-10T00:34:35Z",
+"labels": [
+"installer",
+"p1",
+"domain:platform",
+"track:consumer-app"
+],
+"number": 733,
+"reactions": 0,
+"title": "Provision AMD Apple Developer ID for macOS notarization"
+},
+{
+"comments": 1,
+"createdAt": "2026-04-10T00:34:06Z",
+"labels": [
+"installer",
+"p1",
+"domain:platform",
+"track:consumer-app"
+],
+"number": 732,
+"reactions": 0,
+"title": "Apply for SignPath OSS to enable Windows code signing"
+},
+{
+"comments": 1,
+"createdAt": "2026-04-09T21:46:16Z",
+"labels": [
+"enhancement",
+"p2",
+"rag",
+"sdk",
+"gui",
+"domain:multimodal",
+"track:consumer-app",
+"agent-hub-layer"
+],
+"number": 730,
+"reactions": 0,
+"title": "RAG: index standalone image files (PNG/JPG/etc.) via VLM"
+},
+{
+"comments": 1,
+"createdAt": "2026-04-01T19:02:45Z",
+"labels": [
+"enhancement",
+"agent",
+"mcp",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 714,
+"reactions": 0,
+"title": "Agent UI: Curated MCP server catalogue with one-click enable/disable"
+},
+{
+"comments": 1,
+"createdAt": "2026-04-01T18:20:12Z",
+"labels": [
+"enhancement",
+"installer",
+"p1",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 711,
+"reactions": 0,
+"title": "Pre-configured distribution package"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-01T17:56:07Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"domain:distribution",
+"track:consumer-app"
+],
+"number": 708,
+"reactions": 0,
+"title": "Small business agent features for Strix Halo: invoicing, inventory, customer management"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-01T17:55:57Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 707,
+"reactions": 0,
+"title": "Personal finance agent: bank aggregation, spending analysis, and projections"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-01T17:55:34Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 705,
+"reactions": 0,
+"title": "Home Assistant integration: voice-controlled smart home with 24/7 device management"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-01T17:55:05Z",
+"labels": [
+"enhancement",
+"agent",
+"p3",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 704,
+"reactions": 0,
+"title": "Personal CRM with AI-managed contact profiles and per-person tone matching"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-01T17:54:52Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 703,
+"reactions": 0,
+"title": "Unified communication hub: SMS + email + messaging in single prioritized feed"
+},
+{
+"comments": 2,
+"createdAt": "2026-04-01T17:54:40Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"talk",
+"audio",
+"consumer",
+"spec-ready",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 702,
+"reactions": 0,
+"title": "Voice-first interaction: parity between voice and text as P0 enabling technology"
+},
+{
+"comments": 1,
+"createdAt": "2026-04-01T17:25:15Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 701,
+"reactions": 0,
+"title": "Configuration dashboard: personality, skills, MCP servers, tool management"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-01T17:25:07Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"audio",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 700,
+"reactions": 0,
+"title": "Meeting notes capture with speaker diarization"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-01T17:24:55Z",
+"labels": [
+"enhancement",
+"agent",
+"rag",
+"p3",
+"domain:distribution",
+"track:consumer-app"
+],
+"number": 699,
+"reactions": 0,
+"title": "Legal research agent: document analysis with RAG (Tier 2 use case)"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-01T17:24:45Z",
+"labels": [
+"enhancement",
+"p1",
+"security",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 698,
+"reactions": 0,
+"title": "Encrypted credential vault for API keys and OAuth tokens"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-01T17:24:40Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"agent-ui",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 697,
+"reactions": 0,
+"title": "Observability dashboard: audit trail, activity timeline, memory browser"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-01T17:24:14Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"domain:distribution",
+"track:consumer-app"
+],
+"number": 694,
+"reactions": 0,
+"title": "Microsoft Teams messaging adapter (Phase 2)"
+},
+{
+"comments": 1,
+"createdAt": "2026-04-01T17:24:11Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:automation",
+"track:consumer-app",
+"agent-hub-layer"
+],
+"number": 693,
+"reactions": 0,
+"title": "Signal messaging adapter (Phase 1 \u2014 privacy-first priority)"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-01T17:23:44Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"security",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 690,
+"reactions": 0,
+"title": "Messaging security: restricted default tool set and input sanitization"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-01T17:23:37Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 689,
+"reactions": 0,
+"title": "Messaging adapter rate limiting infrastructure"
+},
+{
+"comments": 0,
+"createdAt": "2026-04-01T17:23:17Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"agent-ui",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 687,
+"reactions": 0,
+"title": "Personality recipes: pre-built personalities with configuration dashboard UI"
+},
+{
+"comments": 1,
+"createdAt": "2026-04-01T17:23:09Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 686,
+"reactions": 0,
+"title": "Memory-based long conversation handling (no compaction)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-30T20:12:50Z",
+"labels": [
+"enhancement",
+"eval",
+"domain:quality",
+"track:platform"
+],
+"number": 671,
+"reactions": 0,
+"title": "Agent Eval: Extensibility \u2014 plugin API for custom scenarios, scorers, and document types"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-30T17:31:53Z",
+"labels": [
+"enhancement",
+"llm",
+"lemonade \ud83c\udf4b",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 668,
+"reactions": 0,
+"title": "LoRA adapter library: per-agent adapters with hot-swap via Lemonade Server"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-30T17:31:47Z",
+"labels": [
+"enhancement",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 667,
+"reactions": 0,
+"title": "Unsloth integration: QLoRA + GRPO fine-tuning on AMD consumer GPUs"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-30T17:31:29Z",
+"labels": [
+"enhancement",
+"eval",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 666,
+"reactions": 0,
+"title": "Eval-to-training pipeline: convert agent eval results into GRPO training data"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-30T17:26:34Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 665,
+"reactions": 0,
+"title": "Infrastructure monitoring and self-healing agent (Tier 2 use case)"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-30T17:26:23Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:multimodal",
+"track:consumer-app",
+"agent-hub-layer"
+],
+"number": 664,
+"reactions": 0,
+"title": "Financial tracking agent: budget monitoring, receipt processing, spending analysis"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-30T17:26:12Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 663,
+"reactions": 0,
+"title": "Personalized daily briefs: morning digest of email, calendar, news, and tasks"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-30T17:25:56Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 662,
+"reactions": 0,
+"title": "Calendar Agent: AI-powered schedule management (Tier 2 use case)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-30T17:25:45Z",
+"labels": [
+"enhancement",
+"browser-use",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 661,
+"reactions": 0,
+"title": "Web app workflow automation: forms, dashboards, SaaS tools via Playwright"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-28T07:38:23Z",
+"labels": [
+"enhancement",
+"server",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 654,
+"reactions": 0,
+"title": "M5: Multi-Session Concurrency for API Server"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-28T07:38:06Z",
+"labels": [
+"enhancement",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 653,
+"reactions": 0,
+"title": "M4: Drop-in Chat Widget (Single Script Tag)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-28T07:37:47Z",
+"labels": [
+"enhancement",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 652,
+"reactions": 0,
+"title": "M3: JavaScript Chat Client Library (@amd-gaia/chat-client)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-28T07:37:25Z",
+"labels": [
+"enhancement",
+"rag",
+"server",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 651,
+"reactions": 0,
+"title": "M2: Document Indexing API on OpenAI-Compatible Server"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-28T07:37:06Z",
+"labels": [
+"enhancement",
+"server",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 650,
+"reactions": 0,
+"title": "M1: System Prompt Passthrough for OpenAI-Compatible API"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-28T06:19:08Z",
+"labels": [
+"enhancement",
+"p2",
+"domain:distribution",
+"track:consumer-app"
+],
+"number": 649,
+"reactions": 0,
+"title": "Cost savings telemetry: show users what they save by running locally"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-28T06:19:00Z",
+"labels": [
+"enhancement",
+"installer",
+"p1",
+"domain:distribution",
+"track:consumer-app"
+],
+"number": 648,
+"reactions": 0,
+"title": "OEM bundling framework: pre-configuration for hardware SKUs"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-28T06:18:37Z",
+"labels": [
+"duplicate",
+"p1",
+"agent",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 646,
+"reactions": 1,
+"title": "Home Assistant integration: local AI-powered home automation (Tier 1 use case)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-28T06:18:18Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"agent-ui",
+"domain:distribution",
+"track:consumer-app"
+],
+"number": 644,
+"reactions": 0,
+"title": "Model Manager UI: download, switch, and update models from the desktop app"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-28T06:18:06Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"tray",
+"domain:automation",
+"track:consumer-app",
+"agent-hub-layer"
+],
+"number": 643,
+"reactions": 0,
+"title": "System tray app + background agent service (always-on operation)"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-27T19:10:40Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:automation",
+"track:consumer-app",
+"agent-hub-layer"
+],
+"number": 635,
+"reactions": 0,
+"title": "Messaging adapters: Telegram, Discord, Slack integration"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-27T19:10:33Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:automation",
+"track:consumer-app",
+"agent-hub-layer"
+],
+"number": 634,
+"reactions": 1,
+"title": "Always-on agent: heartbeat, scheduler, and event hooks (autonomy engine)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-27T19:10:16Z",
+"labels": [
+"enhancement",
+"p1",
+"llm",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 632,
+"reactions": 0,
+"title": "Hybrid model routing: local + cloud task routing for cost optimization"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-27T19:09:57Z",
+"labels": [
+"enhancement",
+"p1",
+"security",
+"server",
+"track:consumer-app"
+],
+"number": 630,
+"reactions": 0,
+"title": "OpenAI API: Optional API key authentication"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-24T21:26:40Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 616,
+"reactions": 0,
+"title": "Model quality optimization: system prompt compression, sub-4B model evaluation, and first SFT fine-tune"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-24T21:25:47Z",
+"labels": [
+"enhancement",
+"installer",
+"p1",
+"track:consumer-app"
+],
+"number": 614,
+"reactions": 0,
+"title": "Installer: Silent and Unattended Install Mode"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-24T19:59:30Z",
+"labels": [
+"enhancement",
+"p2",
+"performance",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 611,
+"reactions": 0,
+"title": "Agent Pipeline Profiling and Latency Optimization"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-24T19:59:08Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"mcp",
+"agent-ui",
+"track:consumer-app"
+],
+"number": 610,
+"reactions": 0,
+"title": "Agent UI: Visual Feedback for MCP Tool Execution"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-19T21:27:42Z",
+"labels": [
+"enhancement",
+"user-feedback",
+"agent",
+"agent-ui",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 603,
+"reactions": 0,
+"title": "feat(agent-ui): surface device support bypass option in UI (GAIA_SKIP_DEVICE_CHECK)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-19T21:27:26Z",
+"labels": [
+"enhancement",
+"user-feedback",
+"agent",
+"agent-ui",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 602,
+"reactions": 0,
+"title": "feat(agent-ui): disk space pre-flight warning before model downloads"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-19T21:27:12Z",
+"labels": [
+"enhancement",
+"agent",
+"agent-ui",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 601,
+"reactions": 0,
+"title": "feat(agent-ui): port conflict error \u2014 friendly message with --ui-port suggestion"
+},
+{
+"comments": 2,
+"createdAt": "2026-03-19T21:26:44Z",
+"labels": [
+"enhancement",
+"user-feedback",
+"agent",
+"agent-ui",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 599,
+"reactions": 0,
+"title": "feat(agent-ui): actionable chat error messages (replace generic failures)"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-19T21:26:17Z",
+"labels": [
+"enhancement",
+"user-feedback",
+"agent",
+"onboarding",
+"agent-ui",
+"track:consumer-app"
+],
+"number": 597,
+"reactions": 0,
+"title": "feat(agent-ui): first-run setup wizard / onboarding flow"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-19T05:52:42Z",
+"labels": [
+"tests",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 579,
+"reactions": 0,
+"title": "Memory unit and integration tests"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-16T23:06:02Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"chat",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 560,
+"reactions": 0,
+"title": "One-shot delayed execution: extend scheduler with single-fire tasks"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-16T23:05:52Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"security",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 559,
+"reactions": 0,
+"title": "Dangerous mode: opt-in guardrail bypass for autonomous execution"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-16T23:05:45Z",
+"labels": [
+"enhancement",
+"p1",
+"chat",
+"electron",
+"agent-ui",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 558,
+"reactions": 0,
+"title": "Agent Activity feed: sidebar timeline for autonomous actions"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-16T23:05:38Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"chat",
+"domain:automation",
+"track:consumer-app",
+"agent-hub-layer"
+],
+"number": 557,
+"reactions": 0,
+"title": "Autonomous loop: think-act-schedule cycle with planning prompt"
+},
+{
+"comments": 4,
+"createdAt": "2026-03-16T22:58:53Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"chat",
+"electron",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 555,
+"reactions": 1,
+"title": "Autonomous mode: agent schedules follow-up messages and acts proactively without waiting for user input"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-16T21:58:10Z",
+"labels": [
+"enhancement",
+"agent",
+"sdk",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 553,
+"reactions": 0,
+"title": "Self-Improving Agent: tool generation, skill extraction, and outcome learning"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-16T21:57:43Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"chat",
+"mcp",
+"electron",
+"consumer",
+"spec-ready",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 549,
+"reactions": 0,
+"title": "Agent UI MCP Server: programmatic UI control for agents"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-16T19:04:31Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"chat",
+"browser-use",
+"track:consumer-app"
+],
+"number": 547,
+"reactions": 0,
+"title": "Add Perplexity as optional premium web search provider"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-16T19:04:20Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"security",
+"sdk",
+"domain:distribution",
+"track:consumer-app"
+],
+"number": 545,
+"reactions": 0,
+"title": "ServiceIntegrationMixin: API discovery, credential management, and preference learning"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-16T19:04:10Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"cua",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 544,
+"reactions": 0,
+"title": "Port ComputerUseMixin workflow learning and replay from gaia6"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-16T17:36:08Z",
+"labels": [
+"enhancement",
+"p1",
+"chat",
+"electron",
+"lemonade \ud83c\udf4b",
+"agent-ui",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 540,
+"reactions": 0,
+"title": "WebUI: Multi-modal rendering \u2014 display images, audio, and rich content inline in chat"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-16T17:35:50Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"chat",
+"lemonade \ud83c\udf4b",
+"sdk",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 539,
+"reactions": 0,
+"title": "Lemonade Multi-Modal Agent \u2014 image, voice, and system tools via Lemonade v10"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-16T17:19:51Z",
+"labels": [
+"enhancement",
+"installer",
+"p1",
+"lemonade \ud83c\udf4b",
+"track:consumer-app"
+],
+"number": 533,
+"reactions": 0,
+"title": "Update Lemonade installer and version gating for v10 (DEB naming, Linux NPU)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-16T16:28:10Z",
+"labels": [
+"enhancement",
+"tests",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 529,
+"reactions": 0,
+"title": "End-to-end integration testing: C++ agents in WebUI"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-16T16:27:48Z",
+"labels": [
+"enhancement",
+"agent-ui",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 528,
+"reactions": 0,
+"title": "Add C++ agent tool metadata to frontend AgentActivity"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-16T16:27:37Z",
+"labels": [
+"enhancement",
+"agent-ui",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 527,
+"reactions": 0,
+"title": "Add capabilities API endpoint and frontend adaptation"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-10T00:18:04Z",
+"labels": [
+"documentation",
+"p1",
+"deals",
+"domain:automation"
+],
+"number": 493,
+"reactions": 0,
+"title": "DealAgent documentation: user guide, playbook, and SDK reference"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-10T00:17:24Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"browser-use",
+"deals",
+"domain:automation"
+],
+"number": 491,
+"reactions": 0,
+"title": "Web scraping fallback for retailers without APIs"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-10T00:17:03Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"llm",
+"deals",
+"domain:automation"
+],
+"number": 490,
+"reactions": 0,
+"title": "LLM-powered deal quality analysis and purchase recommendations"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-10T00:16:41Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"deals",
+"domain:automation"
+],
+"number": 489,
+"reactions": 0,
+"title": "Price history charts: matplotlib visualization with ASCII fallback"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-10T00:16:14Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"cli",
+"deals",
+"domain:automation"
+],
+"number": 488,
+"reactions": 0,
+"title": "Background daemon mode: `gaia deals watch` as persistent service"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-10T00:15:38Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"deals",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 486,
+"reactions": 0,
+"title": "Scheduled price checking with APScheduler integration"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-10T00:15:22Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"deals",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 485,
+"reactions": 0,
+"title": "Watchlist management: add, remove, and list tracked products with alert thresholds"
+},
+{
+"comments": 3,
+"createdAt": "2026-03-10T00:14:21Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"deals",
+"track:consumer-app"
+],
+"number": 482,
+"reactions": 0,
+"title": "DealAgent product search tools: Best Buy API, SerpApi, and Slickdeals integration"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-10T00:14:01Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"sdk",
+"deals",
+"track:consumer-app"
+],
+"number": 480,
+"reactions": 0,
+"title": "HTTPToolsMixin: reusable REST API tool for external service integration"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-09T20:08:52Z",
+"labels": [
+"enhancement",
+"cpp",
+"onboarding",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 476,
+"reactions": 0,
+"title": "Integrate gaia init into C++ framework/demo agents CLIs"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-09T05:20:23Z",
+"labels": [
+"enhancement",
+"p2",
+"chat",
+"onboarding",
+"domain:distribution",
+"track:consumer-app"
+],
+"number": 471,
+"reactions": 0,
+"title": "Guided first task: context-aware onboarding prompt after setup completes"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-09T05:20:07Z",
+"labels": [
+"enhancement",
+"p1",
+"chat",
+"electron",
+"onboarding",
+"agent-ui",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 470,
+"reactions": 0,
+"title": "Chat UI onboarding wizard: visual setup flow with system scan and progress"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-09T05:18:25Z",
+"labels": [
+"enhancement",
+"installer",
+"p1",
+"agent",
+"onboarding",
+"domain:agent-core",
+"track:consumer-app",
+"agent-hub-layer"
+],
+"number": 466,
+"reactions": 0,
+"title": "System Scanner: detect hardware, OS, installed tools, and environment"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-08T08:12:03Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"security",
+"cua",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 461,
+"reactions": 0,
+"title": "Add desktop control security policy and opt-in model"
+},
+{
+"comments": 2,
+"createdAt": "2026-03-08T08:11:50Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"cua",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 460,
+"reactions": 0,
+"title": "Implement DesktopToolsMixin for screenshot, mouse, and keyboard control (CUA)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-08T08:11:30Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"security",
+"browser-use",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 459,
+"reactions": 0,
+"title": "Add browser use security policy and URL allowlisting"
+},
+{
+"comments": 1,
+"createdAt": "2026-03-08T08:11:19Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"chat",
+"browser-use",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 458,
+"reactions": 0,
+"title": "Implement BrowserToolsMixin with Playwright for web browsing agent"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-08T08:10:45Z",
+"labels": [
+"enhancement",
+"p1",
+"rag",
+"tests",
+"robustness",
+"domain:quality",
+"track:consumer-app"
+],
+"number": 456,
+"reactions": 0,
+"title": "Add comprehensive document processing test suite"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-06T19:21:38Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"chat",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 440,
+"reactions": 0,
+"title": "Agent capabilities discovery API for Chat UI"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-06T15:23:54Z",
+"labels": [
+"enhancement",
+"devops",
+"tests",
+"sdk",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 437,
+"reactions": 0,
+"title": "SDK: CI/CD pipeline for multi-language build/test"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-06T15:21:03Z",
+"labels": [
+"enhancement",
+"sdk",
+"cpp",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 436,
+"reactions": 0,
+"title": "SDK: C++ packaging via vcpkg and Conan"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-06T15:20:27Z",
+"labels": [
+"enhancement",
+"sdk",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 435,
+"reactions": 0,
+"title": "SDK: Python bindings with ctypes"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-06T15:19:25Z",
+"labels": [
+"enhancement",
+"sdk",
+"dotnet",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 434,
+"reactions": 0,
+"title": "SDK: .NET SDK with P/Invoke wrapper"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-06T15:16:48Z",
+"labels": [
+"enhancement",
+"sdk",
+"cpp",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 433,
+"reactions": 0,
+"title": "SDK: C API version, ABI stability, and config"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-06T15:16:05Z",
+"labels": [
+"enhancement",
+"mcp",
+"sdk",
+"cpp",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 432,
+"reactions": 0,
+"title": "SDK: C API tool registration and MCP management"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-06T15:15:30Z",
+"labels": [
+"enhancement",
+"sdk",
+"cpp",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 431,
+"reactions": 0,
+"title": "SDK: C API unified event callback system"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-06T15:15:12Z",
+"labels": [
+"enhancement",
+"sdk",
+"cpp",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 430,
+"reactions": 0,
+"title": "SDK: C API process_query with cancellation"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-06T15:14:38Z",
+"labels": [
+"enhancement",
+"sdk",
+"cpp",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 429,
+"reactions": 0,
+"title": "SDK: C API core \u2014 error codes, lifecycle, agent CRUD"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:38:33Z",
+"labels": [
+"enhancement",
+"p1",
+"tests",
+"os-agents",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 414,
+"reactions": 0,
+"title": "Integration Testing Strategy (4-Tier)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:38:13Z",
+"labels": [
+"enhancement",
+"p1",
+"devops",
+"tests",
+"os-agents",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 413,
+"reactions": 0,
+"title": "CI/CD Workflows for OS Agents"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:37:55Z",
+"labels": [
+"documentation",
+"p1",
+"os-agents",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 412,
+"reactions": 0,
+"title": "Documentation for OS MCP Servers"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:37:14Z",
+"labels": [
+"enhancement",
+"p2",
+"agent",
+"mcp",
+"os-agents",
+"dotnet",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 409,
+"reactions": 0,
+"title": "Backup & Troubleshooting MCP Server (.NET)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:36:56Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"mcp",
+"os-agents",
+"dotnet",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 408,
+"reactions": 0,
+"title": "Productivity MCP Server (.NET)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:36:38Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"mcp",
+"cpp",
+"os-agents",
+"gaming",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 407,
+"reactions": 0,
+"title": "Gaming MCP Server (C++)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:36:11Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"mcp",
+"os-agents",
+"dotnet",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 406,
+"reactions": 0,
+"title": "Startup & Update Intelligence MCP Server (.NET)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:35:49Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"mcp",
+"security",
+"os-agents",
+"dotnet",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 405,
+"reactions": 0,
+"title": "Security & Privacy MCP Server (.NET)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:35:25Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"mcp",
+"cpp",
+"os-agents",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 404,
+"reactions": 0,
+"title": "Power & Thermal MCP Server (C++)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:35:10Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"mcp",
+"cpp",
+"os-agents",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 403,
+"reactions": 0,
+"title": "Storage Intelligence MCP Server (C++)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:34:55Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"mcp",
+"cpp",
+"os-agents",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 402,
+"reactions": 0,
+"title": "Network Intelligence MCP Server (C++)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:34:39Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"mcp",
+"cpp",
+"os-agents",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 401,
+"reactions": 0,
+"title": "Process Intelligence MCP Server (C++)"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:34:20Z",
+"labels": [
+"enhancement",
+"p1",
+"tests",
+"cpp",
+"os-agents",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 400,
+"reactions": 0,
+"title": "Shared Test Fixtures and Mocks for OS Agents"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:34:05Z",
+"labels": [
+"enhancement",
+"p1",
+"sdk",
+"os-agents",
+"foundation",
+"dotnet",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 399,
+"reactions": 0,
+"title": ".NET Component Infrastructure"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:33:47Z",
+"labels": [
+"enhancement",
+"p1",
+"tests",
+"security",
+"sdk",
+"os-agents",
+"foundation",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 398,
+"reactions": 0,
+"title": "Virtual OS Sandbox Infrastructure"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:33:29Z",
+"labels": [
+"enhancement",
+"p1",
+"security",
+"sdk",
+"cpp",
+"os-agents",
+"foundation",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 397,
+"reactions": 0,
+"title": "Permission Framework & Action Audit Log"
+},
+{
+"comments": 0,
+"createdAt": "2026-03-02T19:33:10Z",
+"labels": [
+"enhancement",
+"p1",
+"mcp",
+"sdk",
+"cpp",
+"os-agents",
+"foundation",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 396,
+"reactions": 0,
+"title": "C++ MCP Server Base Class and OS Telemetry Library"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T23:06:36Z",
+"labels": [
+"enhancement",
+"p1",
+"tests",
+"lemonade \ud83c\udf4b",
+"sdk",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 392,
+"reactions": 0,
+"title": "Add shared test fixtures and mocks for Lemonade v10 endpoints"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T22:49:51Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"chat",
+"rag",
+"performance",
+"lemonade \ud83c\udf4b",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 387,
+"reactions": 0,
+"title": "Extend ChatAgent/RAG with reranking and CLI flag"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T22:49:42Z",
+"labels": [
+"enhancement",
+"p1",
+"agent",
+"talk",
+"audio",
+"performance",
+"lemonade \ud83c\udf4b",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 386,
+"reactions": 0,
+"title": "Extend TalkSDK and AudioClient with Lemonade ASR+TTS auto-detection"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T22:43:53Z",
+"labels": [
+"enhancement",
+"p1",
+"llm",
+"lemonade \ud83c\udf4b",
+"sdk",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 383,
+"reactions": 0,
+"title": "Add Lemonade v10 version check and feature gating"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T22:43:38Z",
+"labels": [
+"enhancement",
+"p1",
+"llm",
+"lemonade \ud83c\udf4b",
+"sdk",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 381,
+"reactions": 0,
+"title": "Update LemonadeProvider to wrap image and audio methods"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T22:40:02Z",
+"labels": [
+"enhancement",
+"p2",
+"llm",
+"lemonade \ud83c\udf4b",
+"sdk",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 378,
+"reactions": 0,
+"title": "Add auto server port discovery via Lemonade beacon"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T22:39:57Z",
+"labels": [
+"enhancement",
+"p2",
+"llm",
+"lemonade \ud83c\udf4b",
+"sdk",
+"domain:platform",
+"track:consumer-app"
+],
+"number": 377,
+"reactions": 0,
+"title": "Evaluate and integrate Qwen 3.5 model defaults"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T22:39:49Z",
+"labels": [
+"enhancement",
+"p1",
+"lemonade \ud83c\udf4b",
+"image-generation",
+"sdk",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 376,
+"reactions": 0,
+"title": "Add custom SD model pulling support"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T22:39:44Z",
+"labels": [
+"enhancement",
+"p1",
+"rag",
+"performance",
+"lemonade \ud83c\udf4b",
+"sdk",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 375,
+"reactions": 0,
+"title": "Add reranking support to RAG pipeline via Lemonade endpoint"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T22:39:31Z",
+"labels": [
+"enhancement",
+"p1",
+"llm",
+"audio",
+"lemonade \ud83c\udf4b",
+"sdk",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 374,
+"reactions": 0,
+"title": "Add REST audio transcription endpoint support"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T22:39:25Z",
+"labels": [
+"enhancement",
+"p1",
+"talk",
+"audio",
+"performance",
+"lemonade \ud83c\udf4b",
+"sdk",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 373,
+"reactions": 0,
+"title": "Add server-side TTS via Lemonade audio/speech endpoint"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T22:39:13Z",
+"labels": [
+"enhancement",
+"p1",
+"talk",
+"audio",
+"performance",
+"lemonade \ud83c\udf4b",
+"sdk",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 372,
+"reactions": 0,
+"title": "Add streaming transcription via Lemonade WebSocket realtime API"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T22:38:52Z",
+"labels": [
+"enhancement",
+"p1",
+"llm",
+"lemonade \ud83c\udf4b",
+"image-generation",
+"sdk",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 371,
+"reactions": 0,
+"title": "Add image variations endpoint support"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T22:38:46Z",
+"labels": [
+"enhancement",
+"p1",
+"llm",
+"lemonade \ud83c\udf4b",
+"image-generation",
+"sdk",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 370,
+"reactions": 0,
+"title": "Add image editing endpoint support to LemonadeClient and SDToolsMixin"
+},
+{
+"comments": 1,
+"createdAt": "2026-02-27T21:31:17Z",
+"labels": [
+"enhancement",
+"p2",
+"cpp",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 368,
+"reactions": 0,
+"title": "C++ Framework: Software Bill of Materials (SBOM) generation"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T21:30:03Z",
+"labels": [
+"enhancement",
+"p1",
+"cpp",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 367,
+"reactions": 0,
+"title": "C++ Framework: Memory bounds for step results and tool call history"
+},
+{
+"comments": 1,
+"createdAt": "2026-02-27T21:29:50Z",
+"labels": [
+"enhancement",
+"p2",
+"cpp",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 366,
+"reactions": 0,
+"title": "C++ Framework: Crash diagnostics and structured exception handling"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-27T19:28:48Z",
+"labels": [
+"enhancement",
+"p2",
+"cpp",
+"gui",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 362,
+"reactions": 0,
+"title": "C++ Framework: Electron.js tray app example for GUI integration"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-09T20:32:58Z",
+"labels": [
+"documentation",
+"enhancement",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 334,
+"reactions": 0,
+"title": "Windows MCP System Health guide: address remaining PR #277 review feedback"
+},
+{
+"comments": 2,
+"createdAt": "2026-02-09T20:30:04Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:agent-core",
+"track:oem-pc"
+],
+"number": 333,
+"reactions": 0,
+"title": "Add PowershellToolsMixin for direct PowerShell execution in agents"
+},
+{
+"comments": 2,
+"createdAt": "2026-02-09T20:29:34Z",
+"labels": [
+"enhancement",
+"agent",
+"domain:agent-core",
+"track:oem-pc"
+],
+"number": 332,
+"reactions": 0,
+"title": "Add WindowsApiToolsMixin for native Windows API tools (bypass MCP server overhead)"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-09T19:43:28Z",
+"labels": [
+"documentation",
+"mcp",
+"domain:integrations"
+],
+"number": 330,
+"reactions": 0,
+"title": "Expand MCP Client guide: server removal, discovery walkthrough, and broader server examples"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-09T09:41:10Z",
+"labels": [
+"enhancement",
+"roadmap",
+"sdk",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 325,
+"reactions": 1,
+"title": "Vision SDK - Document Processing Pipeline"
+},
+{
+"comments": 1,
+"createdAt": "2026-02-07T20:21:00Z",
+"labels": [
+"enhancement",
+"domain:automation",
+"track:consumer-app"
+],
+"number": 323,
+"reactions": 1,
+"title": "GAIA + Arduino: Local AI-Powered Hardware Control"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-07T05:13:04Z",
+"labels": [
+"agent",
+"tests",
+"agent-hub",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 322,
+"reactions": 0,
+"title": "Expand tools support by 10x"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-06T22:56:42Z",
+"labels": [
+"documentation",
+"mcp",
+"domain:distribution",
+"track:consumer-app"
+],
+"number": 321,
+"reactions": 1,
+"title": "Create MCP video demos for docs"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-06T21:55:45Z",
+"labels": [
+"enhancement",
+"cli",
+"domain:agent-core",
+"track:consumer-app"
+],
+"number": 317,
+"reactions": 0,
+"title": "Extend `gaia init` to support custom profiles"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-04T20:41:12Z",
+"labels": [
+"tech debt",
+"tests",
+"domain:quality"
+],
+"number": 303,
+"reactions": 0,
+"title": "Reduce uv pip installation time"
+},
+{
+"comments": 0,
+"createdAt": "2026-02-02T19:40:23Z",
+"labels": [
+"tech debt",
+"domain:multimodal"
+],
+"number": 294,
+"reactions": 0,
+"title": "Fix intake forms"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-27T17:09:09Z",
+"labels": [
+"enhancement",
+"agent",
+"roadmap",
+"image-generation",
+"domain:multimodal"
+],
+"number": 272,
+"reactions": 1,
+"title": "SD Agent: Intelligent Stable Diffusion Optimization Assistant"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-26T18:55:54Z",
+"labels": [
+"agent",
+"domain:agent-core"
+],
+"number": 260,
+"reactions": 0,
+"title": "Mockup Agent"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-26T18:55:02Z",
+"labels": [
+"agent",
+"domain:agent-core"
+],
+"number": 259,
+"reactions": 0,
+"title": "Cosmos Agent"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-24T02:28:32Z",
+"labels": [
+"bug",
+"p2",
+"domain:quality"
+],
+"number": 255,
+"reactions": 0,
+"title": "Fix context size reporting"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-23T23:30:05Z",
+"labels": [
+"tech debt",
+"domain:quality"
+],
+"number": 252,
+"reactions": 0,
+"title": "Reorganize files with large LoC"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-23T19:50:46Z",
+"labels": [
+"documentation",
+"cua",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 248,
+"reactions": 0,
+"title": "CUA: Playbook Documentation"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-23T16:09:34Z",
+"labels": [
+"enhancement",
+"agent",
+"cua",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 238,
+"reactions": 0,
+"title": "CUA: Voice Integration with Talk Mode"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-23T16:09:27Z",
+"labels": [
+"enhancement",
+"agent",
+"cua",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 237,
+"reactions": 0,
+"title": "CUA: Phase 2 NPU Optimization"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-23T16:09:22Z",
+"labels": [
+"enhancement",
+"agent",
+"cua",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 236,
+"reactions": 0,
+"title": "CUA: Thermal Management Workflow"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-23T16:09:20Z",
+"labels": [
+"enhancement",
+"agent",
+"cua",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 235,
+"reactions": 0,
+"title": "CUA: Presentation Mode Workflow"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-23T16:09:17Z",
+"labels": [
+"enhancement",
+"agent",
+"cua",
+"domain:distribution",
+"track:oem-pc"
+],
+"number": 233,
+"reactions": 0,
+"title": "CUA: Performance Boost Workflow"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-23T16:09:16Z",
+"labels": [
+"enhancement",
+"agent",
+"cua",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 232,
+"reactions": 0,
+"title": "CUA: Eye Care Workflow"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-23T16:09:14Z",
+"labels": [
+"enhancement",
+"agent",
+"cua",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 231,
+"reactions": 0,
+"title": "CUA: Meeting Preparation Workflow"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-23T16:09:12Z",
+"labels": [
+"enhancement",
+"agent",
+"cua",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 230,
+"reactions": 0,
+"title": "CUA: Battery Conservation Workflow"
+},
+{
+"comments": 5,
+"createdAt": "2026-01-22T16:19:35Z",
+"labels": [
+"agent",
+"cua",
+"domain:multimodal",
+"track:consumer-app"
+],
+"number": 224,
+"reactions": 1,
+"title": "Computer Use Desktop Control Agent (CUA) - MCP Client Integration"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-22T13:47:08Z",
+"labels": [
+"enhancement",
+"agent",
+"electron",
+"domain:agent-core"
+],
+"number": 223,
+"reactions": 0,
+"title": "Sky Tour Agent - Automated Observatory Control"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-19T08:10:03Z",
+"labels": [
+"documentation",
+"roadmap",
+"mcp",
+"domain:integrations"
+],
+"number": 201,
+"reactions": 1,
+"title": "MCP Docs Server: AI assistant context for GAIA development"
+},
+{
+"comments": 0,
+"createdAt": "2026-01-15T23:48:28Z",
+"labels": [
+"documentation"
+],
+"number": 186,
+"reactions": 0,
+"title": "Missing `docs/spec/code-agent.mdx` and `docs/spec/emr-agent.mdx` specs,"
+},
+{
+"comments": 1,
+"createdAt": "2026-01-08T15:34:26Z",
+"labels": [
+"enhancement",
+"cli",
+"domain:agent-core"
+],
+"number": 151,
+"reactions": 0,
+"title": "feat: GAIA Code initialization"
+},
+{
+"comments": 7,
+"createdAt": "2025-12-04T13:53:52Z",
+"labels": [
+"bug",
+"talk",
+"domain:multimodal"
+],
+"number": 124,
+"reactions": 0,
+"title": "[Bug]: Model selection does not work with `gaia talk`"
+},
+{
+"comments": 0,
+"createdAt": "2025-09-28T03:03:30Z",
+"labels": [
+"p1",
+"security",
+"domain:surfaces",
+"track:consumer-app"
+],
+"number": 94,
+"reactions": 0,
+"title": "MCP Security Vulnerabilities"
+},
+{
+"comments": 1,
+"createdAt": "2025-08-12T22:38:00Z",
+"labels": [
+"enhancement",
+"domain:surfaces"
+],
+"number": 78,
+"reactions": 0,
+"title": "feat: Support Dockerized GAIA Frontend Deployment with Remote Lemonade Backend"
+},
+{
+"comments": 2,
+"createdAt": "2025-07-08T15:50:30Z",
+"labels": [
+"enhancement",
+"installer",
+"domain:platform"
+],
+"number": 72,
+"reactions": 0,
+"title": "feat: installer need proxy parameters or manually download components"
+}
+]
