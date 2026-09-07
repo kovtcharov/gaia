@@ -406,10 +406,11 @@ func TestAlwaysPromisesOnlyTheScopeTheAgentNamed(t *testing.T) {
 // reads DESTRUCTIVE on everything stops carrying information.
 func TestKnownToolsAreClassifiedRatherThanAllDestructive(t *testing.T) {
 	for tool, want := range map[string]RiskTier{
-		"write_file":        RiskWrite,
-		"install_skill":     RiskWrite,
-		"run_shell_command": RiskDestructive,
-		"permanent_delete":  RiskDestructive,
+		"write_file":            RiskWrite,
+		"install_skill":         RiskWrite,
+		"remember_skill_lesson": RiskWrite,
+		"run_shell_command":     RiskDestructive,
+		"permanent_delete":      RiskDestructive,
 	} {
 		if got := ClassifyActionRisk(tool); got != want {
 			t.Errorf("ClassifyActionRisk(%q) = %v, want %v", tool, got, want)
@@ -449,6 +450,44 @@ func TestConfirmationRendersLegiblyAtNarrowWidths(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A learning event (#2674) rides the same modal as every other gated call:
+// WRITE badge — not the unknown-action DESTRUCTIVE default — and, because the
+// agent names a per-skill scope, the `a` key IS offered and grants only that
+// skill's lessons.
+func TestSkillLessonPromptIsWriteAndOffersAlways(t *testing.T) {
+	m := NewConfirmationModel("run-1", "remember_skill_lesson",
+		`Remember for the 'gh-triage' skill: prefer gh --json over scraping?`, "").
+		WithLiveChannel("cid-1", "remember_skill_lesson gh-triage")
+	view := stripANSI(m.View())
+
+	for _, want := range []string{
+		"remember_skill_lesson",
+		"WRITE",
+		"a allow `remember_skill_lesson gh-triage` this session",
+		"y run once",
+		"n/esc deny",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("skill-lesson modal missing %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "DESTRUCTIVE") {
+		t.Errorf("a learning event must not carry the red badge:\n%s", view)
+	}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	if cmd == nil {
+		t.Fatal("'a' did not resolve the confirmation — the always key was not offered")
+	}
+	msg := cmd().(ConfirmationDecidedMsg)
+	if !msg.Approved || !msg.Always || msg.AlwaysScope != "remember_skill_lesson gh-triage" {
+		t.Errorf("decision = %+v, want Always with the per-skill scope", msg)
+	}
+	if updated.State() != ConfirmationAlways {
+		t.Errorf("state = %v, want Always", updated.State())
 	}
 }
 

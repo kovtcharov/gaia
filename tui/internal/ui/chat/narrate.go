@@ -73,6 +73,9 @@ var toolPhrases = map[string]toolPhrase{
 	"remove_skill":     {With: "Removing the %s skill", Without: "Removing a skill", Arg: "name"},
 	"load_skill":       {With: "Loading the %s skill", Without: "Loading a skill", Arg: "name"},
 	"unload_skill":     {With: "Unloading the %s skill", Without: "Unloading a skill", Arg: "name"},
+	// The learning signal: the user must see WHICH skill the agent wants to
+	// change, not a harness line like "Running remember_skill_lesson".
+	"remember_skill_lesson": {With: "Learning from this for the %s skill", Without: "Learning from this session", Arg: "skill_name"},
 
 	// Documents / RAG
 	"query_documents":       {With: "Searching your documents for %s", Without: "Searching your documents", Arg: "query"},
@@ -129,7 +132,7 @@ var verbForms = map[string]string{
 var salientArgKeys = []string{
 	"command", "cmd", "sql", "query", "q", "url", "file_path", "path",
 	"filepath", "file", "filename", "directory", "dir", "pattern",
-	"name", "topic", "message_id", "issue", "text", "prompt",
+	"skill_name", "skill", "name", "topic", "message_id", "issue", "text", "prompt",
 }
 
 // toolNarration is the work-log line for one tool call: what the agent is doing,

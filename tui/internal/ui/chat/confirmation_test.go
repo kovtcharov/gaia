@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/amd/gaia/tui/internal/client"
 	"github.com/amd/gaia/tui/internal/event"
 	"github.com/amd/gaia/tui/internal/ui/components"
 )
@@ -338,6 +339,61 @@ func TestStaleConfirmationTimeoutIsDropped(t *testing.T) {
 	}
 	if m.confirmation != nil {
 		t.Error("a stale timeout must not resurrect the modal")
+	}
+}
+
+// The Adaptive Skills learning signal (#2674) rides the existing modal: a
+// gated remember_skill_lesson puts the confirmation up mid-stream with the
+// WRITE badge (not the unknown-action DESTRUCTIVE default), offers the
+// per-skill always, and delivers the user's answer back to the parked agent.
+func TestSkillLessonLearningSignalUsesTheExistingModal(t *testing.T) {
+	m, c := liveModel(t)
+	m.streaming = true
+	m = feed(t, m, event.CanonicalNeedsConfirmationEvent{
+		Type: "needs_confirmation", RunID: "run-1", Action: "remember_skill_lesson",
+		Summary:     `Remember for the 'gh-triage' skill: prefer gh --json over scraping?`,
+		ConfirmID:   "cid-1",
+		AlwaysScope: "remember_skill_lesson gh-triage",
+	})
+
+	if m.confirmation == nil {
+		t.Fatal("a gated skill lesson did not put the confirmation modal up")
+	}
+	if !m.streaming {
+		t.Error("the learning pause must not end the turn on its own")
+	}
+	view := stripANSIChat(m.View())
+	for _, want := range []string{
+		"remember_skill_lesson",
+		"gh-triage",
+		"WRITE",
+		"a allow `remember_skill_lesson gh-triage` this session",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("learning modal missing %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "DESTRUCTIVE") {
+		t.Errorf("a learning event must not be badged destructive:\n%s", view)
+	}
+
+	// The user's answer reaches the agent still parked on the prompt.
+	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = updated.(ChatModel)
+	if cmd == nil {
+		t.Fatal("'a' did not resolve the confirmation — the always key was not offered")
+	}
+	decided := cmd().(components.ConfirmationDecidedMsg)
+	_, deliver := m.Update(decided)
+	if deliver == nil {
+		t.Fatal("the decision was recorded but never delivered to the agent")
+	}
+	deliver()
+	if len(c.decisions) != 1 || c.decisions[0] != client.PermissionAlways {
+		t.Errorf("decisions delivered = %v, want one PermissionAlways", c.decisions)
+	}
+	if len(c.confirmIDs) != 1 || c.confirmIDs[0] != "cid-1" {
+		t.Errorf("confirm ids delivered = %v, want [cid-1]", c.confirmIDs)
 	}
 }
 

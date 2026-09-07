@@ -34,6 +34,12 @@ func TestToolNarration(t *testing.T) {
 		{"a percent is not a format verb", "get_100%_done", `{}`, "", "Getting 100% done"},
 		{"...on the fallback path too", "zzz_100%_x", `{}`, "", "Running zzz_100%_x"},
 		{"...and with an argument", "get_100%_done", `{"name":"q3"}`, "", "Getting 100% done: q3"},
+		// The Adaptive Skills learning signal (#2674): the line names the skill
+		// the agent wants to change, whichever conventional key carries it.
+		{"skill lesson names the skill", "remember_skill_lesson", `{"skill_name":"gh-triage","lesson":"prefer gh --json"}`, "", "Learning from this for the gh-triage skill"},
+		{"skill lesson via skill key", "remember_skill_lesson", `{"skill":"gh-triage","lesson":"prefer gh --json"}`, "", "Learning from this for the gh-triage skill"},
+		{"skill lesson via name key", "remember_skill_lesson", `{"name":"gh-triage","lesson":"prefer gh --json"}`, "", "Learning from this for the gh-triage skill"},
+		{"session-level lesson has no skill", "remember_skill_lesson", `{"lesson":"prefer gh --json","section":"procedure"}`, "", "Learning from this session"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := toolNarration(tc.tool, json.RawMessage(tc.args), tc.narration)

@@ -185,8 +185,10 @@ class GaiaAgent(ChatAgent, SkillLibraryToolsMixin, CodeIndexToolsMixin):
 
     # Installing a skill writes third-party code under ~/.gaia/skills and
     # removing one deletes it, so both are gated the way file mutation is.
+    # A remembered lesson rewrites how a skill behaves from then on, so it
+    # is gated the same way.
     CONFIRMATION_REQUIRED_TOOLS: ClassVar[frozenset] = frozenset(
-        {"install_skill", "remove_skill"}
+        {"install_skill", "remove_skill", "remember_skill_lesson"}
     )
 
     def __init__(self, config: Optional[GaiaAgentConfig] = None, **kwargs):

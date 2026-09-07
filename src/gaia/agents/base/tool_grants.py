@@ -104,7 +104,9 @@ _PATH_ARG_NAMES = ("file_path", "path", "filename", "file", "target_file")
 _COMMAND_ARG_NAMES = ("command", "cmd", "script", "command_line")
 _SKILL_ARG_NAMES = ("skill", "skill_name", "skill_id", "name")
 
-_SKILL_TOOLS = frozenset({"install_skill", "remove_skill"})
+# remember_skill_lesson is here so its prompt can offer a per-skill "always":
+# no scope means the a-key is never offered at all (see grant_scope's contract).
+_SKILL_TOOLS = frozenset({"install_skill", "remove_skill", "remember_skill_lesson"})
 
 
 @dataclass(frozen=True)

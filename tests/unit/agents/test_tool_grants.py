@@ -110,6 +110,38 @@ class TestPathGrants:
         assert write.key != edit.key
 
 
+class TestSkillGrantsAreScopedToTheSkill:
+    """The skill tools grant per skill name — never tool-wide."""
+
+    @pytest.mark.parametrize(
+        "tool", ["install_skill", "remove_skill", "remember_skill_lesson"]
+    )
+    def test_scope_is_the_named_skill(self, tool):
+        scope = grant_scope(tool, {"skill_name": "gh-triage"})
+        assert scope is not None
+        assert scope.key == f"{tool}:gh-triage"
+        assert "gh-triage" in scope.label
+
+    @pytest.mark.parametrize("arg_name", ["skill", "skill_name", "skill_id", "name"])
+    def test_every_conventional_skill_arg_name_produces_a_grant(self, arg_name):
+        """The TUI only offers the `a` key when the scope is non-empty, so a
+        lesson call must produce a grant whichever conventional name the tool
+        gives its skill argument."""
+        scope = grant_scope("remember_skill_lesson", {arg_name: "gh-triage"})
+        assert scope is not None
+        assert scope.key == "remember_skill_lesson:gh-triage"
+
+    def test_a_grant_does_not_cover_a_different_skill(self):
+        one = grant_scope("remember_skill_lesson", {"skill_name": "gh-triage"})
+        two = grant_scope("remember_skill_lesson", {"skill_name": "email-drafts"})
+        assert one.key != two.key
+
+    def test_a_lesson_with_no_skill_name_gets_no_grant(self):
+        """A session-level lesson names no skill, so "always" is not offered
+        and the user answers y/n each time."""
+        assert grant_scope("remember_skill_lesson", {"lesson": "prefer --json"}) is None
+
+
 class TestGrantsAreAPureFunctionOfTheCall:
     def test_the_same_call_always_produces_the_same_key(self):
         args = {"command": "gh issue list"}

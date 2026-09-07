@@ -71,7 +71,7 @@ func (t RiskTier) Badge() string {
 //
 // The second group is the base set every agent gates
 // (agent.TOOLS_REQUIRING_CONFIRMATION in src/gaia/agents/base/agent.py) plus
-// the flagship's own two. Left unlisted they all fell through to the cautious
+// the flagship's own three. Left unlisted they all fell through to the cautious
 // default and rendered "DESTRUCTIVE" — including a `pwd`. A badge that says
 // DESTRUCTIVE for everything says nothing, and crying wolf on the safe calls
 // is what makes the loud one ignorable.
@@ -101,6 +101,9 @@ var confirmationRiskTiers = map[string]RiskTier{
 	"update_gaia_md":      RiskWrite,
 	"install_skill":       RiskWrite,
 	"remove_skill":        RiskWrite,
+	// A learning event edits how a skill behaves from now on — a write,
+	// visible and reversible, not a catastrophe.
+	"remember_skill_lesson": RiskWrite,
 }
 
 // unboundedRiskActions are tiered Destructive because their name does not bound

@@ -11,8 +11,11 @@ merges the two (union), and ``_execute_tool`` gates on that merged set.
 
 from unittest.mock import patch
 
+import pytest
+
 from gaia.agents.base.agent import TOOLS_REQUIRING_CONFIRMATION, Agent
 from gaia.agents.base.console import AgentConsole
+from gaia.agents.base.tool_grants import grant_scope
 from gaia.agents.base.tools import tool
 
 
@@ -103,6 +106,24 @@ class TestMerge:
         assert "launch_missiles" not in TOOLS_REQUIRING_CONFIRMATION
         assert "launch_missiles" not in Agent.confirmation_required_tools()
         assert "launch_missiles" not in _BareAgent.confirmation_required_tools()
+
+
+class TestFlagshipSkillLessonGate:
+    """#2674: when the agent wants to remember a skill lesson, the user must
+    SEE it. Both halves are load-bearing: the gate makes the TUI's
+    confirmation modal appear at all, and the grant scope is what makes the
+    modal offer the `a`/always key (no scope, no key)."""
+
+    def test_remember_skill_lesson_is_confirmation_gated(self):
+        agent_mod = pytest.importorskip("gaia_agent.agent")
+        gated = agent_mod.GaiaAgent.confirmation_required_tools()
+        for name in ("install_skill", "remove_skill", "remember_skill_lesson"):
+            assert name in gated
+
+    def test_the_gated_lesson_offers_a_scoped_always(self):
+        scope = grant_scope("remember_skill_lesson", {"skill_name": "gh-triage"})
+        assert scope is not None
+        assert scope.key == "remember_skill_lesson:gh-triage"
 
 
 class TestExecuteToolGate:
