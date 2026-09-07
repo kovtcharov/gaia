@@ -105,53 +105,9 @@ func bandText(title string, width int) string {
 	return t
 }
 
-// wrapPanelText breaks s to w columns on spaces, hard-splitting any single
-// word wider than the measure. Distinct from WrapText (question.go), which
-// returns one newline-joined string; a panel needs the lines to indent each.
+// wrapPanelText breaks s to w columns for the panel body. A panel indents each
+// line itself, so it needs them separately rather than newline-joined — that is
+// the only reason this exists next to WrapText (wrap.go); both wrap the same way.
 func wrapPanelText(s string, w int) []string {
-	if w < 1 {
-		w = 1
-	}
-	var out []string
-	for _, para := range strings.Split(s, "\n") {
-		fields := strings.Fields(para)
-		if len(fields) == 0 {
-			out = append(out, "")
-			continue
-		}
-		cur := ""
-		for _, f := range fields {
-			for ansi.StringWidth(f) > w {
-				head := ansi.Truncate(f, w, "")
-				rest := strings.TrimPrefix(f, head)
-				// ansi.Truncate re-emits a reset, so head is not always a
-				// literal prefix; without this the loop cannot make progress
-				// and spins on the UI goroutine.
-				if head == "" || rest == f {
-					break
-				}
-				if cur != "" {
-					out = append(out, cur)
-					cur = ""
-				}
-				out = append(out, head)
-				f = rest
-			}
-			switch {
-			case f == "":
-				continue
-			case cur == "":
-				cur = f
-			case ansi.StringWidth(cur)+1+ansi.StringWidth(f) <= w:
-				cur += " " + f
-			default:
-				out = append(out, cur)
-				cur = f
-			}
-		}
-		if cur != "" {
-			out = append(out, cur)
-		}
-	}
-	return out
+	return WrapLines(s, w)
 }

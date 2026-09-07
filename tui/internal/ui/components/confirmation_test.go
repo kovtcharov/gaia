@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // --- state machine: pending -> approved / denied / timed-out ---------------
@@ -505,5 +506,39 @@ func TestConfirmationViewUsesTheUnboundedWording(t *testing.T) {
 	}
 	if !strings.Contains(view, "DESTRUCTIVE") {
 		t.Errorf("the cautious badge should remain:\n%s", view)
+	}
+}
+
+// --- layout: no phantom rows, no clipped remedy -----------------------------
+
+// A summary that ends in a newline is ordinary agent output. Rendering that
+// newline as a row opened a blank gap in the middle of the panel, between the
+// summary and the destructive warning, which reads as a rendering fault right
+// where the user is deciding whether to allow something irreversible.
+func TestConfirmationTrailingNewlineDoesNotAddARow(t *testing.T) {
+	plain := NewConfirmationModel("run-1", "rm", "Delete the scratch dir.", "")
+	plain.SetWidth(60)
+	trailing := NewConfirmationModel("run-1", "rm", "Delete the scratch dir.\n", "")
+	trailing.SetWidth(60)
+
+	if got, want := trailing.View(), plain.View(); got != want {
+		t.Errorf("a trailing newline changed the panel:\n got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// The panel is width-constrained, so an over-long path in the summary used to
+// survive WrapText and get re-wrapped by lipgloss — which is fine here but is
+// the same defect that mis-aims clicks in QuestionModel. Pin the shape: every
+// wrapped line fits, so the panel's own count is the panel's real height.
+func TestConfirmationLongPathWrapsWithoutOverflowing(t *testing.T) {
+	m := NewConfirmationModel("run-1", "rm",
+		`Delete C:\Users\someone\AppData\Local\Temp\gaia-cache-0123456789abcdef\build.tar.gz permanently.`, "")
+	for w := 24; w <= 120; w++ {
+		m.SetWidth(w)
+		for i, l := range strings.Split(m.View(), "\n") {
+			if got := lipgloss.Width(l); got > w {
+				t.Fatalf("width=%d: row %d is %d columns wide", w, i, got)
+			}
+		}
 	}
 }

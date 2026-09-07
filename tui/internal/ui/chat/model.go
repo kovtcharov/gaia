@@ -821,7 +821,7 @@ func (m ChatModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// alt-screen app the terminal's own scrollback does not exist, so
 		// this and the arrow keys are the only way back to what already
 		// happened.
-		if m.palette.open {
+		if m.paletteShowing() {
 			return m.handlePaletteMouse(msg)
 		}
 		if m.question != nil {
@@ -915,7 +915,7 @@ func (m ChatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// must reach its own case below untouched, since it is the universal way
 	// out and must not be silently absorbed by a palette that happened to be
 	// open.
-	if m.palette.open {
+	if m.paletteShowing() {
 		if msg.Type == tea.KeyCtrlC {
 			m.palette.open = false
 		} else if updated, cmd, handled := m.handlePaletteKey(msg); handled {
@@ -956,7 +956,7 @@ func (m ChatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// it. Keyed on mouseWheelOn, not mouseCaptured: an overlay can also
 		// hold the mouse (for its own clicks), and Esc there means cancel
 		// the question/turn (below) or close the palette (handled earlier,
-		// in the m.palette.open branch) — not silently let go of a capture
+		// in the m.paletteShowing() branch) — not silently let go of a capture
 		// the user never asked for.
 		if m.mouseWheelOn {
 			return m.toggleSelectMode()
@@ -2377,7 +2377,7 @@ func (m ChatModel) View() string {
 	// always closes it before anything could open help), but if that ever
 	// changed, help asking "what can I do" should win over a stale command
 	// list.
-	if m.palette.open {
+	if m.paletteShowing() {
 		base = renderCommandPalette(base, m.input.Value(), m.paletteFiltered(), m.palette.selected, m.width, m.height)
 	}
 

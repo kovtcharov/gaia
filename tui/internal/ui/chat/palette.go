@@ -64,6 +64,34 @@ type commandPalette struct {
 	selected int
 }
 
+// modalOpen reports whether a DECISION surface — a mid-run question or a
+// tool confirmation — currently owns the keyboard. Both are rendered inline in
+// the transcript and both take keys before anything else does (see handleKey).
+func (m ChatModel) modalOpen() bool {
+	return m.confirmation != nil || m.question != nil
+}
+
+// paletteShowing reports whether the "/" palette is on screen AND owns input.
+//
+// It is NOT the same as m.palette.open. Typing mid-turn is advertised, so a
+// needs_confirmation or needs_input can land while a slash command is
+// half-typed — and renderCommandPalette replaces the WHOLE frame rather than
+// compositing over it, so a palette drawn on top of a confirmation hides the
+// confirmation completely while y/n/Enter/Esc still route into it (Esc denies).
+// The user would then be answering a permission prompt for a destructive tool
+// they cannot see. A decision surface therefore always wins the frame.
+//
+// Suppressed, not discarded: the half-typed command lives in m.input, the
+// composer, which stays visible under the modal — so nothing the user typed is
+// lost, and answering the modal brings the palette straight back.
+//
+// Every read of palette-is-active goes through here (View, key routing, mouse
+// routing, mouse capture) so the render and the routing cannot drift apart
+// again.
+func (m ChatModel) paletteShowing() bool {
+	return m.palette.open && !m.modalOpen()
+}
+
 // paletteFiltered is the command list for the composer's CURRENT text.
 func (m ChatModel) paletteFiltered() []paletteCommand {
 	return filterPaletteCommands(m.input.Value())

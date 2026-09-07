@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/amd/gaia/tui/internal/ui/components"
 	"github.com/amd/gaia/tui/internal/ui/theme"
 )
 
@@ -348,43 +349,14 @@ func truncateStyled(s string, w int) string {
 
 // wrap breaks text into lines of at most w columns, on word boundaries where it
 // can and mid-token when a single token (a URL, a long command) is longer.
+//
+// One implementation, shared: components.WrapLines. A second copy of a wrapper
+// is a second chance for one of them to stop hard-splitting, and a wrapper that
+// silently returns an over-wide line makes every caller that counts its lines
+// wrong about its own height.
 func wrap(s string, w int) []string {
 	if w < 8 {
 		w = 8
 	}
-	var out []string
-	for _, paragraph := range strings.Split(s, "\n") {
-		line := ""
-		for _, word := range strings.Fields(paragraph) {
-			for lipgloss.Width(word) > w {
-				if line != "" {
-					out = append(out, line)
-					line = ""
-				}
-				runes := []rune(word)
-				cut := len(runes)
-				for cut > 0 && lipgloss.Width(string(runes[:cut])) > w {
-					cut--
-				}
-				out = append(out, string(runes[:cut]))
-				word = string(runes[cut:])
-			}
-			switch {
-			case line == "":
-				line = word
-			case lipgloss.Width(line)+1+lipgloss.Width(word) <= w:
-				line += " " + word
-			default:
-				out = append(out, line)
-				line = word
-			}
-		}
-		if line != "" {
-			out = append(out, line)
-		}
-	}
-	if len(out) == 0 {
-		return []string{""}
-	}
-	return out
+	return components.WrapLines(s, w)
 }

@@ -357,35 +357,3 @@ func hang(s, first, rest string) string {
 	}
 	return strings.Join(lines, "\n")
 }
-
-// WrapText hard-wraps text at limit columns on word boundaries, preserving each
-// line's leading indent on its continuations.
-//
-// The viewport does NOT soft-wrap: a line longer than the pane is CLIPPED, and a
-// clipped message loses its tail — which for an actionable message is exactly
-// the part that says what to do. Anything rendered as a bare line rather than
-// inside a width-constrained lipgloss block has to come through here.
-func WrapText(s string, limit int) string {
-	if limit <= 0 {
-		return s
-	}
-	var out []string
-	for _, para := range strings.Split(s, "\n") {
-		indent := para[:len(para)-len(strings.TrimLeft(para, " "))]
-		line := ""
-		for _, word := range strings.Fields(para) {
-			candidate := word
-			if line != "" {
-				candidate = line + " " + word
-			}
-			if lipgloss.Width(indent+candidate) > limit && line != "" {
-				out = append(out, indent+line)
-				line = word
-				continue
-			}
-			line = candidate
-		}
-		out = append(out, indent+line)
-	}
-	return strings.Join(out, "\n")
-}
