@@ -45,6 +45,17 @@ function logPrefix(step) {
  * @property {string[]} [stop]        - Optional stop sequences. Applied only when present.
  * @property {boolean}  [debug]       - When true, logs each call's step label, token counts,
  *   and message sizes to stderr.
+ * @property {LlmCallObserver} [onCall] - Optional async hook awaited after every
+ *   successful completion. Lets a caller harvest out-of-band per-call telemetry
+ *   (e.g. an inference server's `/stats` endpoint) without the SDK depending on
+ *   any particular server. A throwing observer propagates — it is caller code and
+ *   its failures are real (no silent swallow).
+ */
+
+/**
+ * @callback LlmCallObserver
+ * @param {{step: string, usage: import('../utils/types.js').StepUsage, durationMs: number}} event
+ * @returns {void|Promise<void>}
  */
 
 /**
@@ -77,6 +88,21 @@ class LlmClient {
     this._stop = config.stop?.length ? config.stop : undefined;
     /** @type {boolean} */
     this._debug = config.debug ?? false;
+    /** @type {import('./llm.js').LlmCallObserver|undefined} */
+    this._onCall = config.onCall;
+  }
+
+  /**
+   * Await the optional per-call observer. No-op when none was configured.
+   *
+   * @param {string} step
+   * @param {import('../utils/types.js').StepUsage} usage
+   * @param {number} startedAt - `Date.now()` captured before the request
+   * @returns {Promise<void>}
+   */
+  async _notify(step, usage, startedAt) {
+    if (!this._onCall) return;
+    await this._onCall({ step, usage, durationMs: Date.now() - startedAt });
   }
 
   /**
@@ -98,6 +124,7 @@ class LlmClient {
       );
     }
 
+    const startedAt = Date.now();
     const response = await this._oai.chat.completions.create({
       model: this._model,
       temperature: this._temperature,
@@ -122,6 +149,7 @@ class LlmClient {
     /** @type {T} */
     const data = JSON.parse(toolCall.function.arguments);
     const usage = extractUsage(response.usage);
+    await this._notify(step, usage, startedAt);
 
     if (this._debug) {
       process.stderr.write(
@@ -163,6 +191,7 @@ class LlmClient {
       );
     }
 
+    const startedAt = Date.now();
     const response = await this._oai.chat.completions.create({
       model: this._model,
       temperature: this._temperature,
@@ -176,6 +205,7 @@ class LlmClient {
 
     const text = (response.choices[0]?.message?.content ?? "").trim();
     const usage = extractUsage(response.usage);
+    await this._notify(step, usage, startedAt);
 
     if (this._debug) {
       process.stderr.write(
@@ -217,6 +247,7 @@ class LlmClient {
       );
     }
 
+    const startedAt = Date.now();
     const response = await this._oai.chat.completions.create({
       model: this._model,
       temperature: this._temperature,
@@ -232,6 +263,7 @@ class LlmClient {
     /** @type {T} */
     const data = parseJsonContent(raw);
     const usage = extractUsage(response.usage);
+    await this._notify(step, usage, startedAt);
 
     if (this._debug) {
       process.stderr.write(

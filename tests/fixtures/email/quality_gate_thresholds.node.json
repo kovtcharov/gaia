@@ -1,0 +1,13 @@
+{
+  "_comment": "Quality-gate thresholds for the NODE email-triage SDK (hub/agents/email/node), scored over the same corpus and ground truth as the Python agent via `gaia eval benchmark --impl node`. Loaded by gaia.eval.benchmark.default_quality_thresholds_path('node'). The bars below are COPIED from the Python manifest so the two legs are read on the same scale — they are NOT measured Node numbers. 'enforce' ships false and MUST stay false until a baseline run on the self-hosted Lemonade runner establishes what this implementation actually achieves; flipping it before then would gate on a guess. Same data-not-code rule as the Python manifest: tune bars here, never in a workflow YAML.",
+  "fp_max": 0.05,
+  "fn_max": 0.02,
+  "axis": "needs_attention",
+  "enforce": false,
+  "_acceptance_comment": "acceptance_target / urgent_recall_floor mirror the Python manifest's release-gate keys so a future Node scorecard gate has the same shape to read. NOTHING consumes them yet — there is no release_agent workflow for the Node SDK — so acceptance_enforce is false and these are placeholders, not a confirmed floor. Re-measure both against a real Node run before any of this is enforced.",
+  "acceptance_target": 0.80,
+  "urgent_recall_floor": 0.90,
+  "acceptance_enforce": false,
+  "_ctx_comment": "require_ctx_match stays false for Node: the agent_factory path in run_benchmark skips _verify_ctx_readback, so a Node run stamps ctx_size as requested rather than read back from the server. Enforcing a ctx match on an unverified stamp would assert something the run did not check.",
+  "require_ctx_match": false
+}

@@ -2659,6 +2659,28 @@ Examples:
         help="Save this run's scorecard as the throughput baseline.",
     )
     benchmark_eval_parser.add_argument(
+        "--impl",
+        choices=["python", "node"],
+        default="python",
+        help="Which email-triage implementation to score: the Python agent "
+        "(default) or the Node SDK in hub/agents/email/node. Both are scored by "
+        "the same corpus, ground truth, and gate machinery.",
+    )
+    benchmark_eval_parser.add_argument(
+        "--node-dir",
+        default=None,
+        help="Path to the Node email SDK (default: hub/agents/email/node in the "
+        "repo checkout). Only used with --impl node.",
+    )
+    benchmark_eval_parser.add_argument(
+        "--force-llm-classify",
+        action="store_true",
+        help="Disable the Node SDK's heuristic short-circuit so every message "
+        "goes through the LLM classifier. Use this for an apples-to-apples "
+        "model-quality comparison with the Python agent; omit it to measure "
+        "shipped behaviour. Only used with --impl node.",
+    )
+    benchmark_eval_parser.add_argument(
         "--ctx-size",
         type=int,
         default=None,
@@ -4903,6 +4925,30 @@ Let me know your answer!
             # rmtree). `results` is already captured, and the temp dir is a
             # throwaway in the OS temp space, so a failed cleanup must not fail an
             # otherwise-successful eval.
+            impl = getattr(args, "impl", "python")
+            agent_factory = None
+            if impl == "node":
+                from gaia.eval.node_email_adapter import make_node_agent_factory
+
+                # The Node SDK has no default endpoint; resolve the same one the
+                # Python agent would have used so both legs hit one server.
+                node_base_url = args.backend or _get_lemonade_config()[2]
+                agent_factory = make_node_agent_factory(
+                    mbox_path=mbox_path,
+                    model_id=args.model,
+                    base_url=node_base_url,
+                    limit=args.limit,
+                    node_dir=args.node_dir,
+                    ctx_size=args.ctx_size,
+                    force_llm_classify=args.force_llm_classify,
+                )
+                print(
+                    f"[IMPL] node SDK at "
+                    f"{args.node_dir or 'hub/agents/email/node'} -> "
+                    f"{node_base_url} "
+                    f"(force_llm_classify={args.force_llm_classify})"
+                )
+
             with tempfile.TemporaryDirectory(
                 prefix="gaia-bench-", ignore_cleanup_errors=True
             ) as tmp:
@@ -4915,9 +4961,10 @@ Let me know your answer!
                     ground_truth=ground_truth,
                     db_path=str(Path(tmp) / "state.db"),
                     ctx_size=args.ctx_size,
+                    agent_factory=agent_factory,
                 )
 
-            run_id = f"bench-{args.model.replace('/', '-').lower()}"
+            run_id = f"bench-{impl}-{args.model.replace('/', '-').lower()}"
             summary = summarize_benchmark(results, run_id=run_id)
             perf = summary["scorecard"]["performance"]
             tps = perf.get("avg_tokens_per_second")
@@ -4927,6 +4974,7 @@ Let me know your answer!
             print(f"\n{'=' * 60}")
             print(f"  Email-Triage Throughput Benchmark — {args.model}")
             print(f"{'=' * 60}")
+            print(f"  Implementation: {impl}")
             print(
                 f"  Experiments:  {args.experiments}  " f"(limit {args.limit} emails)"
             )

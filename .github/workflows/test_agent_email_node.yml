@@ -1,0 +1,92 @@
+# Copyright(C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.
+# SPDX-License-Identifier: MIT
+
+# Offline tests for the @amd-gaia/node-agent-email triage SDK
+# (hub/agents/email/node) and its eval driver.
+#
+# Until this workflow existed the Node SDK was invisible to CI: nothing built
+# it, tested it, or linted it, so a change could land with zero evidence. This
+# is the cheap always-on half of that gap. The expensive half — scoring the SDK
+# against the labelled corpus on real hardware — is test_email_agent_node_eval.yml.
+#
+# Everything here is hermetic: the driver test spawns the real driver against a
+# stub OpenAI-compatible server on localhost, so there is no model, no GPU, and
+# no self-hosted runner in the path. It belongs on a GitHub-hosted runner and
+# must stay that way — a hardware dependency here would make the SDK's basic
+# correctness hostage to the single Lemonade slot.
+
+name: Agent Email Node SDK Tests
+
+on:
+  workflow_call:
+  push:
+    branches: [ main ]
+    paths:
+      - 'hub/agents/email/node/**'
+      - '.github/workflows/test_agent_email_node.yml'
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'hub/agents/email/node/**'
+      - '.github/workflows/test_agent_email_node.yml'
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-agent-email-node:
+    name: Test node-agent-email SDK
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ready_for_ci')
+    defaults:
+      run:
+        working-directory: hub/agents/email/node
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: hub/agents/email/node/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test (vitest)
+        run: npm test
+
+      # Publishing invariant: the eval driver and its tests are development
+      # tooling and must not ship in the SDK tarball. `files` allowlists
+      # index.js/core/utils, so this asserts the allowlist has not been widened
+      # by accident.
+      - name: Assert tarball ships no eval tooling
+        run: |
+          npm pack --dry-run --json > pack.json
+          node -e '
+            const fs = require("fs");
+            const pack = JSON.parse(fs.readFileSync("pack.json", "utf8"));
+            const files = (pack[0]?.files ?? []).map((f) => f.path);
+            const offenders = files.filter(
+              (p) => p.startsWith("eval/") || p.startsWith("test/")
+            );
+            if (offenders.length > 0) {
+              console.error("❌ Tarball contains dev-only file(s):");
+              offenders.forEach((p) => console.error("   " + p));
+              console.error(
+                "eval/ and test/ are development tooling — keep them out of the " +
+                "package `files` allowlist."
+              );
+              process.exit(1);
+            }
+            console.log("✅ Package stays lean — " + files.length + " files, no eval tooling.");
+          '

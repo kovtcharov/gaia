@@ -74,10 +74,10 @@ sidecar:
 # packaged agent so a PR touching a single agent's sources is labelled for it.
 # ---------------------------------------------------------------------------
 
-# Email agent changes (hub package: frozen Python sidecar + npm client)
+# Email agent changes (hub package: frozen Python sidecar, npm client, Node SDK)
 agent::email:
   - changed-files:
-    - any-glob-to-any-file: ['hub/agents/email/python/**/*', 'hub/agents/email/npm/**/*', 'docs/guides/email.mdx']
+    - any-glob-to-any-file: ['hub/agents/email/python/**/*', 'hub/agents/email/npm/**/*', 'hub/agents/email/node/**/*', 'docs/guides/email.mdx']
 
 agent::analyst:
   - changed-files:

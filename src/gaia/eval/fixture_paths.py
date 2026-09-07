@@ -34,6 +34,32 @@ def _candidate_roots() -> list[Path]:
     return roots
 
 
+def resolve_repo_path(*parts: str, must_be_dir: bool = False) -> Path:
+    """Return the path to a committed repo file or directory.
+
+    ``parts`` is the path relative to the repo root (e.g.
+    ``("hub", "agents", "email", "node")``). Same candidate-root search as
+    :func:`resolve_repo_fixture`, which is a thin wrapper over this. Raises
+    ``FileNotFoundError`` naming what to fix when nothing matches.
+    """
+    tried: list[str] = []
+    for root in _candidate_roots():
+        candidate = root.joinpath(*parts)
+        exists = candidate.is_dir() if must_be_dir else candidate.is_file()
+        if exists:
+            return candidate
+        tried.append(str(candidate))
+    joined = "/".join(parts)
+    kind = "directory" if must_be_dir else "file"
+    raise FileNotFoundError(
+        f"Could not locate the committed {kind} '{joined}'. gaia is likely "
+        "installed non-editable, so the repo tree is not next to the module. "
+        "Set GAIA_REPO_ROOT to the repo checkout, run the eval from the repo "
+        "root, or reinstall gaia editable (`pip install -e .[dev,eval,api]`). "
+        "Tried: " + ", ".join(tried)
+    )
+
+
 def resolve_repo_fixture(*parts: str) -> Path:
     """Return the path to a committed fixture under ``tests/fixtures/``.
 
@@ -41,17 +67,4 @@ def resolve_repo_fixture(*parts: str) -> Path:
     ``("email", "drafting_gate_thresholds.json")``). Raises ``FileNotFoundError``
     naming what to fix if the fixture is missing from every candidate root.
     """
-    tried: list[str] = []
-    for root in _candidate_roots():
-        candidate = root.joinpath(*_FIXTURES_SUBPATH, *parts)
-        if candidate.is_file():
-            return candidate
-        tried.append(str(candidate))
-    joined = "/".join((*_FIXTURES_SUBPATH, *parts))
-    raise FileNotFoundError(
-        f"Could not locate the committed fixture '{joined}'. gaia is likely "
-        "installed non-editable, so tests/fixtures/ is not next to the module. "
-        "Set GAIA_REPO_ROOT to the repo checkout, run the eval from the repo "
-        "root, or reinstall gaia editable (`pip install -e .[dev,eval,api]`). "
-        "Tried: " + ", ".join(tried)
-    )
+    return resolve_repo_path(*_FIXTURES_SUBPATH, *parts)

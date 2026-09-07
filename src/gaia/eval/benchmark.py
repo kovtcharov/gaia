@@ -946,38 +946,65 @@ def load_ground_truth(path: str | Path) -> dict[str, dict]:
         return json.load(f)
 
 
-def default_quality_thresholds_path() -> Path:
+# Implementations that carry their own committed gate manifests. The Python
+# agent owns the unsuffixed files; every other implementation gets a
+# ``.<impl>`` suffix so one implementation's bars can never be read as
+# another's. Adding an implementation is a data change (commit the manifests)
+# plus one entry here.
+_MANIFEST_SUFFIX: dict[str, str] = {"python": "", "node": ".node"}
+
+
+def _manifest_name(stem: str, impl: str) -> str:
+    """Committed manifest filename for ``stem`` under implementation ``impl``."""
+    try:
+        suffix = _MANIFEST_SUFFIX[impl]
+    except KeyError as exc:
+        raise ValueError(
+            f"unknown email-triage implementation {impl!r}; "
+            f"expected one of {sorted(_MANIFEST_SUFFIX)}"
+        ) from exc
+    return f"{stem}{suffix}.json"
+
+
+def default_quality_thresholds_path(impl: str = "python") -> Path:
     """Path to the committed quality-gate thresholds manifest (#1230 corpus).
 
     The single entry point #1112 (CI) and #1266 consume — flip 'enforce' in that
-    file (data, not code) to make CI gate on FP/FN.
+    file (data, not code) to make CI gate on FP/FN. ``impl`` selects the
+    implementation's manifest; the Python agent's is the unsuffixed file.
     """
-    return resolve_repo_fixture("email", "quality_gate_thresholds.json")
+    return resolve_repo_fixture(
+        "email", _manifest_name("quality_gate_thresholds", impl)
+    )
 
 
-def load_default_quality_thresholds() -> "quality_metrics.QualityThresholds":
+def load_default_quality_thresholds(
+    impl: str = "python",
+) -> "quality_metrics.QualityThresholds":
     """Load the committed quality-gate thresholds (loud if absent/malformed).
 
     The one call CI (#1112) makes to discover the FP<5%/FN<2% bars and the
     ``enforce`` switch without hardcoding a fixture path.
     """
-    return quality_metrics.load_quality_thresholds(default_quality_thresholds_path())
+    return quality_metrics.load_quality_thresholds(
+        default_quality_thresholds_path(impl)
+    )
 
 
-def default_perf_thresholds_path() -> Path:
+def default_perf_thresholds_path(impl: str = "python") -> Path:
     """Path to the committed perf-gate thresholds manifest (#1277).
 
     The single entry point #1112 (CI) consumes — flip 'enforce' in that file
     (data, not code) to make CI gate on the Strix Halo bars once confirmed on
-    hardware.
+    hardware. ``impl`` selects the implementation's manifest.
     """
-    return resolve_repo_fixture("email", "perf_gate_thresholds.json")
+    return resolve_repo_fixture("email", _manifest_name("perf_gate_thresholds", impl))
 
 
-def load_default_perf_thresholds() -> "performance.PerfThresholds":
+def load_default_perf_thresholds(impl: str = "python") -> "performance.PerfThresholds":
     """Load the committed perf-gate thresholds (loud if absent/malformed).
 
     The one call CI (#1112) makes to discover the TTFT/throughput/pipeline/peak-
     memory bars and the ``enforce`` switch without hardcoding a fixture path.
     """
-    return performance.load_perf_thresholds(default_perf_thresholds_path())
+    return performance.load_perf_thresholds(default_perf_thresholds_path(impl))

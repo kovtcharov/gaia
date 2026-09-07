@@ -1,0 +1,270 @@
+---
+title: "Email evals for the Node triage SDK"
+description: "Scoping plan for running the committed email-agent eval gates against hub/agents/email/node"
+---
+
+<Note>
+**Status: scoping / not started.** Phase 0 is a product decision that gates everything
+below it. Nothing here has been implemented.
+</Note>
+
+## Why this matters
+
+The email agent's quality is measured by a nightly CI eval
+([`test_email_agent_eval.yml`](https://github.com/amd/gaia/blob/main/.github/workflows/test_email_agent_eval.yml))
+that scores triage accuracy, throughput, action-item extraction, drafting and briefing
+against a committed 307-email labelled corpus. A second triage implementation now exists in
+JavaScript — `hub/agents/email/node/` — and **no CI job builds, tests, lints, or scores
+it**. If it ever ships, it ships with zero quality evidence while the Python agent
+publishes an 84.5/100 scorecard.
+
+The good news: the scoring and gating layer is already implementation-agnostic, and the
+two implementations agree on the triage taxonomy exactly. The gap is a driver, not a
+rewrite.
+
+## Where things stand
+
+### The Node implementation is a draft, not a product
+
+`hub/agents/email/node/` is 3.4k lines across 11 files, added in a single commit
+(`c068166d`, "Email Triage draft/proposal SDK", #2551) and untouched since. It is:
+
+- a **pure in-process library** — `EmailTriageAgent.triage()` / `.triageBatch()`, no CLI,
+  no `bin`, no `scripts`, no server, no mailbox integration. Email data is passed in by
+  the caller as plain JSON.
+- talking to **any OpenAI-compatible endpoint** (`core/llm.js:64`) — Lemonade works
+  today, with no Lemonade-specific code.
+- **invisible to the repo**: `git grep -E "agents/email/node|node-agent-email"` returns
+  hits only inside its own directory. No workflow path filter, no labeler entry, no docs
+  reference, no test runner, no lint config.
+
+It is also a *different package* from the shipped one. `hub/agents/email/npm/`
+(`@amd-gaia/agent-email` v0.6.0) is a **client** that spawns the frozen Python sidecar and
+drives it over REST/SSE — not a second implementation. The two JavaScript trees share
+zero code and disagree on schema version (2.2 vs 2.14).
+
+### The eval CI runs four producers and one gate reader
+
+| Step | Script | Produces | Manifest |
+|---|---|---|---|
+| Triage benchmark | `gaia eval benchmark` | `eval-out/scorecard.json`, `quality.json` | `quality_gate_thresholds.json`, `perf_gate_thresholds.json` |
+| Voice drafting | `packaging/eval_drafting_report.py` | judge-scored draft approval rate | `drafting_gate_thresholds.json` |
+| Action items | `packaging/eval_action_item_report.py` | P / R / F1 | `action_items_gate_thresholds.json` |
+| Daily briefing | `packaging/eval_briefing_report.py` | judge-scored briefing quality | `briefing_gate_thresholds.json` |
+| Gate reader | `packaging/eval_gate_report.py` | `eval-out/gate_report.json` | reads all of the above |
+
+**All five manifests currently ship `enforce: false`** — every gate is in report mode.
+That is the right starting posture for a second implementation too. `should_fail` is
+always literally `enforce and not passed`, and it is the only value CI keys off.
+
+One non-obvious cost: **the triage benchmark runs twice.** `gaia eval benchmark` writes
+the scorecard but is called with no thresholds, so `eval_gate_report.py:66` calls
+`run_benchmark(...)` again itself to compute the gates. Doubling the implementations
+means four triage runs on one machine unless that duplication is fixed first.
+
+### The coupling is only in the producers
+
+`gaia.eval.quality_metrics`, `gaia.eval.performance`, `gaia.eval.scorecard_gate` and
+`gaia.eval.release_scorecard` operate purely on JSON. They never import the agent. Only
+the *producers* reach into `gaia_agent_email`:
+
+| Module | Coupling | Injection seam today |
+|---|---|---|
+| `eval/benchmark.py:830` | `EmailTriageAgent` + `FakeGmailBackend` | ✅ `run_benchmark(agent_factory=...)` |
+| `eval/action_item_quality.py:814` | same | ✅ `agent_factory(backend, db_path)` |
+| `eval/draft_quality.py:652` | + `voice_profile`, `action_store` | ✅ `agent_factory(backend, db_path)` |
+| `eval/briefing_quality.py:747` | `briefing.run_briefing_job` | ❌ none |
+| `eval/followup_quality.py:555` | `tools.followup_tools.check_followups_impl` | ❌ none |
+| `eval/longthread_quality.py:287` | `api_routes.EmailTriageService` | ❌ none |
+
+Three of the six already accept an injected agent, and the factory path is *cleaner* than
+the real one: `_verify_ctx_readback` (which reaches three attributes deep into
+`agent.chat.llm_client._backend`) is skipped entirely when a factory is supplied, and
+`close_db` is looked up with `getattr`. **The contract an injected agent must satisfy is
+one method**: `process_query(prompt) -> {"conversation": [...]}`.
+
+The catch is that the four `packaging/eval_*_report.py` scripts — the ones CI actually
+runs — call `run_benchmark` / `generate_*` with **no factory argument**, so they always
+take the Python branch. Those five call sites need an env-selected factory registry (or
+Node-specific report scripts); a CLI flag alone does not reach them.
+
+## What actually transfers
+
+| Gate | What it measures | Node capability | Verdict |
+|---|---|---|---|
+| **Quality** (FP/FN, category accuracy, within-one-bucket) | classification | Identical 5-label taxonomy + `is_spam` + `is_phishing` | ✅ Transfers with an adapter |
+| **Perf** (TTFT, tok/s, latency, peak memory) | instrumentation | Non-streaming; captures token counts only | ⚠️ Needs Node-side instrumentation |
+| **Action items** (P/R/F1) | extraction | Typed action objects, not free-text descriptions | ⚠️ Needs a description projection |
+| **Longthread** | thread triage | `_triageThread` exists | ✅ Transfers, later |
+| **Drafting** (judge) | reply quality with a learned voice profile | `send_reply` action carries a full body, but no sent-mail voice analysis | ⚠️ Partial — not comparable |
+| **Briefing** (judge) | inbox-level digest | No inbox concept at all | ❌ Out of scope |
+| **Followups** | stateful follow-up detection | No state store | ❌ Out of scope |
+
+The taxonomy match is the load-bearing fact:
+`URGENT | NEEDS_RESPONSE | FYI | PROMOTIONAL | PERSONAL` in `node/utils/types.js:15` is
+exactly `gaia.eval.quality_metrics.ORDINAL_PRIORITY` + `PERSONAL_CATEGORIES`, modulo case.
+The corpus seed `tests/fixtures/email/vendor_corpus_seed.jsonl` already carries those
+labels in uppercase, plus `is_phishing` — so Node can eat the committed corpus directly,
+without a new fixture. Note the corpus *builder* stays Python-coupled either way:
+`generate_mbox.py:51` imports `gaia_agent_email.tools.triage_heuristics.ALL_CATEGORIES`
+so the labels cannot drift from the Python agent's taxonomy. A Node eval therefore still
+needs the Python package installed to materialise `ground_truth.json` — which is fine,
+and arguably desirable as a drift guard.
+
+## Proposed architecture — a driver, not a fork
+
+```
+tests/fixtures/email/vendor_corpus_seed.jsonl     (committed, already JSON)
+        │  category / is_phishing / sender / subject / body
+        ▼
+hub/agents/email/node/eval/driver.mjs             ← NEW (~150 LOC, Node side)
+        •  maps seed records → EmailInput[]
+        •  EmailTriageAgent.triageBatch({ items })  (batchConcurrency = 1)
+        •  harvests GET {baseUrl}/stats after each LLM call
+        •  writes ONE Python-compatible envelope to stdout
+        ▼
+src/gaia/eval/node_email_adapter.py               ← NEW (~120 LOC, Python side)
+        •  NodeEmailAgent.process_query() spawns `node driver.mjs`, parses stdout
+        •  wraps into {"conversation": [
+                {role:"tool", name:"triage_inbox", content:<{ok,data:{results:[…]}}>},
+                {role:"system", content:{type:"stats", performance_stats:{…}}}, …]}
+        ▼
+run_benchmark(agent_factory=NodeEmailAgent)  →  build_result  →  quality_metrics
+        →  eval_gate_report.py  →  eval-out/gate_report.json
+```
+
+The alternative — driving Node over HTTP the way `gaia/eval/sidecar_harness.py` drives
+the Python sidecar's `/v1/email/query` SSE — is rejected for now: the Node SDK has no
+server, and adding one to score it inverts the cost of the exercise.
+
+**Nothing in the scoring, threshold, scorecard or gate code changes.** The adapter
+produces the same conversation shape the base GAIA agent produces, and every existing
+consumer keeps working. `performance.extract_step_stats` (`performance.py:254`) already
+parses `{"type": "stats", "performance_stats": {...}}` system messages as raw Lemonade
+`/api/v1/stats` payloads — the Node driver just has to forward them verbatim.
+
+## Phases
+
+### Phase 0 — Decide what the Node SDK is (blocking, no code)
+
+Is `hub/agents/email/node/` a product AMD intends to ship and support, or a proposal
+that should be deleted or moved to `experiments/`? Everything below only earns its cost
+under "product". If the answer is "prototype", the correct action is a README status
+banner and an owner, not an eval pipeline.
+
+### Phase 1 — Make it testable at all (~0.5 day)
+
+Prerequisite for any eval work, and independently worth doing:
+
+- Add `scripts.test` + vitest to `node/package.json`; unit-test `classifyHeuristic`,
+  `rankActions`, `extractSigningUrl`, and the thread skip rule — all pure, all offline.
+- Add `test_agent_email_node.yml` (ubuntu, Node 20, path filter
+  `hub/agents/email/node/**`), and add `hub/agents/email/node/**/*` to the `agent::email` glob in `.github/labeler.yml:80`.
+- Fix the correctness/doc drift found while reading:
+  - `README.md:158` claims PERSONAL never gets auto-delete; `rank.js:35` only exempts
+    `PRIORITY|URGENT|NEEDS_RESPONSE`, so PERSONAL **does** get an auto-appended delete
+    action. One of the two is a bug — decide which.
+  - `rank.js:13,35` reference a `PRIORITY` category absent from `EmailCategory` — dead key.
+  - `types.js:66` documents `ThreadInput.messages` as newest-first; every consumer
+    (`agent.js:355`) and `README.md:92` treat it as oldest-first.
+  - `EXTRACT_ACTIONS_TOOL` and `SUMMARIZE_TOOL` are exported but never called;
+    `EXTRACT_ACTIONS_TOOL` declares a `phone_call` type absent from `ActionItemType`.
+
+### Phase 2 — Quality parity (~1–2 days)
+
+Build `driver.mjs` + `node_email_adapter.py`, add `gaia eval benchmark --impl {python,node}`
+(plus `--node-dir`), and commit `quality_gate_thresholds.node.json` in report mode. Add an
+offline unit test that feeds the adapter a canned driver stdout — no Lemonade, no model.
+
+`eval_gate_report.py` must learn the same switch (an `EMAIL_EVAL_IMPL` env read that picks
+the factory), since it calls `run_benchmark` directly and never sees CLI flags.
+
+**One decision to make explicitly:** Node short-circuits on heuristics and skips the LLM
+entirely for a large share of promotional/transactional mail, while the Python agent runs
+`triage_inbox` over the whole batch. Comparing them head-to-head measures two different
+workloads. Recommendation: run both legs — `forceLlmClassify: true` for the
+apples-to-apples model-quality number, default for the shipped-behaviour number — and
+report both.
+
+### Phase 3 — Perf parity (~1–2 days)
+
+Node captures token usage only; it has no TTFT, no tokens/sec, no peak memory, no NPU
+telemetry, because `core/llm.js` uses non-streaming completions. To fill the perf gate:
+
+- switch the driver's LLM path to streaming (or accept a driver-computed TTFT), and
+- `GET {baseUrl}/stats` after each completion, forwarding the payload verbatim.
+
+Keep `batchConcurrency: 1` — concurrency destroys per-call latency comparability.
+
+### Phase 4 — Action items (~1 day)
+
+Project Node's typed actions (`send_reply` / `link` / `calendar_event` / `unsubscribe` /
+`delete`) into the free-text `description` shape the corpus labels use. The corpus's
+`expected_action_items` are hand-written prose and matching goes through the Claude
+equivalence judge, so a reasonable projection probably scores without re-labelling —
+but this needs a measured run to confirm, and `ANTHROPIC_API_KEY` is required (the judge
+fails loudly, it never degrades to fuzzy-only).
+
+### Phase 5 — CI wiring (~0.5 day)
+
+Whatever shape this takes, the Node legs must never run **concurrently** with the Python
+ones: there is one self-hosted AMD runner and one Lemonade instance, CLAUDE.md requires
+evals to run strictly serially, and concurrent runs race-evict each other's models and
+produce garbage that reads as a regression. So a parallel `impl:` matrix is out.
+
+That leaves two options, and the 90-minute job cap decides between them:
+
+- **Sequential steps in `test_email_agent_eval.yml`** — simplest, keeps one artifact and
+  one summary. Only viable if the duplicate `run_benchmark` call is removed first.
+- **A sibling scheduled workflow on a different day** — no cap pressure, no coupling to
+  the Python nightly's runtime, at the cost of a second artifact to read.
+
+Prefer the first if the double-run gets fixed; the second otherwise.
+
+### Phase 6 — Scorecard + release gate (only if Node ships)
+
+Follow the `adding-eval-scorecard` skill: adapter → real eval run → `SCORECARD.md` at the
+canonical README's directory → `scorecard-gate` job in the release workflow. Requires a
+`gaia-agent.yaml` for the Node package (it has none) as the version source of truth.
+
+## Risks and gotchas
+
+- **Serial-eval constraint.** One runner, one Lemonade, and the triage leg already runs
+  twice. The job is capped at `timeout-minutes: 90` and the triage benchmark alone is
+  ~17 min for ~100 emails on a 4B model — adding Node legs will breach it. Fix the
+  double-run first, or split the Node legs into their own scheduled workflow.
+- **Node runs carry no verified ctx stamp.** The `agent_factory` path skips
+  `_verify_ctx_readback`, so `ctx_size` is stamped as passed rather than read back from
+  the server. That is fine in report mode, but it blocks `require_ctx_match` for a Node
+  scorecard until the driver reports the loaded window itself.
+- **Voice-drafting needs more than a factory.** `draft_quality.py:704-706` computes the
+  voice profile and writes it into the agent's SQLite outside the factory, via
+  `action_store.save_voice_profile(agent, …)`. Any Node path has to hoist that into the
+  factory — another reason drafting is not a phase-2 target.
+- **Two scorecards, not one number.** Node triages one email at a time; Python triages an
+  inbox in a single tool call with envelope condensation. A shared aggregate would be
+  misleading — keep separate manifests and separate scorecards.
+- **Schema drift.** 2.2 vs 2.14 today, with no conformance test in either direction. If
+  both implementations ship, a shared contract test is mandatory or they diverge again.
+- **Report mode from day one.** Node's bars should ship `enforce: false` with
+  *placeholder* values until a real baseline run exists — same discipline the Python
+  manifests document. Never hand-author a number.
+- **Never touch port 4001.** The npm sidecar client already hard-rejects it
+  (`npm/src/lifecycle.ts:225`); any Node driver that opens a port must do the same.
+
+## Recommended cut
+
+**Phases 0–2 only, ~2–3 days**, and stop. That answers the one question worth answering
+first: *is the Node triage as accurate as the Python triage on the committed corpus?* If
+it is not, phases 3–6 are wasted. If it is, they become easy to justify.
+
+## Test plan
+
+- [ ] `cd hub/agents/email/node && npm test` — heuristic/ranking unit tests pass offline
+- [ ] `python -m pytest tests/unit/eval/test_node_email_adapter.py` — adapter parses a
+      canned driver payload into a scoreable conversation, no Lemonade
+- [ ] `gaia eval benchmark --impl node --limit 20 --mbox-path tests/fixtures/email/synthetic_inbox.mbox --ground-truth tests/fixtures/email/ground_truth.json --output-dir eval-out`
+      produces a `quality` block with non-zero `category_accuracy`
+- [ ] `python hub/agents/email/python/packaging/eval_gate_report.py` reads the Node run
+      and writes `gate_report.json` with `should_fail: false` (report mode)
+- [ ] `python util/lint.py --all` clean

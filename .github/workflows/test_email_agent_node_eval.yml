@@ -1,0 +1,250 @@
+# Copyright(C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.
+# SPDX-License-Identifier: MIT
+
+# Offline eval for the NODE email-triage SDK (hub/agents/email/node).
+#
+# Scores the Node SDK on exactly the corpus, ground truth, and gate machinery
+# the Python agent is scored on — `gaia eval benchmark --impl node` drives
+# hub/agents/email/node/eval/driver.js over FakeGmailBackend, never a live
+# mailbox. The point is a like-for-like accuracy number: same 307-email labelled
+# corpus, same confusion matrices, same threshold-manifest loaders.
+#
+# WHY A SEPARATE WORKFLOW, NOT A SECOND JOB IN test_email_agent_eval.yml.
+# There is one self-hosted AMD runner and one Lemonade instance, and the Python
+# eval already runs its triage benchmark TWICE (once for the scorecard via
+# `gaia eval benchmark`, once inside eval_gate_report.py). Adding Node legs to
+# that job would breach its 90-minute cap. Instead this is a sibling workflow on
+# a different day, sharing the `lemonade-eval` concurrency group so the two can
+# never touch the single Lemonade backend at the same time (CLAUDE.md: evals
+# run strictly serially — concurrent runs race-evict each other's model and
+# produce garbage that reads as a regression).
+#
+# SINGLE SOURCE FOR THE BARS. The gate bars and the on/off switch live in
+# committed manifests, read only through the harness loaders — no thresholds are
+# hardcoded in this YAML:
+#   - tests/fixtures/email/quality_gate_thresholds.node.json   (FP/FN + acceptance)
+#   - tests/fixtures/email/perf_gate_thresholds.node.json      (TTFT / tps / latency / mem)
+#
+# BOTH SHIP `enforce: false` — REPORT MODE, and they must stay that way until a
+# baseline run establishes what this implementation actually achieves. Their
+# values are copied from the Python manifests so the two legs are read on one
+# scale; they are NOT measured Node numbers. CI keys off each gate's
+# `should_fail` (= enforce AND breached), so a breach today is logged, uploaded,
+# and surfaced in the job summary without failing the build.
+#
+# NO JUDGE CREDENTIAL NEEDED. Unlike the Python eval, this runs no judge-scored
+# leg: the Node SDK has no voice profile, no inbox-level briefing, and no
+# follow-up state, so the drafting / briefing / action-item evals have nothing
+# to score. Only the triage quality + perf gates apply.
+#
+# WHAT IS *NOT* COMPARABLE WITHOUT A FLAG. The Node SDK short-circuits on
+# heuristics and skips the LLM for a large share of promotional and
+# transactional mail, while the Python agent runs its triage tool over the whole
+# batch. The default run measures SHIPPED behaviour; dispatch with
+# force_llm_classify=true for the apples-to-apples model-quality number.
+
+name: Email Agent Node Eval (offline, report mode)
+
+on:
+  # Weekly — Wednesdays 07:17 UTC. Deliberately a different day from the Python
+  # eval (Mondays) so the two never queue against each other for the single
+  # Lemonade slot even though the concurrency group would serialize them anyway.
+  schedule:
+    - cron: '17 7 * * 3'
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      # The SDK under test.
+      - 'hub/agents/email/node/**'
+      # The adapter that drives it and the harness that scores it.
+      - 'src/gaia/eval/node_email_adapter.py'
+      - 'src/gaia/eval/benchmark.py'
+      - 'src/gaia/eval/quality_metrics.py'
+      - 'src/gaia/eval/performance.py'
+      # The corpus, ground truth, and the Node threshold manifests.
+      - 'tests/fixtures/email/**'
+      - '.github/workflows/test_email_agent_node_eval.yml'
+      - '.github/actions/setup-venv/**'
+      - '.github/actions/install-lemonade/**'
+      - 'installer/scripts/ensure-lemonade-running.ps1'
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Lemonade model id to benchmark'
+        required: false
+        default: 'Gemma-4-E4B-it-GGUF'
+      limit:
+        description: 'Max messages to triage from the synthetic corpus'
+        required: false
+        default: '50'
+      experiments:
+        description: 'Repeat count for variance analysis'
+        required: false
+        default: '1'
+      force_llm_classify:
+        description: 'Disable the heuristic short-circuit (apples-to-apples with the Python agent)'
+        required: false
+        default: 'false'
+
+concurrency:
+  # PER-INVOCATION SUPERSEDING — not the serial slot. Rapid pushes to a PR must
+  # not stack up hour-long jobs. The serial slot is the job-level group below.
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  EMAIL_EVAL_IMPL: node
+  EMAIL_EVAL_MODEL: ${{ inputs.model || 'Gemma-4-E4B-it-GGUF' }}
+  # PRs triage a 20-email slice so the single Lemonade slot is not held for an
+  # hour on every push; the weekly run takes the full 50.
+  EMAIL_EVAL_LIMIT: ${{ inputs.limit || (github.event_name == 'pull_request' && '20' || '50') }}
+  EMAIL_EVAL_EXPERIMENTS: ${{ inputs.experiments || '1' }}
+  EMAIL_EVAL_FORCE_LLM: ${{ inputs.force_llm_classify == 'true' && '1' || '0' }}
+  GAIA_MEMORY_DISABLED: "1"
+  PYTHONIOENCODING: "utf-8"
+  LEMONADE_BASE_URL: "http://127.0.0.1:13305"
+  NO_PROXY: "localhost,127.0.0.1"
+  # generate_mbox.py imports tests.fixtures.email.*; the console script does not
+  # add the repo root to sys.path.
+  PYTHONPATH: ${{ github.workspace }}
+  # The email agent's connector resolution blocks forever on an OS keyring in a
+  # headless runner — disable it so corpus generation cannot hang.
+  PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
+
+jobs:
+  email-node-eval:
+    name: Node Email Triage Eval (synthetic corpus, report mode)
+    # Windows stx runners: the bare 'stx' label also matches a Linux box, and
+    # these steps are PowerShell + LemonadeServer.exe.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'stx-test') && '["self-hosted","Windows","stx-test"]' || '["self-hosted","Windows","stx"]') }}
+    # THE SERIAL SLOT. Same group name as test_email_agent_eval.yml and
+    # email_scorecard_refresh.yml — `lemonade-eval`, exactly — so at most one
+    # eval touches the single Lemonade backend at a time. Job-level, not
+    # workflow-level: declaring it at the workflow level here would make the run
+    # hold the group while its only job waited for it (self-deadlock).
+    concurrency:
+      group: lemonade-eval
+      cancel-in-progress: false
+      # `max` queues FIFO; the default `single` would cancel a queued run and
+      # leave a phantom red X on the PR.
+      queue: max
+    # Fork PRs never reach the self-hosted pool; drafts skip the long run until
+    # marked ready (or labeled ready_for_ci); skip-email-eval is the documented
+    # opt-OUT for a change that provably cannot move behaviour.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.pull_request.draft == false ||
+      contains(github.event.pull_request.labels.*.name, 'ready_for_ci')) &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-email-eval'))
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python Environment
+        uses: ./.github/actions/setup-venv
+        with:
+          python-version: '3.12'
+          # Core gaia EDITABLE so gaia.eval resolves the committed threshold
+          # manifests under tests/fixtures/. The email agent package is needed
+          # even though the Python AGENT is not under test here: corpus
+          # generation imports gaia_agent_email.tools.triage_heuristics for the
+          # taxonomy, which is what stops the two implementations' labels from
+          # drifting apart.
+          install-package: '-e .[dev,eval,api] -e hub/agents/email/python'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: hub/agents/email/node/package-lock.json
+
+      - name: Install Node SDK dependencies
+        working-directory: hub/agents/email/node
+        run: npm ci
+
+      - name: Install Lemonade Server
+        uses: ./.github/actions/install-lemonade
+
+      - name: Start Lemonade Server (version-matched, warmed)
+        timeout-minutes: 15
+        env:
+          HUGGINGFACE_ACCESS_TOKEN: ${{ secrets.HUGGINGFACE_ACCESS_TOKEN }}
+          HF_TOKEN: ${{ secrets.HUGGINGFACE_ACCESS_TOKEN }}
+        run: |
+          powershell -ExecutionPolicy Bypass -File installer\scripts\ensure-lemonade-running.ps1 -WarmModel "$env:EMAIL_EVAL_MODEL"
+          if ($LASTEXITCODE -ne 0) { throw "Lemonade server not ready" }
+
+      - name: Build the corpus from the committed seed
+        run: |
+          # mbox + ground_truth are generated artifacts (not committed) — build
+          # them from the committed vendor seed before the eval reads them.
+          New-Item -ItemType Directory -Force eval-out | Out-Null
+          python tests/fixtures/email/generate_mbox.py
+          if ($LASTEXITCODE -ne 0) { throw "generate_mbox failed" }
+
+      - name: Run the Node triage eval + gates (report mode)
+        run: |
+          Write-Host "================================================================"
+          Write-Host "     NODE EMAIL TRIAGE EVAL - synthetic corpus (report mode)"
+          Write-Host "================================================================"
+          Write-Host "Implementation:     node (hub/agents/email/node)"
+          Write-Host "Model:              $env:EMAIL_EVAL_MODEL"
+          Write-Host "Limit:              $env:EMAIL_EVAL_LIMIT emails"
+          Write-Host "Experiments:        $env:EMAIL_EVAL_EXPERIMENTS"
+          Write-Host "force_llm_classify: $env:EMAIL_EVAL_FORCE_LLM"
+          Write-Host ""
+          # Reads the gate bars ONLY through the harness loaders (the committed
+          # .node.json manifests), runs the gate machinery, and writes
+          # eval-out/gate_report_node.json. Exits non-zero ONLY if a gate's
+          # should_fail is true — impossible while both manifests ship
+          # enforce:false.
+          python hub/agents/email/python/packaging/eval_gate_report.py
+          if ($LASTEXITCODE -ne 0) { throw "node gate report failed" }
+
+      - name: Upload eval gate report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: email-node-eval-report
+          path: eval-out/
+          if-no-files-found: warn
+
+      # The reporting half of report mode: both manifests ship enforce:false, so
+      # a breached bar exits 0 and the number would otherwise live only inside
+      # the artifact. eval_summary.py republishes every verdict into the job
+      # summary with one ::warning:: per breach, so the check can say "this got
+      # worse" without failing the build.
+      - name: Gate verdicts (job summary)
+        if: always()
+        run: |
+          python hub/agents/email/python/packaging/eval_summary.py eval-out
+          if ($LASTEXITCODE -ne 0) { throw "eval summary failed" }
+
+      - name: Eval summary
+        if: always()
+        run: |
+          Write-Host ""
+          Write-Host "================================================================"
+          Write-Host "            NODE EMAIL TRIAGE EVAL SUMMARY"
+          Write-Host "================================================================"
+          Write-Host "Scored hub/agents/email/node against the same committed corpus,"
+          Write-Host "ground truth, and gate machinery as the Python agent, over"
+          Write-Host "FakeGmailBackend - never a live mailbox."
+          Write-Host ""
+          Write-Host "Both Node gate manifests ship enforce:false (report mode) and their"
+          Write-Host "bars are COPIED from the Python manifests, not measured Node numbers."
+          Write-Host "A breached bar is logged, summarized and uploaded but does NOT fail"
+          Write-Host "the build. Re-measure the bars from a real run before enforcing;"
+          Write-Host "enforcement is toggled in the manifest (data, not this workflow)."
+          Write-Host ""
+          Write-Host "Comparing to the Python leg: the default run measures SHIPPED"
+          Write-Host "behaviour, where heuristics skip the LLM for much of the corpus."
+          Write-Host "Dispatch with force_llm_classify=true for the model-quality number."
+          Write-Host ""
