@@ -12,12 +12,11 @@ The event translation itself is NOT reimplemented here — it lives in
 ``gaia.ui.sse_translation.CanonicalTranslator``, shared with the email sidecar,
 so the two agents cannot drift into private dialects of the same contract.
 
-Scope note: this deliberately implements ``/query`` and ``/query/{run_id}/cancel``
-only. ``needs_confirmation`` ends the run with a refusal (the stateless D1 stub,
-same as email) rather than pretending to support server-side resume, and there is
-no ``/respond`` yet — the flagship's tools are read-mostly, so neither gate is
-exercised. Both are additive when a tool needs them; claiming support we haven't
-built would be worse than the honest gap.
+Scope note: ``/query``, ``/query/{run_id}/cancel`` and ``/query/{run_id}/respond``
+are implemented; there is no ``/confirm``. ``needs_confirmation`` ends the run
+with a refusal (the stateless D1 stub, same as email) rather than pretending to
+support server-side resume. ``/respond`` takes ``{request_id, value}`` — the
+spelling the email sidecar accepts, so one client speaks to both.
 """
 
 from __future__ import annotations
@@ -35,7 +34,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from gaia_agent import caller_auth
 from gaia_agent.session_registry import SessionCapacityError
 from gaia_agent.session_registry import registry as session_registry
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from starlette.responses import StreamingResponse
 
 from gaia.logger import get_logger
@@ -125,22 +124,72 @@ class QueryCancelResponse(_Strict):
 
 
 class QueryRespondRequest(_Strict):
-    """Body of ``POST /v1/gaia/query/{run_id}/respond`` (spec §5.1)."""
+    """Body of ``POST /v1/gaia/query/{run_id}/respond`` (spec §5.1).
+
+    ``value`` is the canonical answer field, matching the email sidecar and the
+    ``value`` each ``needs_input`` option already carries. ``response`` is a
+    deprecated alias kept so a client written against the earlier gaia-only
+    spelling still works; the model is ``extra="forbid"``, so an unrecognised
+    name is a 422, not a silently dropped answer.
+    """
 
     request_id: str = Field(
+        min_length=1,
         description=(
             "The 'request_id' from the needs_input event being answered. An "
             "answer for a question that is no longer pending is rejected rather "
             "than silently dropped."
-        )
+        ),
     )
-    response: str
+    value: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "The answer: an option's 'value' (or its 'label'), or free text "
+            "when the question set allow_free_text."
+        ),
+    )
+    response: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        description="Deprecated alias for 'value'. Send 'value' in new clients.",
+    )
+
+    @model_validator(mode="after")
+    def _one_unambiguous_answer(self) -> "QueryRespondRequest":
+        if self.value is None and self.response is None:
+            raise ValueError(
+                "the answer is missing: send 'value' (or its deprecated alias "
+                "'response') with the text the user chose or typed"
+            )
+        if (
+            self.value is not None
+            and self.response is not None
+            and self.value != self.response
+        ):
+            raise ValueError(
+                "'value' and 'response' disagree; send only 'value' so the "
+                "agent cannot resume on the wrong answer"
+            )
+        return self
+
+    @property
+    def answer(self) -> str:
+        """The answer text, whichever spelling the caller used."""
+        return self.value if self.value is not None else str(self.response)
 
 
 class QueryRespondResponse(_Strict):
+    """Result of ``POST /v1/gaia/query/{run_id}/respond``.
+
+    The shape the frozen contract pins (``docs/spec/agent-ui-query-sse-contract.md``
+    §5.1) and the email sidecar returns, so a client can read one field name.
+    """
+
     run_id: str
     request_id: str
-    delivered: bool
+    accepted: bool = True
+    status: str = "ok"
 
 
 class _QueryRun:
@@ -656,7 +705,7 @@ async def respond_to_query(
                 "been cancelled; the answer was not delivered."
             ),
         )
-    if not run.handler.resolve_user_input(body.request_id, body.response):
+    if not run.handler.resolve_user_input(body.request_id, body.answer):
         raise HTTPException(
             status_code=409,
             detail=(
@@ -664,9 +713,7 @@ async def respond_to_query(
                 "it was already answered, timed out, or never asked."
             ),
         )
-    return QueryRespondResponse(
-        run_id=run_id, request_id=body.request_id, delivered=True
-    )
+    return QueryRespondResponse(run_id=run_id, request_id=body.request_id)
 
 
 def build_app() -> FastAPI:

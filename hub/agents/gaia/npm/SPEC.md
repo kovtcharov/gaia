@@ -229,6 +229,17 @@ Served by `gaia_agent.server`. Bound to `127.0.0.1` only.
 `/health` is liveness only. It says nothing about whether Lemonade is up or a
 model is loaded — `/v1/gaia/init` answers that.
 
+`/respond` takes `{ "request_id": string, "value": string }` and returns
+`{ run_id, request_id, accepted, status }` — the request field and the response
+shape the frozen canonical contract pins
+(`docs/spec/agent-ui-query-sse-contract.md` §5.1), and what the email sidecar
+already returns, so one client speaks to both. `value` is also the name each
+`needs_input` option already carries. `response` is accepted as a deprecated
+alias; sending both with different text is a `422` rather than a guess about
+which the user meant. An unknown `run_id` is `404`, a `request_id` the run is not
+waiting on is `409` — never a silent drop, which would leave the agent parked
+until its own timeout.
+
 ### 5.2 `session_id` and agent retention
 
 `POST /v1/gaia/query` accepts an optional `session_id` in the request body.

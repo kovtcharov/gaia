@@ -12,6 +12,22 @@ the terminal UI. Before this there was no packaged path at all — the flagship 
 had to be run from a repo checkout with a Python environment, and reaching the
 terminal UI meant building it from source.
 
+### Fixed
+
+- **Answering a mid-run question works.** `/query/{run_id}/respond` required the
+  answer under the name `response` while every GAIA client — the terminal UI and
+  the email sidecar alike — sends `value`, so the strict request model rejected
+  every answer with a `422` and the agent sat on its question until the run timed
+  out. `value` is now the canonical field; `response` stays accepted as a
+  deprecated alias, and both with different text is a `422` rather than a guess.
+  The contract version is unchanged (2.12) — both spellings work, so there is
+  nothing for a client to negotiate. See SPEC §5.1.
+- **`/respond` returns the shape the contract pins.** The success body was
+  `{run_id, request_id, delivered}`; it is now `{run_id, request_id, accepted,
+  status}`, matching the frozen canonical contract and the email sidecar. A
+  client reading `accepted` was getting nothing back and could read a delivered
+  answer as a failure.
+
 ### Added
 
 - **`503` from `/query` at session capacity.** When every retained session

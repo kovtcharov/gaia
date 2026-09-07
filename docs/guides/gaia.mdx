@@ -179,6 +179,7 @@ The agent runs as a **sidecar** — a self-contained HTTP service the GAIA daemo
 - **You mint the `run_id`**, not the server. Cancellation keys off it, so it has to exist before the request rather than arrive in the stream.
 - **Conversation context is pushed in the body**, never pulled. Pass `session_id` too — the agent persists its indexed-document set per session, and without it the agent forgets a document between the turn that indexed it and the next question.
 - **Set `can_answer_questions: false` for one-shot runs.** With nobody there to answer, the agent resolves ambiguity itself instead of parking on a question that reads as a hang.
+- **Answer a `needs_input` question with `{request_id, value}`** on the `/respond` endpoint and keep reading the *same* stream — a second `/query` abandons the parked run. `value` is the answer field on every GAIA sidecar (`response` is a deprecated alias here).
 - **Idle streams emit `: keepalive` comments** every 10 seconds so a long tool call doesn't look like a dead connection.
 - **Confirmation-gated tools end the run with a refusal** — see [Tools that need your approval](#tools-that-need-your-approval).
 

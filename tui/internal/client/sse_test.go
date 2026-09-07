@@ -74,6 +74,7 @@ type fakeRelay struct {
 	rawBodies   []string
 	cancelled   []string
 	confirmed   []confirmCall
+	responded   []respondCall
 	auths       []string
 	versionHits int
 }
@@ -82,6 +83,14 @@ type fakeRelay struct {
 type confirmCall struct {
 	runID    string
 	approved bool
+}
+
+// respondCall is one recorded POST .../query/{run_id}/respond, kept as the RAW
+// body. The field NAMES are the half of this seam that broke (#3096), so the
+// test asserts on the JSON as sent, not on a struct that would re-normalise it.
+type respondCall struct {
+	runID string
+	raw   string
 }
 
 func newFakeRelay(t *testing.T) *fakeRelay {
@@ -201,6 +210,14 @@ func (f *fakeRelay) handle(w http.ResponseWriter, r *http.Request) {
 			// that the ask-to-stop and its eventual effect are decoupled.
 			f.onCancelPost()
 		}
+
+	case strings.HasSuffix(r.URL.Path, "/respond"):
+		parts := strings.Split(r.URL.Path, "/")
+		raw, _ := io.ReadAll(r.Body)
+		f.mu.Lock()
+		f.responded = append(f.responded, respondCall{runID: parts[len(parts)-2], raw: string(raw)})
+		f.mu.Unlock()
+		w.WriteHeader(http.StatusOK)
 
 	case strings.HasSuffix(r.URL.Path, "/confirm"):
 		// No shipped sidecar has this route (the resume model is unimplemented
@@ -1062,6 +1079,67 @@ func TestSSEClientCancelPostsToCancelEndpoint(t *testing.T) {
 
 	if tr := c.Transcript(); len(tr) != 0 {
 		t.Errorf("a cancelled turn must not be appended to the transcript: %+v", tr)
+	}
+}
+
+// Respond posts the canonical answer field. `value` is what the email sidecar
+// ships and what a needs_input option already calls its answer; the gaia
+// sidecar briefly required `response` instead and 422'd every answer, leaving
+// the agent parked on its question until timeout (#3096). Asserting on the raw
+// JSON pins the NAME, which a typed decode would quietly paper over.
+func TestSSEClientRespondPostsTheCanonicalValueField(t *testing.T) {
+	f := newFakeRelay(t)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	f.stream = func(w http.ResponseWriter, flush func(), _ queryRequest) {
+		frame(w, `{"type":"status","message":"thinking"}`)
+		flush()
+		close(started)
+		<-release
+	}
+
+	c := f.client(t)
+	defer c.Close()
+
+	ch, err := c.Send(context.Background(), "triage")
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if _, ok := <-ch; !ok {
+		t.Fatal("expected the status event before responding")
+	}
+	<-started
+
+	if err := c.Respond(context.Background(), "req-7", "Inbox"); err != nil {
+		t.Fatalf("Respond: %v", err)
+	}
+
+	f.mu.Lock()
+	got := append([]respondCall(nil), f.responded...)
+	f.mu.Unlock()
+	if len(got) != 1 {
+		t.Fatalf("responded = %+v, want exactly one POST", got)
+	}
+	if got[0].runID != f.lastQuery().RunID {
+		t.Errorf("answered run_id %q, want %q", got[0].runID, f.lastQuery().RunID)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(got[0].raw), &body); err != nil {
+		t.Fatalf("respond body is not valid JSON: %v (%s)", err, got[0].raw)
+	}
+	if body["request_id"] != "req-7" {
+		t.Errorf("request_id = %v, want req-7 (%s)", body["request_id"], got[0].raw)
+	}
+	if body["value"] != "Inbox" {
+		t.Errorf("the answer must travel as `value`: %s", got[0].raw)
+	}
+	if len(body) != 2 {
+		t.Errorf("sidecar request models are extra=\"forbid\"; an extra field 422s the whole answer: %s", got[0].raw)
+	}
+
+	close(release)
+	for range ch {
 	}
 }
 

@@ -70,8 +70,10 @@ Everything else depends on this. `client.AgentClient` is already transport-agnos
    MAJOR == 1, MINOR >= 1. **The token rotates on every daemon restart** — re-read the
    file on any 401, never cache it for the session.
 2. **Start-or-attach.** If no live daemon: take `flock` on `~/.gaia/host/instance.lock`,
-   re-check, spawn `gaia daemon start` detached, poll for registration (30s cap).
-   Mirrors `client.py:80-158`.
+   re-check, **release the lock**, then spawn `gaia daemon start` detached and poll for
+   registration (30s cap). The lock covers the decision only — `gaia daemon start` runs
+   `start_or_attach()`, which takes that same lock, so holding it across the spawn
+   deadlocks both sides for their full timeouts. Mirrors `client.py:80-158`.
 3. **SSE client** (`tui/internal/client/sse.go`) implementing `AgentClient`.
    `POST /v1/email/query` with `Authorization: Bearer <daemon token>`,
    `Accept: text/event-stream`, body `{query, run_id (uuid4), context, model?, max_steps?}`.

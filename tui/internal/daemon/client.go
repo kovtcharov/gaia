@@ -187,7 +187,13 @@ func (c *Client) probe(ctx context.Context, inst *Instance) (StaleKind, error) {
 }
 
 // StartOrAttach returns the running daemon, starting one only if needed.
-// Single-instance is guaranteed by the exclusive start lock.
+//
+// The start lock covers the DECISION (attach, or judge the registry stale) and
+// is released before the launcher runs. `gaia daemon start` takes that same
+// ~/.gaia/host/instance.lock itself, so holding it across the spawn deadlocks
+// both sides. Single-instance across the spawn is the launcher's lock, not this
+// one: two callers that both reach the launcher yield one daemon, because the
+// second `gaia daemon start` waits on the lock and then attaches.
 func (c *Client) StartOrAttach(ctx context.Context) (*Instance, error) {
 	inst, err := c.Attach(ctx)
 	if err == nil {
@@ -239,6 +245,10 @@ func (c *Client) StartOrAttach(ctx context.Context) (*Instance, error) {
 					"Run `gaia daemon restart` to reclaim it", rec.PID, rec.Port)}
 		}
 	}
+
+	// The decision is made; the launcher needs this same lock to do its half.
+	// release is idempotent, so the deferred one above stays correct.
+	lock.release()
 
 	return c.spawnAndWait(ctx)
 }

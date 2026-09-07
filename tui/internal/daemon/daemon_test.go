@@ -521,6 +521,24 @@ func TestHelperProcess(t *testing.T) {
 	}
 	defer os.Exit(0)
 
+	// The real `gaia daemon start` runs start_or_attach(), which takes
+	// ~/.gaia/host/instance.lock (src/gaia/daemon/lock.py) before it decides
+	// anything. A fake launcher that skips this cannot catch a caller that
+	// spawns it while still holding that same lock.
+	if os.Getenv("GAIA_TUI_TEST_TAKE_LOCK") == "1" {
+		path, err := LockPath()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "helper: %v\n", err)
+			os.Exit(2)
+		}
+		lock, err := acquireLock(path, 2*time.Second)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "helper: the caller still held the start lock: %v\n", err)
+			os.Exit(4)
+		}
+		defer lock.release()
+	}
+
 	if payload := os.Getenv("GAIA_TUI_TEST_INSTANCE"); payload != "" {
 		path := filepath.Join(os.Getenv(EnvHome), "instance.json")
 		if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
@@ -546,6 +564,90 @@ func launcher(t *testing.T, dir, payload, exitCode string) func(context.Context)
 			EnvHome+"="+dir,
 		)
 		return cmd, nil
+	}
+}
+
+// lockingLauncher is launcher() plus the one thing the real `gaia daemon start`
+// does that the plain fake omits: it takes the start lock before registering.
+func lockingLauncher(t *testing.T, dir, payload string) func(context.Context) (*exec.Cmd, error) {
+	t.Helper()
+	base := launcher(t, dir, payload, "")
+	return func(ctx context.Context) (*exec.Cmd, error) {
+		cmd, err := base(ctx)
+		if err != nil {
+			return nil, err
+		}
+		cmd.Env = append(cmd.Env, "GAIA_TUI_TEST_TAKE_LOCK=1")
+		return cmd, nil
+	}
+}
+
+// TestStartOrAttachReleasesTheStartLockBeforeSpawning is the regression test for
+// the cold-start deadlock (#3096): `gaia daemon start` takes the same
+// ~/.gaia/host/instance.lock, so spawning it while still holding that lock
+// wedges both sides until their 30s timeouts and every cold start reports
+// "no daemon became healthy".
+func TestStartOrAttachReleasesTheStartLockBeforeSpawning(t *testing.T) {
+	f := newFakeDaemon(t)
+
+	inst := &Instance{
+		PID: os.Getpid(), Port: f.port(), Token: "token-A",
+		Host: DefaultHost, APIVersion: "1.1", Service: ServiceID,
+	}
+	payload, err := json.Marshal(inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c := testClient(t, func(o *Options) {
+		o.StartCommand = lockingLauncher(t, f.dir, string(payload))
+		// Short, so a reintroduced deadlock fails the test in seconds instead
+		// of stalling it for the production 30s.
+		o.StartTimeout = 5 * time.Second
+	})
+	got, err := c.StartOrAttach(context.Background())
+	if err != nil {
+		t.Fatalf("StartOrAttach with a lock-taking launcher: %v", err)
+	}
+	if got.Port != f.port() {
+		t.Errorf("attached to port %d, want %d", got.Port, f.port())
+	}
+}
+
+// TestStartOrAttachWaitsForTheStartLock is the other half: releasing the lock
+// early must not mean dropping it. The decision — attach, or judge the registry
+// stale — still runs under it, so a caller that cannot get the lock fails loudly
+// and never reaches the launcher.
+func TestStartOrAttachWaitsForTheStartLock(t *testing.T) {
+	newFakeDaemon(t) // isolates GAIA_DAEMON_HOME; no instance.json is written
+
+	lockPath, err := LockPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := acquireLock(lockPath, time.Second)
+	if err != nil {
+		t.Fatalf("acquireLock: %v", err)
+	}
+	defer held.release()
+
+	spawned := false
+	c := testClient(t, func(o *Options) {
+		o.StartTimeout = 300 * time.Millisecond
+		o.StartCommand = func(context.Context) (*exec.Cmd, error) {
+			spawned = true
+			return nil, fmt.Errorf("launcher must not run while the lock is held")
+		}
+	})
+	_, err = c.StartOrAttach(context.Background())
+	if err == nil {
+		t.Fatal("expected a start error while another holder has the lock")
+	}
+	if spawned {
+		t.Error("the launcher ran without the start lock being acquired first")
+	}
+	if !strings.Contains(err.Error(), "start lock") {
+		t.Errorf("error must name the lock: %v", err)
 	}
 }
 
