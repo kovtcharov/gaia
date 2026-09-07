@@ -13,32 +13,46 @@ import Footer from '../components/Footer.astro';
 import InstallCommand from '../components/InstallCommand.astro';
 import TuiDownload from '../components/TuiDownload.astro';
 import Feature from '../components/Feature.astro';
+import Eyebrow from '../components/Eyebrow.astro';
+import WayCard from '../components/WayCard.astro';
 
 const DOCS = 'https://amd-gaia.ai/docs';
 
 // Three things you can do with the one agent — not three products.
 const PATHS = [
   {
+    n: '01',
+    icon: 'cpu',
+    who: 'For everyone',
     title: 'Run it',
     body: 'Give it a task over your files, your data, or your code — it runs locally.',
     code: 'gaia-tui',
+    cta: 'Quickstart',
     href: `${DOCS}/quickstart`,
     external: true,
   },
   {
+    n: '02',
+    icon: 'package',
+    who: 'For app teams',
     title: 'Integrate it',
     body: 'Embed the agent in your app as a local sidecar.',
     code: 'npm install @amd-gaia/gaia',
     // The npm page, not ${DOCS}/guides/gaia: that guide is not on main yet, so
     // the docs site 404s it. The package is published (0.1.0) and its README is
     // the integration reference until the guide ships.
+    cta: 'Package on npm',
     href: 'https://www.npmjs.com/package/@amd-gaia/gaia',
     external: true,
   },
   {
+    n: '03',
+    icon: 'code',
+    who: 'For developers',
     title: 'Build on it',
     body: 'Add a skill, or publish your own agent to the hub.',
     code: 'gaia skill create <name>',
+    cta: 'Custom agent guide',
     href: `${DOCS}/guides/custom-agent`,
     external: true,
   },
@@ -52,26 +66,34 @@ const PATHS = [
 // by design (a second resident model would evict the chat model).
 const CAPABILITIES = [
   {
+    icon: 'file',
     title: 'Answers from your documents',
     body: 'PDFs and notes indexed on the machine, never uploaded.',
   },
   {
+    icon: 'folder',
     title: 'Reads and edits your files',
     body: 'Scoped to your home folder, with the rest of the disk off limits.',
   },
   {
-    title: 'Searches code by meaning',
-    body: 'A semantic index of the repository, not a grep.',
+    // Real catalog: Google + Microsoft OAuth and the GitHub / Tavily / Memory /
+    // Git MCP servers (src/gaia/connectors/catalog/), gated by per-agent grants.
+    icon: 'send',
+    title: 'Connects to your apps',
+    body: 'Google and Microsoft sign-in, plus MCP servers like GitHub and Tavily — each unlocked per agent, with scopes you grant.',
   },
   {
+    icon: 'table',
     title: 'Works your spreadsheets',
     body: 'CSV and Excel loaded into a local SQL scratchpad it can query.',
   },
   {
+    icon: 'globe',
     title: 'Looks things up on the web',
     body: 'Searches and reads pages when a task needs something it does not have.',
   },
   {
+    icon: 'clipboard',
     title: 'Asks before it acts',
     body: 'Every tool call needs your approval until you decide otherwise.',
   },
@@ -83,27 +105,35 @@ const CAPABILITIES = [
 // signed skills, the shared tool-mixin registry, and opt-in-only remote models.
 const ARCHITECTURE = [
   {
+    icon: 'cpu',
     title: 'The AI chip in your PC does the work',
     body: 'Models run on the NPU and integrated graphics of a Ryzen™ AI machine, served locally by',
     link: { label: 'Lemonade', href: 'https://lemonade-server.ai/', emoji: '🍋' },
   },
   {
+    icon: 'box',
     title: 'One model stays loaded',
     body: 'Every agent and skill shares it, so switching between them costs nothing.',
   },
   {
+    icon: 'bot',
     title: 'It remembers instead of forgetting',
     body: 'Memory and a local index of your files — not a summary of your history.',
   },
   {
+    icon: 'package',
     title: 'Skills, not more installs',
     body: 'Small signed packages the agent picks up and puts down while it runs.',
   },
   {
-    title: 'Tools snap together',
-    body: 'Files, web, SQL and search — one set every agent composes by name.',
+    // gaia-agent.yaml: api_server true (mcp_server false — client only, so the
+    // page claims the API, not an MCP server). Routes in src/gaia/api/.
+    icon: 'route',
+    title: 'Any OpenAI client can call it',
+    body: 'The agent serves the OpenAI chat API locally, so existing SDKs and apps switch to it with a base-URL change.',
   },
   {
+    icon: 'route',
     title: 'No silent cloud fallback',
     body: 'A remote model is something you switch on for a run, never a default.',
   },
@@ -112,7 +142,7 @@ const ARCHITECTURE = [
 
 <Layout
   title="GAIA — the agent for AI PCs"
-  description="GAIA is AMD's open-source AI agent for AI PCs. It runs locally on your own hardware: your data stays on the machine, it works air-gapped, and there are no token costs."
+  description="GAIA is AMD's open-source AI agent for AI PCs. It runs entirely on your own hardware — no cloud, no token costs, and your data never leaves the machine."
 >
   <Header />
   <main id="main-content">
@@ -125,56 +155,59 @@ const ARCHITECTURE = [
       </h1>
 
       <p class="g-lede animate-g-rise mt-6 text-center" style="animation-delay:0.08s">
-        GAIA runs on your own hardware. Your data stays on the machine, it works
-        air-gapped, and there are no token costs.
+        GAIA runs entirely on your own hardware. No cloud, no token costs,
+        no data leaving your machine &mdash; it even works air-gapped.
       </p>
 
       <TuiDownload align="center" class="animate-g-rise mt-10 [animation-delay:0.14s]" />
     </section>
 
-    <!-- 2. The whole product, in three boxes. -->
+    <!-- 2. The whole product, in three cards. -->
     <section id="build" class="g-shell g-section scroll-mt-[66px]">
-      <div class="g-label mb-8">Run · Integrate · Build</div>
+      <div class="mb-11 flex flex-wrap items-end justify-between gap-6">
+        <div>
+          <Eyebrow class="mb-3.5">Three ways in</Eyebrow>
+          <h2 class="g-h-section">One agent.<br />Three ways to use it.</h2>
+        </div>
+        <p class="g-lede-sm max-w-[360px]">
+          Whether you never open a terminal or you live in one, the same local agent does the
+          work.
+        </p>
+      </div>
 
-      <ul class="grid gap-[18px] md:grid-cols-3">
-        {PATHS.map((p) => (
-          <li>
-            <a
-              href={p.href}
-              target={p.external ? '_blank' : undefined}
-              rel={p.external ? 'noopener noreferrer' : undefined}
-              class="g-card g-card-hover group flex h-full flex-col p-[26px]"
-            >
-              <h2 class="g-h-card flex items-baseline gap-2">
-                {p.title}
-                <span class="text-[15px] text-g-faint transition-colors group-hover:text-g-gold-text" aria-hidden="true">→</span>
-              </h2>
-              <p class="g-body mb-6 mt-2.5">{p.body}</p>
-
-              {/* Focusable: the command overflows at narrow widths, and a scroll
-                  region no keyboard user can reach hides the tail of it. */}
-              <div tabindex="0" class="g-cmd-plain mt-auto overflow-x-auto text-[12px]">
-                <span class="text-g-gold" aria-hidden="true">$</span>
-                <span class="whitespace-nowrap">{p.code}</span>
-              </div>
-            </a>
-          </li>
-        ))}
-      </ul>
+      <div class="grid gap-[18px] md:grid-cols-3">
+        {PATHS.map((p) => <WayCard {...p} />)}
+      </div>
     </section>
 
-    <!-- 3. What it can do, and why it is built that way. One bullet shape for
-         both, so the page reads as one list, twice. -->
+    <!-- 3. What it can do, and why it is built that way. One card shape for
+         both, so the page reads as one grid, twice. -->
     <section id="features" class="g-shell g-section scroll-mt-[66px] border-t border-g-border">
-      <div class="g-label mb-8">What it can do</div>
-      <ul class="grid gap-x-12 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="mb-11 flex flex-wrap items-end justify-between gap-6">
+        <div>
+          <Eyebrow class="mb-3.5">What it can do</Eyebrow>
+          <h2 class="g-h-section">Real work,<br />all on-device.</h2>
+        </div>
+        <p class="g-lede-sm max-w-[360px]">
+          Documents, files, code, data, and the web — with your approval gating every tool call.
+        </p>
+      </div>
+      <ul class="grid gap-[18px] sm:grid-cols-2 lg:grid-cols-3">
         {CAPABILITIES.map((f) => <Feature {...f} />)}
       </ul>
     </section>
 
     <section id="architecture" class="g-shell g-section scroll-mt-[66px] border-t border-g-border">
-      <div class="g-label mb-8">Under the hood</div>
-      <ul class="grid gap-x-12 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="mb-11 flex flex-wrap items-end justify-between gap-6">
+        <div>
+          <Eyebrow class="mb-3.5">Under the hood</Eyebrow>
+          <h2 class="g-h-section">Built local-first,<br />on purpose.</h2>
+        </div>
+        <p class="g-lede-sm max-w-[360px]">
+          Every card below is a real property of the system, not a roadmap item.
+        </p>
+      </div>
+      <ul class="grid gap-[18px] sm:grid-cols-2 lg:grid-cols-3">
         {ARCHITECTURE.map((f) => <Feature {...f} />)}
       </ul>
     </section>

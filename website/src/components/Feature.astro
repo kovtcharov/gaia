@@ -2,34 +2,37 @@
 // Copyright(C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// One bullet in the landing page's two list sections — what it can do, and how
-// it is built. Both use this component, so the two lists cannot drift into
+// One tile in the landing page's two grid sections — what it can do, and how
+// it is built. Both use this component, so the two grids cannot drift into
 // different type sizes, measures, or spacing.
 //
-// Each item opens with a hairline and a gold tick. Without them the bullets in
-// a three-column grid have no edge between them: one body text runs straight
-// into the next item's title, which is exactly how it reads when the page is
-// selected or read aloud.
+// Each tile is a card with an icon chip, matching the "three ways in" cards so
+// the page speaks one visual language top to bottom.
 //
 // `link` closes the sentence with a credit or reference (e.g. the Lemonade
 // backend); the trailing period belongs to the component, not the copy, so a
-// bullet with a link and one without end identically.
+// tile with a link and one without end identically.
+
+import AgentIcon from './AgentIcon.astro';
 
 interface Props {
+  icon: string;
   title: string;
   body: string;
   link?: { label: string; href: string; emoji?: string };
 }
 
-const { title, body, link } = Astro.props;
+const { icon, title, body, link } = Astro.props;
 ---
 
-<li class="border-t border-g-border pt-5">
-  <h3 class="flex items-start gap-2.5 font-display text-[16.5px] font-semibold leading-[1.35] tracking-[-0.01em] text-g-text">
-    <span class="mt-[7px] h-[5px] w-[5px] flex-none rounded-full bg-g-gold" aria-hidden="true"></span>
+<li class="g-card g-card-lift flex flex-col p-[22px]">
+  <span class="g-chip mb-4 h-9 w-9 border-g-border2">
+    <AgentIcon name={icon} class="h-[18px] w-[18px]" />
+  </span>
+  <h3 class="font-display text-[16.5px] font-semibold leading-[1.35] tracking-[-0.01em] text-g-text">
     {title}
   </h3>
-  <p class="mt-2.5 max-w-[40ch] pl-[19px] text-[14.5px] leading-[1.7] text-g-muted">
+  <p class="g-body mt-2 text-[14px] leading-[1.65]">
     {body}{link && (
       <>
         {' '}
