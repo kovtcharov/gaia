@@ -14,6 +14,7 @@ The mixin is tested in isolation via a minimal host class (no real Agent).
 
 import json
 import logging
+import time
 import uuid
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
@@ -4393,3 +4394,141 @@ class TestRecallRedactsCredentialsAlreadyOnDisk:
 
     def test_missing_content_does_not_explode(self):
         assert MemoryMixin._redact_credentials([{}, {"content": None}])
+
+
+# ===========================================================================
+# Proactive reminders — surfaced once, at a natural moment
+# ===========================================================================
+
+
+class TestReminderSurfacingIsBounded:
+    """A time-sensitive item is raised once, and never mid-conversation.
+
+    Regression cover for the user-visible failure: the user said "sweet!" and
+    the agent answered with someone else's overdue deck. Two causes — the
+    upcoming block rode every single turn, and nothing ever wrote reminded_at
+    (the prompt asked the model to do it and the model did not).
+    """
+
+    @pytest.fixture
+    def host(self, tmp_path):
+        from gaia.agents.base.memory import MemoryMixin
+
+        class TestReminderAgent(MemoryMixin, FakeAgent):
+            pass
+
+        agent = TestReminderAgent()
+        with _mock_v2_init_context():
+            agent.init_memory(db_path=tmp_path / "reminders.db", context="global")
+        agent._embedder = _make_mock_embedder()
+        return agent
+
+    @staticmethod
+    def _store_overdue(host, content="Ship the Fernbrook deck to Priya"):
+        return host._memory_store.store(
+            category="reminder", content=content, due_at=_past_iso(3)
+        )
+
+    def test_overdue_item_is_surfaced_on_the_first_turn(self, host):
+        """Session start is a natural moment — the item does appear there."""
+        self._store_overdue(host)
+        assert "Fernbrook" in host.get_memory_dynamic_context()
+
+    def test_the_same_item_is_not_surfaced_again_next_turn(self, host):
+        """The core pin: surfaced once, gone from every following turn."""
+        self._store_overdue(host)
+        assert "Fernbrook" in host.get_memory_dynamic_context()
+
+        for turn in range(2, 6):
+            ctx = host.get_memory_dynamic_context()
+            assert "Fernbrook" not in ctx, f"reminder repeated on turn {turn}"
+
+    def test_surfacing_writes_reminded_at_to_the_store(self, host):
+        """reminded_at is set by the agent loop, not left to the model.
+
+        This is what makes the suppression survive a restart: get_upcoming
+        skips rows whose reminded_at is at or after due_at.
+        """
+        item_id = self._store_overdue(host)
+        assert host._memory_store.get_item(item_id)["reminded_at"] is None
+
+        host.get_memory_dynamic_context()
+
+        assert host._memory_store.get_item(item_id)["reminded_at"] is not None
+        assert host._memory_store.get_upcoming(within_days=7) == []
+
+    def test_mid_conversation_turns_carry_no_reminders_at_all(self, host):
+        """An item that becomes due mid-chat waits for a natural moment.
+
+        Injecting "[OVERDUE ...]" into a turn like "sweet!" is what produced
+        the non-sequitur, so the window is shut once the conversation is
+        under way.
+        """
+        host.get_memory_dynamic_context()  # turn 1 opens and closes the window
+        self._store_overdue(host)
+
+        ctx = host.get_memory_dynamic_context()
+        assert "Fernbrook" not in ctx
+        assert "OVERDUE" not in ctx
+
+    def test_window_reopens_after_a_long_pause(self, host, monkeypatch):
+        """A natural pause is a fresh opening — the item gets one chance there."""
+        from gaia.agents.base import memory as memory_mod
+
+        host.get_memory_dynamic_context()
+        self._store_overdue(host)
+        assert "Fernbrook" not in host.get_memory_dynamic_context()
+
+        later = time.time() + memory_mod.REMINDER_PAUSE_SECONDS + 1
+        monkeypatch.setattr(memory_mod.time, "time", lambda: later)
+        assert "Fernbrook" in host.get_memory_dynamic_context()
+
+    def test_a_new_session_reopens_the_window(self, host):
+        """reset_memory_session() clears the per-session suppression set."""
+        item_id = self._store_overdue(host)
+        assert "Fernbrook" in host.get_memory_dynamic_context()
+
+        # Undo only the persistent half, so the in-session set is what is
+        # under test here.
+        host._memory_store.update(item_id, reminded_at=_past_iso(5))
+        assert "Fernbrook" not in host.get_memory_dynamic_context()
+
+        host.reset_memory_session()
+        assert "Fernbrook" in host.get_memory_dynamic_context()
+
+    def test_incognito_suppresses_the_repeat_without_writing(self, host):
+        """Incognito writes nothing, so the in-session set has to carry it."""
+        item_id = self._store_overdue(host)
+        host._incognito = True
+
+        assert "Fernbrook" in host.get_memory_dynamic_context()
+        assert host._memory_store.get_item(item_id)["reminded_at"] is None
+        assert "Fernbrook" not in host.get_memory_dynamic_context()
+
+    def test_current_time_still_rides_every_turn(self, host):
+        """Gating reminders must not gate the clock — that is needed always."""
+        self._store_overdue(host)
+        for _ in range(3):
+            assert "Current time:" in host.get_memory_dynamic_context()
+
+    def test_no_stale_instruction_to_set_reminded_at(self, host):
+        """The model is told not to maintain reminded_at — code owns it now."""
+        self._store_overdue(host)
+        ctx = host.get_memory_dynamic_context()
+        assert "do not call update_memory" in ctx
+
+    def test_a_failed_persist_still_suppresses_within_the_session(self, host):
+        """If the reminded_at write fails, the clock survives and so does dedup.
+
+        Losing the current time is worse than losing the reminder, so the
+        failure is logged and the turn continues on session-only suppression.
+        """
+        self._store_overdue(host)
+        with patch.object(
+            host._memory_store, "update", side_effect=RuntimeError("disk full")
+        ):
+            first = host.get_memory_dynamic_context()
+
+        assert "Fernbrook" in first
+        assert "Current time:" in first
+        assert "Fernbrook" not in host.get_memory_dynamic_context()

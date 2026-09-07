@@ -854,12 +854,24 @@ def get_memory_dynamic_context(self) -> str:
     """Per-turn context injected by process_query() override.
 
     Contains:
-    1. Current date/time (ISO 8601 + day of week)
-    2. Upcoming/overdue items (due within 7 days)
+    1. Current date/time (ISO 8601 + day of week) -- every turn
+    2. Upcoming/overdue items (due within 7 days) -- only at session start
+       or after REMINDER_PAUSE_SECONDS of silence, and only items this
+       session has not already raised
 
     Returns empty string if nothing time-sensitive is active.
     """
 ```
+
+**Reminders are surfaced once, at a natural moment.** Injecting an `[OVERDUE ...]`
+block into every turn made the agent answer unrelated messages with someone else's
+deadline, so the window is open only at session start and after a long pause.
+Whatever is included is marked as raised by the agent loop the moment it is
+included -- `reminded_at` in the store (which `get_upcoming` filters on, so the
+suppression survives a restart) plus an in-session id set (so incognito, which
+writes nothing, still gets no repeats). This used to be a prompt instruction
+asking the model to call `update_memory` itself; it did not, and the same item was
+re-injected every turn for days.
 
 **Example dynamic context prepended to each user message:**
 

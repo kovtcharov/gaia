@@ -5,7 +5,8 @@ MemoryStore: Unified data layer for agent memory.
 
 Agent-agnostic. Pure SQLite + FTS5. Zero imports from gaia.agents.
 
-Single database (~/.gaia/memory.db) with three tables:
+Single database (``~/.gaia/memory.db`` by default; ``GAIA_MEMORY_DB`` or
+``GAIA_HOME`` relocate it) with three tables:
 - conversations: Every conversation turn, persistent across sessions
 - knowledge: Persistent facts, preferences, learnings — the "second brain"
 - tool_history: Every tool call the agent makes, auto-logged
@@ -343,18 +344,78 @@ _V2_INDEX_SQL = [
 # ============================================================================
 
 
+MEMORY_DB_ENV = "GAIA_MEMORY_DB"
+GAIA_HOME_ENV = "GAIA_HOME"
+
+
+def resolve_memory_db_path() -> Path:
+    """Resolve the default memory DB path from the environment.
+
+    Precedence:
+
+    1. ``GAIA_MEMORY_DB`` — an explicit path to the database FILE. This is the
+       isolation switch: a test harness points it at a throwaway file so a test
+       drive never writes into the user's real second brain.
+    2. ``GAIA_HOME`` — relocates the whole ``~/.gaia`` tree; the DB lands at
+       ``$GAIA_HOME/memory.db``.
+    3. ``~/.gaia/memory.db``.
+
+    An override that names an unusable path raises. Falling back to the real
+    store on a bad override is exactly the failure this function exists to
+    prevent — a harness that thinks it is isolated but is not.
+
+    Raises:
+        ValueError: an override is set but blank, or names an existing
+            directory.
+        OSError: the override's parent directory cannot be created.
+    """
+    for env_var in (MEMORY_DB_ENV, GAIA_HOME_ENV):
+        raw = os.environ.get(env_var)
+        if raw is None:
+            continue
+        if not raw.strip():
+            raise ValueError(
+                f"{env_var} is set but empty. Point it at a writable path "
+                f"(e.g. {env_var}=/tmp/gaia-test/memory.db) or unset it to use "
+                f"the default ~/.gaia/memory.db."
+            )
+        resolved = Path(os.path.expandvars(os.path.expanduser(raw.strip())))
+        candidate = resolved / "memory.db" if env_var == GAIA_HOME_ENV else resolved
+        if candidate.is_dir():
+            raise ValueError(
+                f"{env_var}={raw!r} resolves to a directory ({candidate}), not a "
+                f"database file. Point it at a file path such as "
+                f"{candidate / 'memory.db'}."
+            )
+        try:
+            candidate.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise OSError(
+                f"{env_var}={raw!r}: cannot create the parent directory "
+                f"{candidate.parent} for the memory database: {e}"
+            ) from e
+        logger.info("[MemoryStore] using %s override: %s", env_var, candidate)
+        return candidate
+
+    gaia_dir = Path.home() / ".gaia"
+    gaia_dir.mkdir(parents=True, exist_ok=True)
+    return gaia_dir / "memory.db"
+
+
 class MemoryStore:
     """Pure SQLite storage for agent memory. No agent dependencies."""
 
     def __init__(self, db_path: Path | None = None):
-        """Open/create DB at db_path. Default: ~/.gaia/memory.db
+        """Open/create DB at db_path.
+
+        When ``db_path`` is None the location comes from
+        :func:`resolve_memory_db_path` — ``GAIA_MEMORY_DB``, then ``GAIA_HOME``,
+        then ``~/.gaia/memory.db``.
 
         Uses WAL mode. Thread-safe via threading.Lock.
         """
         if db_path is None:
-            gaia_dir = Path.home() / ".gaia"
-            gaia_dir.mkdir(parents=True, exist_ok=True)
-            db_path = gaia_dir / "memory.db"
+            db_path = resolve_memory_db_path()
         else:
             db_path = Path(db_path)
             db_path.parent.mkdir(parents=True, exist_ok=True)

@@ -179,10 +179,19 @@ Current time: 2026-03-25T10:30:00-0700 (Tuesday)
 Upcoming/overdue:
   - [DUE Mar 27] Online course starts next week
   - [OVERDUE Mar 24] Follow up on deployment review
-After mentioning a time-sensitive item, call update_memory to set reminded_at so you don't repeat yourself.
+Raise these only if they fit what the user just said, or if the conversation is just starting. Never derail an unrelated turn with them. They are already marked as raised — do not call update_memory for that.
 ```
 
-Always returns at least the current time. The upcoming/overdue section is included only when time-sensitive items are active. Returns an empty string only if `init_memory()` has not been called.
+Always returns at least the current time. Returns an empty string only if `init_memory()` has not been called.
+
+The upcoming/overdue section is **rate-limited, not per-turn**. It rides the first turn of a session and the first turn after `REMINDER_PAUSE_SECONDS` (30 min) of silence — a natural pause — so an `[OVERDUE ...]` block never lands on an unrelated turn.
+
+Anything included is marked as raised immediately, by the agent loop:
+
+- `reminded_at` is written to the store, so `get_upcoming()` skips it in later sessions. **An overdue item is therefore volunteered once.** It stays fully recallable — it still appears in the stable system prompt, and `recall(category='reminder')` still returns it. An item due in the *future* gets one nudge per session, since `reminded_at` is still earlier than `due_at`.
+- The id is also held in memory for the session, so a store that cannot be written (incognito) still gets no repeats.
+
+The model is not asked to maintain `reminded_at` and should not — prompt-based enforcement of this was unreliable, which is why it moved into code.
 
 ### register_memory_tools()
 

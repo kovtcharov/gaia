@@ -16,10 +16,11 @@ import threading
 import time
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
-from gaia.agents.base.memory_store import MemoryStore
+from gaia.agents.base.memory_store import MemoryStore, resolve_memory_db_path
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -5178,3 +5179,89 @@ class TestIterSessions:
     def test_empty_history_returns_empty_list(self, store):
         """No tool history → no sessions."""
         assert store.iter_sessions(min_steps=3) == []
+
+
+# ===========================================================================
+# Memory DB path isolation (GAIA_MEMORY_DB / GAIA_HOME)
+# ===========================================================================
+
+
+class TestMemoryDbPathResolution:
+    """The default DB location is overridable, and a bad override is fatal.
+
+    Without this, an interactive test drive writes into the user's real
+    ~/.gaia/memory.db and its planted facts leak into later real sessions.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clean_env(self, monkeypatch):
+        monkeypatch.delenv("GAIA_MEMORY_DB", raising=False)
+        monkeypatch.delenv("GAIA_HOME", raising=False)
+
+    def test_defaults_to_user_gaia_dir(self, monkeypatch, tmp_path):
+        """No override → ~/.gaia/memory.db."""
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+        assert resolve_memory_db_path() == tmp_path / ".gaia" / "memory.db"
+
+    def test_gaia_memory_db_names_the_file(self, monkeypatch, tmp_path):
+        """GAIA_MEMORY_DB is an explicit file path, used verbatim."""
+        target = tmp_path / "throwaway" / "test.db"
+        monkeypatch.setenv("GAIA_MEMORY_DB", str(target))
+        assert resolve_memory_db_path() == target
+        assert target.parent.is_dir(), "parent must be created eagerly"
+
+    def test_gaia_home_relocates_the_tree(self, monkeypatch, tmp_path):
+        """GAIA_HOME relocates the whole tree; the DB lands inside it."""
+        monkeypatch.setenv("GAIA_HOME", str(tmp_path / "alt"))
+        assert resolve_memory_db_path() == tmp_path / "alt" / "memory.db"
+
+    def test_gaia_memory_db_wins_over_gaia_home(self, monkeypatch, tmp_path):
+        """The explicit file path beats the tree relocation."""
+        monkeypatch.setenv("GAIA_HOME", str(tmp_path / "alt"))
+        monkeypatch.setenv("GAIA_MEMORY_DB", str(tmp_path / "explicit.db"))
+        assert resolve_memory_db_path() == tmp_path / "explicit.db"
+
+    def test_store_with_no_db_path_honours_the_override(self, monkeypatch, tmp_path):
+        """MemoryStore() — the call every agent makes — lands on the override.
+
+        This is the isolation guarantee: a harness sets the env var and the
+        real store is never touched.
+        """
+        target = tmp_path / "isolated.db"
+        monkeypatch.setenv("GAIA_MEMORY_DB", str(target))
+        monkeypatch.setattr(
+            Path, "home", staticmethod(lambda: pytest.fail("real home was touched"))
+        )
+        db = MemoryStore()
+        try:
+            db.store(category="fact", content="isolated write")
+            assert target.exists()
+        finally:
+            db.close()
+
+    @pytest.mark.parametrize("env_var", ["GAIA_MEMORY_DB", "GAIA_HOME"])
+    def test_blank_override_raises(self, monkeypatch, env_var):
+        """A blank override is a startup error, not a silent fall back.
+
+        Falling back here is precisely the bug: the harness believes it is
+        isolated while writing to the real store.
+        """
+        monkeypatch.setenv(env_var, "   ")
+        with pytest.raises(ValueError, match=env_var):
+            resolve_memory_db_path()
+
+    def test_override_pointing_at_a_directory_raises(self, monkeypatch, tmp_path):
+        """GAIA_MEMORY_DB must name a file; a directory is an actionable error."""
+        a_dir = tmp_path / "not-a-file"
+        a_dir.mkdir()
+        monkeypatch.setenv("GAIA_MEMORY_DB", str(a_dir))
+        with pytest.raises(ValueError, match="directory"):
+            resolve_memory_db_path()
+
+    def test_unusable_override_parent_raises(self, monkeypatch, tmp_path):
+        """A parent directory that cannot be created surfaces as an OSError."""
+        blocker = tmp_path / "blocker"
+        blocker.write_text("i am a file, not a directory")
+        monkeypatch.setenv("GAIA_MEMORY_DB", str(blocker / "sub" / "memory.db"))
+        with pytest.raises(OSError):
+            resolve_memory_db_path()

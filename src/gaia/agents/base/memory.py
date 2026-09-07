@@ -166,6 +166,11 @@ EMBEDDING_MODEL = DEFAULT_EMBEDDING_MODEL
 #: (``self._embedding_dim``); this is only the pre-probe fallback.
 EMBEDDING_DIM = 768
 
+#: Idle gap that reopens the proactive-reminder window mid-session. Reminders
+#: ride the first turn of a session and the first turn after this much silence
+#: — a natural pause — never every turn.
+REMINDER_PAUSE_SECONDS = 30 * 60
+
 #: Cross-encoder model for reranking (~22 MB, runs on CPU).
 CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
@@ -400,7 +405,9 @@ class MemoryMixin(ProceduralMemoryMixin):
         Call this BEFORE super().__init__() in your agent's __init__.
 
         Args:
-            db_path: Optional path for the DB file. Default: ~/.gaia/memory.db
+            db_path: Optional path for the DB file. When None the location
+                comes from ``GAIA_MEMORY_DB``, then ``GAIA_HOME``, then
+                ``~/.gaia/memory.db`` (see ``resolve_memory_db_path``).
             context: Active context scope (e.g., 'work', 'personal', 'global').
             embedding_model: Embedder model id. Defaults to ``EMBEDDING_MODEL``
                 (GGUF nomic). The NPU profile passes the FLM-native embedder so
@@ -449,6 +456,8 @@ class MemoryMixin(ProceduralMemoryMixin):
             self._recalled_skills = []
             self._memory_post_init_pending = False
             self._memory_session_id = str(uuid4())
+            self._reminders_surfaced = set()
+            self._reminder_last_turn_at = None
             return
 
         from gaia.agents.base.memory_store import MemoryStore
@@ -488,6 +497,10 @@ class MemoryMixin(ProceduralMemoryMixin):
         # _recalled_skill_tools as the SKILL signal.  Empty list = no recall =
         # no SKILL signal this turn.
         self._recalled_skills = []
+
+        # Proactive-reminder gate — see _reminder_window_open / _mark_reminded.
+        self._reminders_surfaced: set[str] = set()
+        self._reminder_last_turn_at: Optional[float] = None
 
         # Step 2: Validate Lemonade embedding service connectivity.
         #
@@ -564,6 +577,8 @@ class MemoryMixin(ProceduralMemoryMixin):
             self._incognito = True
             self._memory_post_init_pending = False
             self._memory_session_id = str(uuid4())
+            self._reminders_surfaced = set()
+            self._reminder_last_turn_at = None
             return
 
         # (Embedder-change migration is handled above via the store's
@@ -2005,7 +2020,7 @@ class MemoryMixin(ProceduralMemoryMixin):
         try:
             return self._build_dynamic_memory_context()
         except Exception as e:
-            logger.debug("[MemoryMixin] failed to build dynamic context: %s", e)
+            logger.warning("[MemoryMixin] failed to build dynamic context: %s", e)
             return ""
 
     def _build_stable_memory_prompt(self) -> str:
@@ -2104,6 +2119,51 @@ class MemoryMixin(ProceduralMemoryMixin):
             result = result[:4000] + "\n... (memory truncated)"
         return result
 
+    def _reminder_window_open(self, now_ts: float) -> bool:
+        """Whether this turn may carry proactive reminders.
+
+        Open at session start and after ``REMINDER_PAUSE_SECONDS`` of silence —
+        a natural pause. Closed mid-conversation, so an ``[OVERDUE ...]`` block
+        can never land on an unrelated turn like "sweet!".
+
+        Called once per turn; advances the idle clock as a side effect.
+        """
+        if not hasattr(self, "_reminders_surfaced"):
+            self._reminders_surfaced = set()
+        last = getattr(self, "_reminder_last_turn_at", None)
+        self._reminder_last_turn_at = now_ts
+        return last is None or (now_ts - last) >= REMINDER_PAUSE_SECONDS
+
+    def _mark_reminded(self, items: List[Dict], now: datetime) -> None:
+        """Record that *items* were surfaced so they are not surfaced again.
+
+        Two layers, covering different failure modes: ``_reminders_surfaced``
+        suppresses the repeat for the rest of this session and works even when
+        writes are off (incognito); ``reminded_at`` suppresses it across
+        sessions, since ``get_upcoming`` skips rows reminded at or after their
+        due date.
+
+        This used to be the model's job via a prompt instruction, and it did
+        not do it — the same overdue item was re-injected every turn for days.
+        """
+        now_iso = now.isoformat()
+        for item in items:
+            # In-session first, so a failed persist below still can't repeat
+            # the item on the next turn.
+            self._reminders_surfaced.add(item["id"])
+            if getattr(self, "_incognito", False):
+                continue
+            try:
+                self._memory_store.update(item["id"], reminded_at=now_iso)
+            except Exception as e:
+                logger.warning(
+                    "[MemoryMixin] could not mark %s as reminded (%s); it is "
+                    "suppressed for this session only and may resurface in the "
+                    "next one",
+                    item["id"],
+                    e,
+                )
+
     def _build_dynamic_memory_context(self) -> str:
         """Dynamic per-turn context: current time + upcoming/overdue items."""
         store = self._memory_store
@@ -2115,11 +2175,20 @@ class MemoryMixin(ProceduralMemoryMixin):
         time_str = now.strftime("%Y-%m-%dT%H:%M:%S%z") + f" ({now.strftime('%A')})"
         lines.append(f"Current time: {time_str}")
 
-        # Upcoming/overdue items
-        upcoming = store.get_upcoming(within_days=7, context=ctx)
+        # Upcoming/overdue items — only at session start or after a long pause,
+        # and never one this session already raised.
+        if self._reminder_window_open(time.time()):
+            upcoming = [
+                item
+                for item in store.get_upcoming(within_days=7, context=ctx)
+                if item["id"] not in self._reminders_surfaced
+            ][:10]
+        else:
+            upcoming = []
+
         if upcoming:
             up_lines = []
-            for item in upcoming[:10]:
+            for item in upcoming:
                 due = item.get("due_at", "")[:10] if item.get("due_at") else "?"
                 try:
                     due_dt = datetime.fromisoformat(item["due_at"])
@@ -2131,9 +2200,12 @@ class MemoryMixin(ProceduralMemoryMixin):
                     up_lines.append(f"  - [DUE {due}] {item['content']}")
             lines.append("Upcoming/overdue:\n" + "\n".join(up_lines))
             lines.append(
-                "After mentioning a time-sensitive item, call update_memory "
-                "to set reminded_at so you don't repeat yourself."
+                "Raise these only if they fit what the user just said, or if "
+                "the conversation is just starting. Never derail an unrelated "
+                "turn with them. They are already marked as raised — do not "
+                "call update_memory for that."
             )
+            self._mark_reminded(upcoming, now)
 
         return "[GAIA Memory Context]\n" + "\n\n".join(lines)
 
@@ -2833,7 +2905,7 @@ class MemoryMixin(ProceduralMemoryMixin):
             sensitive: str = "",
             entity: str = "",
         ) -> dict:
-            """Update an existing memory entry by ID. Only non-empty fields change. Set reminded_at=now after mentioning a time-sensitive item."""
+            """Update an existing memory entry by ID. Only non-empty fields change. reminded_at is maintained for you — do not set it after mentioning an item."""
             kwargs = {}
             if content:
                 if not content.strip():
@@ -3033,6 +3105,10 @@ class MemoryMixin(ProceduralMemoryMixin):
         if hasattr(self, "_memory_store"):
             self._memory_store.apply_confidence_decay()
             self._memory_session_id = str(uuid4())
+            # A new session reopens the reminder window; anything still due
+            # (reminded_at < due_at) may be raised once on its first turn.
+            self._reminders_surfaced = set()
+            self._reminder_last_turn_at = None
             logger.info(
                 "[MemoryMixin] session reset, new session_id=%s",
                 self._memory_session_id,
