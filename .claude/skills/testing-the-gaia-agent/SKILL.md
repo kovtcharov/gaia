@@ -170,20 +170,36 @@ uv pip install --python <venv>/Scripts/python.exe \
 imports THAT instead of your worktree. Put the venv's `Scripts/` on PATH in the launcher
 or the TUI cannot find `gaia-agent`.
 
-### 1c. The flagship ships with NO skills
+### 1c. The starter pack IS discoverable from a checkout — do not copy it in
 
-`gaia_agent/skills/` holds only `.gitkeep`, nothing stages `hub/skills/` into it, and
-every `skills:` / `skill_sets:` / `default_skill_set:` key in `gaia-agent.yaml` is
-commented out. So **L5–L7 cannot pass on a clean checkout** — not because the agent is
-broken, but because it has nothing to load.
+`hub/skills/` is a discovery root in its own right: `SKILL_DIRS` resolves to both the
+packaged `gaia_agent/skills/` (staged at build time, `.gitkeep` only in a checkout) and
+`hub/skills/` (`gaia_agent/agent.py:73,91`, guarded by
+`hub/agents/gaia/python/tests/test_bundled_skill_roots.py:35,39`). So `Load the
+github-triage skill.` works on a clean checkout, and L5–L7 are expected to pass.
 
-Install the one you are testing, and copy it rather than `gaia skill import` — import
-re-stamps the tier `experimental`, which is not what ships:
+**Do not `cp -r hub/skills/<name> ~/.gaia/skills/`.** That creates a *lower*-precedence
+duplicate of a skill the agent already sees (`user` loses to `agent-bundled`,
+`src/gaia/skills/manager.py:53-56`), which is how you end up debugging the copy while
+the agent runs the original. `gaia skill import` is worse — it re-stamps the tier
+`experimental`, which is not what ships.
+
+**`gaia skill list` will not tell you.** The CLI builds a `SkillManager()` with no
+agent roots (`src/gaia/skills/cli.py:437`), so it never sees `hub/skills/` — it lists
+`~/.gaia/skills` and the Claude-import roots only. Ask the *agent's* view instead:
 
 ```bash
-cp -r hub/skills/github-triage ~/.gaia/skills/
-gaia skill list      # expect: github-triage  2.0.0  community  user
+python -c "from gaia_agent.agent import GaiaAgent; from gaia.skills.manager import SkillManager; \
+[print(f'{s.name:20} {s.root}') for s in SkillManager(agent_skill_dirs=GaiaAgent.SKILL_DIRS).list_skills()]"
+# expect: github-triage        agent-bundled
 ```
+
+If a skill shows up as `user` there, someone has copied it into `~/.gaia/skills` — it is
+shadowed by the bundled copy and is not what the agent runs. Delete it.
+
+Only what `default_skill_set` / `skills:` name is loaded *automatically* — both are
+deliberately commented out in `gaia-agent.yaml` except `gaia-voice`, so a task skill is
+loaded on request, which is exactly what L5 tests.
 
 Also note `gh` is refused until the skill that grants it is **loaded** — the grant is
 `shell:execute:gh`. Asking for `gh` first produces a confident refusal that looks like a
@@ -248,6 +264,42 @@ step of a test into ONE python process:
 - **Set `PYTHONIOENCODING=utf-8`** or captures die on `cp1252` for the spinner glyphs.
 - **Do not resize larger than the real terminal** — the control API returns 409
   `resize_exceeds_terminal`; a bigger size shreds the frame.
+
+## Two ways to prove a skill works — use both
+
+Driving the TUI on your own machine is a real validation path, not a warm-up. It is the
+only way to see rendering, cancel, focus and the permission prompt, and it catches
+things a harness never will. Everything below about the ladder and L7 still stands.
+
+What is new is that the same question — *did the skill actually call its tools, or just
+describe them?* — now also has an automated answer you can run locally and that re-runs
+in CI:
+
+```bash
+# on a quiet box, with Lemonade up and the slot free
+python -m pytest tests/integration/eval/test_skill_behavior_e2e.py -m real_model -v
+```
+
+Same machine, same model, same skills — it loads each skill into the real flagship,
+scores the turn two ways (tools recorded outside the model in
+`src/gaia/eval/skill_behavior.py`, **and** a Claude judge on the answer), and plants an
+unguessable token so a fluent answer that never read the fixture fails.
+`.github/workflows/test_skill_behavior_eval.yml` runs exactly this on the
+`[self-hosted, Windows, stx]` AMD pool.
+
+**The loop is local first, then CI — both, every time:**
+
+1. **Drive the TUI** to explore the skill and see it work with your own eyes. This is
+   where you catch UX, rendering, cancel, and the permission prompt.
+2. **Run the behavioural suite locally, before you open the PR.** Same box, same model.
+   Confirm it is green — do not outsource the first run to CI, where a failure costs a
+   queued slot on shared hardware and 40 minutes of someone else's wait.
+3. **Open the PR.** `test_skill_behavior_eval.yml` re-runs the same suite on the `stx`
+   pool, so the behaviour stays pinned after you have moved on.
+
+A finding from the TUI usually deserves all three: see it, pin it with a scenario, let
+CI keep it pinned. A rung is re-run when a human remembers; a scenario is re-run by
+every PR.
 
 ## The capability ladder
 

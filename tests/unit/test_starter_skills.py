@@ -45,6 +45,12 @@ from gaia.skills.permissions import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STARTER_ROOT = REPO_ROOT / "hub" / "skills"
 
+#: ChatAgent's source, read from the tree rather than an installed wheel — see
+#: ``_chat_agent_inline_tools``.
+CHAT_AGENT_SOURCE = (
+    REPO_ROOT / "hub" / "agents" / "chat" / "python" / "gaia_agent_chat" / "agent.py"
+)
+
 #: Marks every skill in the pack, so consumers can group them (issue #893).
 PROVENANCE_SOURCE = "starter-pack"
 
@@ -208,13 +214,11 @@ def _chat_agent_inline_tools() -> frozenset[str]:
     must exist in ``agent.py`` or the name is dropped — keeping this list
     incapable of drifting past a rename.
     """
-    # Ships with the standalone gaia-agent-chat wheel, which the core-only test
-    # job does not install; skip rather than judge the list against nothing.
-    gaia_agent_chat = pytest.importorskip("gaia_agent_chat")
-
-    source = (Path(gaia_agent_chat.__file__).parent / "agent.py").read_text(
-        encoding="utf-8"
-    )
+    # Read the source from the repo tree, NOT the installed gaia-agent-chat
+    # wheel. An importorskip here made the whole honesty guard evaporate in the
+    # core-only CI job, which installs no agent wheels — the check silently
+    # stopped running on the job most likely to catch a typo.
+    source = CHAT_AGENT_SOURCE.read_text(encoding="utf-8")
     inline = {"execute_python_file", "list_files"}
     return frozenset(t for t in inline if f"def {t}(" in source)
 
@@ -224,6 +228,24 @@ def test_registry_fixture_actually_registered_something(registry_tool_names):
     assert {"search_web", "fetch_page", "query_documents", "recall"} <= (
         registry_tool_names
     )
+
+
+def test_the_chat_agent_source_is_where_the_guard_looks():
+    """A moved ChatAgent would empty the inline set instead of failing.
+
+    ``_chat_agent_inline_tools`` reads this path; if it ever stops existing the
+    inline names drop out silently and a skill could declare
+    ``execute_python_file`` unchallenged.
+    """
+    assert CHAT_AGENT_SOURCE.is_file(), (
+        f"ChatAgent source not at {CHAT_AGENT_SOURCE} — repoint "
+        "CHAT_AGENT_SOURCE or the tools_required guard silently weakens."
+    )
+
+
+def test_the_inline_chat_agent_tools_are_found(registry_tool_names):
+    """The inline names must actually resolve, not vanish into an empty set."""
+    assert {"execute_python_file", "list_files"} <= registry_tool_names
 
 
 @pytest.mark.parametrize("skill_dir", STARTER_DIRS, ids=_ids(STARTER_DIRS))

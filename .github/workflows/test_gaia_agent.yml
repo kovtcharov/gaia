@@ -16,6 +16,9 @@ on:
     paths:
       - 'hub/agents/gaia/python/**'
       - 'hub/agents/chat/python/**'
+      # The starter pack this job's "Skill Framework Tests" step validates. Without
+      # it a skill-only PR triggered nothing and its own guards never ran.
+      - 'hub/skills/**'
       - 'src/gaia/agents/base/**'
       - 'src/gaia/agents/tools/**'
       - 'src/gaia/skills/**'
@@ -28,6 +31,7 @@ on:
     paths:
       - 'hub/agents/gaia/python/**'
       - 'hub/agents/chat/python/**'
+      - 'hub/skills/**'
       - 'src/gaia/agents/base/**'
       - 'src/gaia/agents/tools/**'
       - 'src/gaia/skills/**'

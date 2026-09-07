@@ -1,0 +1,265 @@
+# Copyright(C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.
+# SPDX-License-Identifier: MIT
+
+# Behavioural eval for GAIA skills — the tier that was missing entirely.
+#
+# Every other skill gate answers "is the manifest honest?": the frontmatter
+# parses, the permissions are bridged, `tools_required` names tools that exist
+# (tests/unit/test_starter_skills.py). None of them answer the only question a
+# user has — with this skill loaded, does the agent actually RUN the procedure?
+#
+# That gap is not theoretical. The flagship's documented worst failure mode is
+# answering confidently with no tools registered: it once produced a polished
+# "here's how I'd triage that" paragraph while holding zero GitHub tools. Unit
+# tests cannot see it, and a human skimming the reply is actively misled,
+# because the fabricated answer is the more fluent one.
+#
+# So this job loads each skill into the real flagship agent, runs a real turn
+# against a real Lemonade model on AMD hardware, and requires TWO independent
+# signals to agree (src/gaia/eval/skill_behavior.py):
+#   1. the skill's tools were really called — recorded by wrapping the agent's
+#      tool registry, outside the model, so it cannot be talked out of it; and
+#   2. a Claude judge accepts the answer against the scenario's rubric.
+# Each scenario plants an unguessable token in its fixture, so an answer that
+# merely sounds right cannot pass.
+#
+# Self-hosted because it needs a real model: the [self-hosted, Windows, stx]
+# pool. `Windows` is load-bearing — the bare `stx` label also matches a Linux
+# box, where every PowerShell step below would die with "command not found".
+#
+# Serialization: the repo-wide `lemonade-eval` concurrency group. Lemonade is a
+# single model slot; two concurrent evals race-evict each other's models and
+# produce chaotic, meaningless failures. The group is declared on the JOB, and
+# the per-PR superseding group on the WORKFLOW — declaring `lemonade-eval` at
+# both levels of one file self-deadlocks.
+
+name: Skill Behavior Eval
+
+on:
+  # Pre-merge coverage for the skills themselves and the runtime that injects
+  # them into the prompt. `pull_request`, never `push`: a push filter matches
+  # the files in the push, so merging main into a branch replays main's churn
+  # and fires this multi-minute gate on unrelated PRs.
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'hub/skills/**'
+      - 'src/gaia/skills/**'
+      - 'src/gaia/eval/skill_behavior.py'
+      - 'src/gaia/agents/base/agent.py'
+      - 'src/gaia/agents/base/skill_loader.py'
+      - 'hub/agents/gaia/python/**'
+      - 'hub/agents/chat/python/**'
+      - 'tests/integration/eval/test_skill_behavior_e2e.py'
+      - 'src/gaia/version.py'
+      - '.github/workflows/test_skill_behavior_eval.yml'
+      - '.github/actions/setup-venv/**'
+      - '.github/actions/install-lemonade/**'
+      - 'installer/scripts/ensure-lemonade-running.ps1'
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Lemonade model id to run the skills against'
+        required: false
+        default: 'Gemma-4-E4B-it-GGUF'
+  # Reusable as a release gate. The secret is declared optional so
+  # `secrets: inherit` call sites work; the preflight below enforces it.
+  workflow_call:
+    inputs:
+      model:
+        description: 'Lemonade model id to run the skills against'
+        required: false
+        type: string
+        default: 'Gemma-4-E4B-it-GGUF'
+    secrets:
+      ANTHROPIC_API_KEY:
+        description: >-
+          Judge credential — REQUIRED. Absent, the preflight fails the run
+          before any model spend; never a skip, because an un-judged run is
+          not evidence.
+        required: false
+
+permissions:
+  contents: read
+
+# Per-PR superseding only. The single-slot serialization lives on the job.
+concurrency:
+  group: skill-behavior-eval-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Bare host, NO /api/v1 suffix — the client normalizes it and some scripts
+  # append it themselves, producing /api/v1/api/v1.
+  LEMONADE_BASE_URL: "http://127.0.0.1:13305"
+  NO_PROXY: "localhost,127.0.0.1"
+  PYTHONIOENCODING: "utf-8"
+  # A headless runner has no unlocked keyring; without this, agent
+  # construction blocks forever instead of failing.
+  PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
+  SKILL_EVAL_MODEL: ${{ inputs.model || 'Gemma-4-E4B-it-GGUF' }}
+
+jobs:
+  skill-behavior-eval:
+    name: Skill Behavior Eval
+    # Flat-indented on purpose: a folded scalar preserves newlines on
+    # more-indented lines and the expression stops parsing.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.pull_request.draft == false ||
+      contains(github.event.pull_request.labels.*.name, 'ready_for_ci')) &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-skill-eval'))
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'stx-test') && '["self-hosted","Windows","stx-test"]' || '["self-hosted","Windows","stx"]') }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: powershell
+    # Repo-wide group shared with the other evals — one Lemonade slot.
+    # `queue: max` because the default (`single`) cancels the previously-queued
+    # run, which shows up as a phantom red X on someone else's PR.
+    concurrency:
+      group: lemonade-eval
+      cancel-in-progress: false
+      queue: max
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Fail in 10 seconds rather than after 40 minutes of the serial slot.
+      - name: Preflight — judge credential
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
+            Write-Host '::error::ANTHROPIC_API_KEY is not set, so no scenario could be judged. Add the ANTHROPIC_API_KEY repository secret, or pass `secrets: inherit` from the calling workflow.'
+            exit 1
+          }
+          Write-Host "Judge credential present."
+
+      - name: Setup Python Environment
+        uses: ./.github/actions/setup-venv
+        with:
+          python-version: '3.12'
+          # Core must be EDITABLE or gaia.eval's fixture path resolution lands
+          # in .venv/Lib. The hub agent packages are standalone wheels that no
+          # extra pulls in — without them the flagship import fails.
+          install-package: '-e .[dev,eval,api] -e hub/agents/chat/python -e hub/agents/gaia/python'
+
+      - name: Install Lemonade Server
+        uses: ./.github/actions/install-lemonade
+
+      # Registers a Windows Scheduled Task, so the server survives step
+      # boundaries — an inline Start-Process child does not.
+      - name: Start Lemonade Server (version-matched, warmed)
+        timeout-minutes: 15
+        env:
+          HUGGINGFACE_ACCESS_TOKEN: ${{ secrets.HUGGINGFACE_ACCESS_TOKEN }}
+          HF_TOKEN: ${{ secrets.HUGGINGFACE_ACCESS_TOKEN }}
+        run: |
+          powershell -ExecutionPolicy Bypass -File installer\scripts\ensure-lemonade-running.ps1 -WarmModel "$env:SKILL_EVAL_MODEL"
+          if ($LASTEXITCODE -ne 0) { throw "Lemonade server not ready" }
+
+      # ensure-lemonade-running.ps1 swallows a failed warm pull and still exits
+      # 0, so a healthy /health proves nothing about the model. Assert it, and
+      # assert the embedder: document-brief indexes a document, and the
+      # flagship's per-turn skill selection embeds too, so a dead embedder
+      # would fail the scenarios for a reason that is not the skill's fault.
+      - name: Verify the model and the embedder are actually live
+        run: |
+          # Resolve the embedder's checkpoint/recipe from the same MODELS entry
+          # gaia.rag.sdk registers it from, so this probe cannot drift from what
+          # RAG will actually ask Lemonade for. Hardcoding them here has broken
+          # a healthy runner before (the default port moved once already).
+          $global:LASTEXITCODE = 0
+          $probe = @(python -c "from gaia.llm.lemonade_client import DEFAULT_EMBEDDING_MODEL, MODELS, _get_lemonade_config; m = next(x for x in MODELS.values() if x.model_id == DEFAULT_EMBEDDING_MODEL); print(_get_lemonade_config()[2]); print(DEFAULT_EMBEDDING_MODEL); print(m.checkpoint); print(m.recipe)")
+          if ($LASTEXITCODE -ne 0 -or $probe.Count -lt 4) {
+            Write-Host "::error::Could not resolve the Lemonade URL / embedder — the venv install is broken."
+            exit 1
+          }
+          $lemonadeUrl = $probe[-4]
+          $embeddingModel = $probe[-3]
+          $embeddingCheckpoint = $probe[-2]
+          $embeddingRecipe = $probe[-1]
+
+          $models = Invoke-RestMethod -Uri "$lemonadeUrl/models" -TimeoutSec 30
+          $ids = @($models.data | ForEach-Object { $_.id })
+          Write-Host "Models: $($ids -join ', ')"
+          if ($ids -notcontains $env:SKILL_EVAL_MODEL) {
+            Write-Host "::error::$env:SKILL_EVAL_MODEL is not registered on this Lemonade server — the warm pull failed silently. Pull it on the runner and re-run."
+            exit 1
+          }
+          Write-Host "Model under test present: $env:SKILL_EVAL_MODEL"
+
+          # Presence in /models proves the GGUF is on disk, not that it can be
+          # served. document-brief indexes a document and the flagship embeds
+          # every turn for skill selection, so a dead embedder would fail the
+          # scenarios for a reason that is not the skill's fault.
+          $ErrorActionPreference = "Continue"
+          $global:LASTEXITCODE = 0
+          $embedOut = & python tests/ci_lemonade_check.py `
+            --model $embeddingModel `
+            --checkpoint $embeddingCheckpoint `
+            --recipe $embeddingRecipe `
+            --register-embedding `
+            --embeddings `
+            --llamacpp-args "--ubatch-size 2048" 2>&1
+          $embedCode = $LASTEXITCODE
+          $ErrorActionPreference = "Stop"
+          $embedOut | ForEach-Object { Write-Host "$_" }
+          if ($embedCode -ne 0 -or -not ($embedOut -match '\[ci\] embeddings OK \(dim=')) {
+            Write-Host "::error::The embedder could not serve a real /embeddings call — document-brief would fail for an infrastructure reason, not a skill defect."
+            exit 1
+          }
+          # GitHub appends `exit $LASTEXITCODE` to every PowerShell step, so
+          # falling off the end would re-export the probe's code as the step's.
+          $global:LASTEXITCODE = 0
+
+      - name: Run skill behavior eval
+        # On the STEP, not only the job: a job-level timeout cancels, which
+        # skips every `if: always()` collect/upload step and discards results
+        # already produced.
+        timeout-minutes: 40
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Covers the whole run — a shorter cap silently abandons a turn
+          # mid-flight and reports zero results.
+          GAIA_AGENT_TOOL_TIMEOUT: "1800"
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          New-Item -ItemType Directory -Force eval-out | Out-Null
+          $global:LASTEXITCODE = 0
+          python -m pytest tests/integration/eval/test_skill_behavior_e2e.py `
+            -m real_model -v -rs --tb=short `
+            --junitxml=eval-out/skill-behavior.xml 2>&1 |
+            ForEach-Object { Write-Host "$_"; "$_" } |
+            Out-File -FilePath "eval-out\skill-behavior.log" -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "skill behavior eval failed" }
+
+      # A skipped module is not a pass. The integration test skips itself when
+      # Lemonade is unreachable, which would otherwise leave a green job that
+      # measured nothing.
+      - name: Assert the eval actually ran
+        if: always()
+        run: |
+          if (-not (Test-Path "eval-out\skill-behavior.xml")) {
+            Write-Host "::error::No JUnit report — the eval never executed."
+            exit 1
+          }
+          [xml]$report = Get-Content "eval-out\skill-behavior.xml"
+          $suite = $report.testsuites.testsuite
+          $total = [int]$suite.tests
+          $skipped = [int]$suite.skipped
+          Write-Host "tests=$total skipped=$skipped failures=$($suite.failures) errors=$($suite.errors)"
+          if ($total -eq 0 -or $total -eq $skipped) {
+            Write-Host "::error::Every scenario skipped — the run produced no evidence. Check Lemonade reachability."
+            exit 1
+          }
+
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: skill-behavior-eval-report
+          path: eval-out/
+          if-no-files-found: warn

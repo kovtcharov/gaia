@@ -1434,6 +1434,63 @@ For the new scenario-based eval framework that tests the live Agent UI end-to-en
 - [Scenario Authoring](/guides/eval-scenarios) — write custom YAML scenarios
 - [CI/CD Integration](/guides/eval-ci) — regression detection in GitHub Actions
 
+## Skill Behavior Eval
+
+Answers the one question the other skill suites do not: with a skill loaded, does the
+agent actually **run** the procedure, or write a fluent paragraph describing what it
+would have done? The second failure looks *better* than a correct answer, so it is
+invisible to unit tests and to a human skimming the reply.
+
+Each scenario loads a skill into the real flagship agent, runs a turn against a real
+Lemonade model, and requires two independent signals to agree:
+
+| Signal | How it is obtained | Why both |
+|---|---|---|
+| Tools were really called | The agent's tool registry is wrapped for the turn, so calls are recorded **outside** the model | Deterministic — it cannot be argued with by a persuasive answer |
+| The answer is correct | A Claude judge scores it against the scenario rubric, and is shown the recorded calls | Tool calls alone do not prove the agent *used* the result |
+
+Every scenario also plants an unguessable token (`secrets.token_hex`) in its fixture, so
+an answer that never read the real file cannot pass by sounding right.
+
+Run it **locally before opening the PR**, then let CI re-run it on the PR. Both matter:
+the local run is how you confirm your skill works while you can still iterate quickly;
+the CI run is how it stays working after you have moved on. Do not outsource the first
+run to CI — a failure there costs a queued slot on shared AMD hardware.
+
+```bash
+# Requires Lemonade up and ANTHROPIC_API_KEY set. Run one at a time —
+# the Lemonade model slot is single-tenant.
+LEMONADE_BASE_URL=http://127.0.0.1:13305 \
+  python -m pytest tests/integration/eval/test_skill_behavior_e2e.py -m real_model -v
+```
+
+A missing `ANTHROPIC_API_KEY` **fails** the run rather than skipping it: a run that
+cannot judge produces no evidence, and a green skip would read as one.
+
+**Adding a scenario** — extend `_scenarios()` in
+`tests/integration/eval/test_skill_behavior_e2e.py`:
+
+```python
+SkillScenario(
+    id="my_skill_does_the_thing",
+    skill="my-skill",
+    query=f"...ask something that requires the fixture at {path}...",
+    must_call=("index_document", "query_documents"),  # recorded, not judged
+    must_contain=(planted_token,),                    # proves it read the fixture
+    must_not_contain=("I would",),                    # catches the described-but-not-done answer
+    rubric="What a correct answer must contain, in plain language.",
+)
+```
+
+Prefer skills whose tools run locally (scratchpad, RAG, file IO). A skill needing OAuth
+or `gh` auth measures the runner's credentials as much as the skill.
+
+CI: `.github/workflows/test_skill_behavior_eval.yml` runs this on the
+`[self-hosted, Windows, stx]` AMD pool, serialized against the other evals by the
+repo-wide `lemonade-eval` concurrency group. It triggers on changes to `hub/skills/**`,
+the skills runtime, or the flagship agent. The harness itself has offline unit tests in
+`tests/unit/eval/test_skill_behavior.py` that need no model.
+
 ---
 
 <small style="color: #666;">
