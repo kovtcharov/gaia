@@ -32,6 +32,19 @@ contract version is tracked separately as
 
 ### Changed
 
+- **The earn-trust engine's generic half now lives in the GAIA base
+  framework.** `TrustLedger` (the per-`(action_type, scope)` outcome counter
+  with the `min_samples`/`threshold` promotion gate) and the `TrustPolicy`
+  scaffolding (level validation, confirm-floor, ledger-proven promotion)
+  moved to `gaia.agents.base.trust_ledger`; `gaia_agent_email.trust` now
+  subclasses them and keeps only the email-specific parts (action taxonomy,
+  scope keys, the #2426 importance/security-sender guard, preferences).
+  No behavior change: the `email_trust_ledger` table, every public name in
+  `gaia_agent_email.trust`, and all decision outcomes are unchanged. Requires
+  a core release that ships `gaia.agents.base.trust_ledger` (first release
+  after 0.23.0) — enforced by the publish-time gate in
+  `release_agent_email.yml`, same as the #2590 `setup_routes` dependency.
+
 - **Email addresses are now redacted from verbose tool-call logs.** The
   `tool_call` / `tool_result` records emitted for **every** tool previously
   passed addresses through unscrubbed — `_REDACT_PATTERNS` matched MFA codes,

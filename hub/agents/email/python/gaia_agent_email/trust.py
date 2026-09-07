@@ -2,18 +2,22 @@
 # SPDX-License-Identifier: MIT
 """Earn-trust policy engine for autonomous email handling (#1483 / #1287).
 
-Two cooperating pieces:
+Two cooperating pieces, both built on the base framework's generic earn-trust
+machinery (``gaia.agents.base.trust_ledger``, generalized from this module):
 
 - :class:`TrustLedger` — pure functions over the agent's SQLite handle
   (mirrors ``action_store``/``schedule_store``): a per-``(action_type, scope)``
   tally of positive vs. negative outcomes. "scope" is a category
   (``category:PROMOTIONAL``) or a sender (``sender:news@x.com``). Trust is
   *earned* here — a scope becomes trusted only after enough correct decisions.
+  The counter math lives in the base class; this subclass only binds the
+  ``email_trust_ledger`` table.
 
 - :class:`TrustPolicy` — the decision layer. Given a candidate action it
   returns a :class:`TrustDecision` of ``auto`` | ``draft`` | ``suggest`` |
   ``confirm``. It reads the ledger, the user's explicit preferences, and the
-  configured autonomy level.
+  configured autonomy level. The floor/promotion scaffolding is inherited;
+  the email action taxonomy and guards are implemented here.
 
 Inviolable floor (the whole point of "check in on destructive things"):
 tools in the agent's ``CONFIRMATION_REQUIRED_TOOLS`` — send, forward, permanent
@@ -39,26 +43,27 @@ from __future__ import annotations
 
 import re
 import time
-from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Mapping, Optional
+from typing import Any, Dict, Mapping, Optional
 
-# ---------------------------------------------------------------------------
-# Autonomy levels — the earn-trust gradient
-# ---------------------------------------------------------------------------
-
-#: No autonomous activity. The heartbeat loop does not run. Default.
-LEVEL_OFF = "off"
-#: Propose everything, execute nothing autonomously (read-only + suggestions).
-LEVEL_SUGGEST = "suggest"
-#: The star mode: auto-execute reversible actions in trusted/approved scopes,
-#: draft replies, suggest the rest. This is what "full autonomy mode" maps to.
-LEVEL_EARN_TRUST = "earn_trust"
-#: Auto-execute all reversible actions immediately; drafts still never send.
-LEVEL_FULL = "full"
-
-AUTONOMY_LEVELS = (LEVEL_OFF, LEVEL_SUGGEST, LEVEL_EARN_TRUST, LEVEL_FULL)
-
-AutonomyLevel = Literal["off", "suggest", "earn_trust", "full"]
+# The generic earn-trust machinery (levels, decision dataclass, counter
+# ledger, policy scaffolding) lives in the base framework — generalized from
+# this module. Names are re-exported here so existing email-agent imports
+# (`from gaia_agent_email.trust import LEVEL_OFF, TrustDecision, ...`) keep
+# working unchanged.
+from gaia.agents.base.trust_ledger import (  # noqa: F401
+    AUTONOMY_LEVELS,
+    LEVEL_EARN_TRUST,
+    LEVEL_FULL,
+    LEVEL_OFF,
+    LEVEL_SUGGEST,
+    OUTCOME_NEGATIVE,
+    OUTCOME_POSITIVE,
+    AutonomyLevel,
+    Decision,
+    TrustDecision,
+)
+from gaia.agents.base.trust_ledger import TrustLedger as BaseTrustLedger
+from gaia.agents.base.trust_ledger import TrustPolicy as BaseTrustPolicy
 
 # ---------------------------------------------------------------------------
 # Action taxonomy
@@ -87,43 +92,30 @@ REVERSIBLE_AUTO_ACTIONS = frozenset(
 #: though sending is not.
 DRAFT_ACTIONS = frozenset({"draft_reply", "draft_forward"})
 
-# Ledger outcome polarity.
-OUTCOME_POSITIVE = "positive"
-OUTCOME_NEGATIVE = "negative"
 
-Decision = Literal["auto", "draft", "suggest", "confirm"]
+# ---------------------------------------------------------------------------
+# TrustLedger — the earned-evidence tally
+# ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class TrustDecision:
-    """The policy's verdict for one candidate action.
+class TrustLedger(BaseTrustLedger):
+    """The email agent's trust ledger, over the ``email_trust_ledger`` table.
 
-    ``action`` is the disposition; ``reason`` is a human-readable rationale
-    surfaced in the activity feed and the ``gaia email autonomy`` CLI output;
-    ``confidence`` is the ledger trust score in ``[0, 1]`` (1.0 for the
-    hard-coded floor and for explicit preferences).
+    A table-binding subclass of the base framework's
+    :class:`~gaia.agents.base.trust_ledger.TrustLedger` — the counter math,
+    the ``min_samples``/``threshold`` gate, and the upsert discipline all
+    live there. The table name (and therefore the on-disk schema in the
+    agent's ``state.db``) is unchanged.
     """
 
-    action: Decision
-    reason: str
-    confidence: float = 0.0
+    TABLE = "email_trust_ledger"
 
 
 # ---------------------------------------------------------------------------
 # Schema
 # ---------------------------------------------------------------------------
 
-EMAIL_TRUST_LEDGER_DDL = """
-CREATE TABLE IF NOT EXISTS email_trust_ledger (
-    action_type  TEXT NOT NULL,
-    scope        TEXT NOT NULL,
-    positive     INTEGER NOT NULL DEFAULT 0,
-    negative     INTEGER NOT NULL DEFAULT 0,
-    last_outcome TEXT,
-    updated_at   REAL NOT NULL,
-    PRIMARY KEY (action_type, scope)
-);
-"""
+EMAIL_TRUST_LEDGER_DDL = TrustLedger.ddl()
 
 # Attribution index: maps each autonomously-executed action back to the
 # ``(action_type, sender, category)`` scope it was decided under. When the user
@@ -385,138 +377,20 @@ def is_security_sender(sender: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# TrustLedger — the earned-evidence tally
-# ---------------------------------------------------------------------------
-
-
-class TrustLedger:
-    """Pure-function accessors over the ``email_trust_ledger`` table.
-
-    Every method takes a ``DatabaseMixin``-typed ``db`` as its first argument
-    and never reaches into the agent class — same discipline as
-    ``action_store``. Instances hold only the trust thresholds so a
-    :class:`TrustPolicy` can share one configured ledger.
-    """
-
-    def __init__(self, *, min_samples: int = 5, threshold: float = 0.85) -> None:
-        if min_samples < 1:
-            raise ValueError(
-                f"TrustLedger min_samples must be >= 1, got {min_samples!r}"
-            )
-        if not 0.0 < threshold <= 1.0:
-            raise ValueError(
-                f"TrustLedger threshold must be in (0, 1], got {threshold!r}"
-            )
-        self.min_samples = min_samples
-        self.threshold = threshold
-
-    @staticmethod
-    def record_outcome(
-        db,
-        *,
-        action_type: str,
-        scope: str,
-        positive: bool,
-        now: Optional[float] = None,
-    ) -> None:
-        """Increment the positive or negative tally for one scope.
-
-        Upsert: create the row on first sight, otherwise bump the counter.
-        A single decision that the user accepted / left standing is positive;
-        one they rejected / undid / edited is negative.
-        """
-        ts = time.time() if now is None else now
-        outcome = OUTCOME_POSITIVE if positive else OUTCOME_NEGATIVE
-        # Atomic upsert (single statement) so two concurrent first-writes to the
-        # same (action_type, scope) — the session agent and a scheduler-built
-        # agent share one on-disk DB — can't both INSERT and collide on the PK.
-        # Wrapped in a transaction so the write commits (query() alone does not).
-        with db.transaction():
-            db.query(
-                "INSERT INTO email_trust_ledger "
-                "(action_type, scope, positive, negative, last_outcome, updated_at) "
-                "VALUES (:a, :s, :pos, :neg, :outcome, :ts) "
-                "ON CONFLICT(action_type, scope) DO UPDATE SET "
-                "positive = positive + :pos, negative = negative + :neg, "
-                "last_outcome = :outcome, updated_at = :ts",
-                {
-                    "a": action_type,
-                    "s": scope,
-                    "pos": 1 if positive else 0,
-                    "neg": 0 if positive else 1,
-                    "outcome": outcome,
-                    "ts": ts,
-                },
-            )
-
-    @staticmethod
-    def get_stats(db, *, action_type: str, scope: str) -> Dict[str, Any]:
-        """Return ``{positive, negative, total, score}`` for a scope.
-
-        ``score`` is ``positive / total`` (0.0 when there is no evidence yet).
-        """
-        row = db.query(
-            "SELECT positive, negative FROM email_trust_ledger "
-            "WHERE action_type = :a AND scope = :s",
-            {"a": action_type, "s": scope},
-            one=True,
-        )
-        pos = int(row["positive"]) if row else 0
-        neg = int(row["negative"]) if row else 0
-        total = pos + neg
-        score = (pos / total) if total else 0.0
-        return {"positive": pos, "negative": neg, "total": total, "score": score}
-
-    def is_trusted(self, db, *, action_type: str, scope: str) -> bool:
-        """True when a scope has earned enough correct outcomes to auto-run.
-
-        Requires BOTH a minimum sample count (so a single lucky call can't
-        unlock autonomy) AND an accuracy at/above the threshold.
-        """
-        stats = self.get_stats(db, action_type=action_type, scope=scope)
-        return stats["total"] >= self.min_samples and stats["score"] >= self.threshold
-
-    @staticmethod
-    def list_ledger(db) -> List[Dict[str, Any]]:
-        """Every ledger row, most-recently-updated first (for the CLI/UI)."""
-        return db.query(
-            "SELECT action_type, scope, positive, negative, last_outcome, "
-            "updated_at FROM email_trust_ledger ORDER BY updated_at DESC"
-        )
-
-
-# ---------------------------------------------------------------------------
 # TrustPolicy — the decision layer
 # ---------------------------------------------------------------------------
 
 
-class TrustPolicy:
-    """Decide the disposition of a candidate autonomous action.
+class TrustPolicy(BaseTrustPolicy):
+    """Decide the disposition of a candidate autonomous email action.
 
     Construct with the configured autonomy level, the ledger, and the agent's
-    inviolable confirm-floor set. :meth:`decide` returns a
-    :class:`TrustDecision`.
+    inviolable confirm-floor set (all validated by the base
+    :class:`~gaia.agents.base.trust_ledger.TrustPolicy`). :meth:`decide`
+    returns a :class:`TrustDecision` and carries the email-specific steps:
+    the draft/reversible taxonomy, the importance / security-sender
+    auto-archive guard (#2426), and explicit user preferences.
     """
-
-    def __init__(
-        self,
-        *,
-        level: str,
-        ledger: TrustLedger,
-        confirm_floor: frozenset,
-    ) -> None:
-        if level not in AUTONOMY_LEVELS:
-            raise ValueError(
-                f"TrustPolicy level must be one of {AUTONOMY_LEVELS}, got {level!r}"
-            )
-        self.level = level
-        self.ledger = ledger
-        self.confirm_floor = frozenset(confirm_floor)
-
-    @property
-    def enabled(self) -> bool:
-        """False only at :data:`LEVEL_OFF` — the loop should not run at all."""
-        return self.level != LEVEL_OFF
 
     def _explicitly_preferred(
         self,
@@ -566,13 +440,9 @@ class TrustPolicy:
         proposal rather than auto-executed (#2426), at every autonomy level.
         """
         # 1. Inviolable floor — no level, trust score, or preference lowers it.
-        if tool in self.confirm_floor:
-            return TrustDecision(
-                "confirm",
-                reason=f"{tool} is destructive/irreversible — always requires "
-                "your confirmation",
-                confidence=1.0,
-            )
+        floor = self.floor_decision(tool)
+        if floor is not None:
+            return floor
 
         # 2. Loop disabled.
         if self.level == LEVEL_OFF:
@@ -645,33 +515,18 @@ class TrustPolicy:
             )
 
         if db is not None:
-            for scope in (scope_sender, scope_cat):
-                if not scope:
-                    continue
-                if self.ledger.is_trusted(db, action_type=action_type, scope=scope):
-                    stats = self.ledger.get_stats(
-                        db, action_type=action_type, scope=scope
-                    )
-                    return TrustDecision(
-                        "auto",
-                        reason=(
-                            f"proven on {scope} "
-                            f"({stats['positive']}/{stats['total']} correct)"
-                        ),
-                        confidence=stats["score"],
-                    )
+            proven = self.trusted_decision(
+                db, action_type=action_type, scopes=(scope_sender, scope_cat)
+            )
+            if proven is not None:
+                return proven
 
         # Not yet trusted — propose and learn from the answer.
         best = 0.0
         if db is not None:
-            for scope in (scope_sender, scope_cat):
-                if scope:
-                    best = max(
-                        best,
-                        self.ledger.get_stats(db, action_type=action_type, scope=scope)[
-                            "score"
-                        ],
-                    )
+            best = self.best_score(
+                db, action_type=action_type, scopes=(scope_sender, scope_cat)
+            )
         return TrustDecision(
             "suggest",
             reason="not yet proven for this sender/category — learning from your "

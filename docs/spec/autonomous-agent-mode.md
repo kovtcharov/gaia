@@ -13,7 +13,10 @@
 > closed correction→learning loop — see
 > [`docs/plans/email-full-autonomy.mdx`](/plans/email-full-autonomy)
 > (`autonomy_level = earn_trust`). Generalizing that engine back into the base
-> `Agent` loop for every agent remains #2005.
+> `Agent` loop for every agent remains #2005; its first piece has landed —
+> the empirical promotion gate (`TrustLedger` outcome counter + `TrustPolicy`
+> scaffolding) now lives in `gaia.agents.base.trust_ledger`, and the email
+> agent subclasses it.
 
 ---
 

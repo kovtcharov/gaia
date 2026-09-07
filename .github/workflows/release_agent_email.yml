@@ -188,13 +188,20 @@ jobs:
       # setup call (the #2112 failure mode). Bump the pyproject/manifest
       # floor to the release that ships setup_routes once one exists, and
       # this check becomes redundant with that (harmless to keep either way).
-      - name: Verify resolved core exposes gaia.connectors.setup_routes (#2590)
+      # gaia.agents.base.trust_ledger joined the list when the earn-trust
+      # engine was generalized into core: trust.py imports it at module load,
+      # and it ships in the first core release after 0.23.0.
+      - name: Verify resolved core exposes next-release modules (#2590)
         shell: bash
         run: |
           set -euo pipefail
           PY=.venv-freeze/$([ "$RUNNER_OS" = "Windows" ] && echo Scripts || echo bin)/python
           "$PY" -c "import gaia.connectors.setup_routes" || {
             echo "::error::the resolved amd-gaia core does not expose gaia.connectors.setup_routes — the guided Outlook setup (#2590) would ImportError on every setup_mailbox_access call for Microsoft. Do not release gaia-agent-email from a core checkout that lacks this module."
+            exit 1
+          }
+          "$PY" -c "import gaia.agents.base.trust_ledger" || {
+            echo "::error::the resolved amd-gaia core does not expose gaia.agents.base.trust_ledger — gaia_agent_email.trust imports it at module load, so the whole agent would ImportError at startup. Do not release gaia-agent-email from a core checkout that lacks this module."
             exit 1
           }
 

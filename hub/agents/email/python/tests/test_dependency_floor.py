@@ -34,6 +34,11 @@ cannot, guard the published-sidecar-vs-old-core case. That gate belongs at
 publish time instead: see the core-version check in
 ``.github/workflows/release_agent_email.yml``, which refuses to publish a
 build whose resolved core lacks ``gaia.connectors.setup_routes``.
+
+``gaia.agents.base.trust_ledger`` is a third such import (the earn-trust
+engine generalized into core; ``trust.py`` subclasses it at module load).
+It ships in the first core release after 0.23.0 and is covered by the same
+publish-time gate.
 """
 
 from __future__ import annotations
@@ -82,6 +87,17 @@ def test_setup_walkthrough_module_imports_and_setup_routes_symbol_exists():
     from gaia.connectors.setup_routes import ROUTES
 
     assert "microsoft" in ROUTES
+
+
+def test_trust_module_imports_and_base_ledger_exists():
+    """Same deal for the generalized earn-trust engine: ``trust.py`` imports
+    ``gaia.agents.base.trust_ledger`` at module load, so an old core kills
+    the whole agent at startup. The cross-version guard is the publish-time
+    gate; this proves the chain against the locally resolved core."""
+    import gaia_agent_email.trust  # noqa: F401
+    from gaia.agents.base.trust_ledger import TrustLedger
+
+    assert TrustLedger.TABLE == "trust_ledger"
 
 
 def test_manifest_floors_match_pyproject():

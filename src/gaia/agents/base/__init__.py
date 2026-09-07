@@ -8,3 +8,8 @@ from gaia.agents.base.agent import Agent  # noqa: F401
 from gaia.agents.base.goal_store import Goal, GoalStore, Task  # noqa: F401
 from gaia.agents.base.mcp_agent import MCPAgent  # noqa: F401
 from gaia.agents.base.tools import _TOOL_REGISTRY, tool  # noqa: F401
+from gaia.agents.base.trust_ledger import (  # noqa: F401
+    TrustDecision,
+    TrustLedger,
+    TrustPolicy,
+)

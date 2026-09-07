@@ -29,6 +29,12 @@ requires-python = ">=3.10"
 # the publish-time gate in .github/workflows/release_agent_email.yml, which
 # refuses to publish a build whose resolved core lacks the module.
 #
+# Same story for gaia.agents.base.trust_ledger: trust.py imports it at
+# module load (the earn-trust engine was generalized into core, and this
+# package now subclasses it). It ships in the first core release AFTER
+# 0.23.0 — bump this floor to that release once it is cut. Until then the
+# publish-time gate above also verifies trust_ledger resolves.
+#
 # specific-ai-tools is pinned exactly, not floored: it supplies the SLM
 # classifier the agent loads model weights through, so the version that ships
 # is the version the SLM path was validated against.
