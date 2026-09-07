@@ -417,6 +417,7 @@ def check_imports() -> CheckResult:
         # Specialized Agents — optional so a framework-only env (no
         # gaia-agent-<id> installed) skips rather than fails.
         ("from", "gaia_agent_chat", "ChatAgent", "Chat agent", True),
+        ("from", "gaia_agent.agent", "GaiaAgent", "Flagship agent", True),
         # Database
         ("from", "gaia.database", "DatabaseAgent", "Database agent", False),
         ("from", "gaia.database", "DatabaseMixin", "Database mixin", False),

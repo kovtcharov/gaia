@@ -44,7 +44,6 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        # Skip macOS - Docker not available on macOS GitHub runners
       fail-fast: false  # Continue testing other platforms even if one fails
 
     runs-on: ${{ matrix.os }}
@@ -54,10 +53,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-
-      - name: Free disk space
-        if: matrix.os == 'ubuntu-latest'
-        uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v7
@@ -75,45 +70,14 @@ jobs:
           echo "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
         shell: pwsh
 
-      - name: Verify Docker is available
-        continue-on-error: true
-        id: docker-check
-        run: |
-          docker --version
-          docker info
-
       - name: Install dependencies
         run: |
           uv pip install --system -e .[dev]
           uv pip install --system "fastmcp>=0.1.0"
 
-      # TODO: Start Lemonade server for integration tests
-      # For now, integration tests requiring LLM will be skipped
-      # - name: Start Lemonade server
-      #   run: |
-      #     lemonade-server serve --ctx-size 32768 &
-      #     sleep 10
-
-      - name: Run MCPAgent tests (fast tests only)
+      - name: Run MCPAgent tests
         run: |
-          python -m pytest tests/mcp/test_agent_mcp_server.py -v -m "not slow and not integration"
-
-      - name: Run slow tests (with Docker operations)
-        if: (success() || failure()) && steps.docker-check.outcome == 'success'
-        run: |
-          python -m pytest tests/mcp/test_agent_mcp_server.py -v -m "slow and not integration" --tb=short
-
-      # Integration tests require Lemonade server - skip for now
-      # - name: Run integration tests (with LLM orchestration)
-      #   if: success() || failure()
-      #   run: |
-      #     pytest tests/mcp/test_agent_mcp_server.py -v -m "integration" --tb=short
-
-      - name: Cleanup Docker resources
-        if: always()  # Always cleanup, even if tests fail
-        run: |
-          docker system prune -af --volumes || true
-        shell: bash
+          python -m pytest tests/mcp/test_agent_mcp_server.py -v
 
       - name: Upload test results
         if: always()

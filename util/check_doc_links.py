@@ -80,6 +80,9 @@ SKIP_PATTERNS = [
     r"github\.com/amd/gaia/(blob|tree)/main/",  # Same-repo links (may 404 during PRs before merge)
     r"https?://(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)",  # RFC1918 private IPs (example URLs in docs)
     r"^https?://t\.me/",  # Telegram deep-links (e.g. BotFather) — valid but unresolvable from CI runners
+    # Apple's signed-in developer console. The public docs under the same domain
+    # stay checked; only /account/* redirects an anonymous request to sign-in.
+    r"developer\.apple\.com/account",
 ]
 
 

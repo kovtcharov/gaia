@@ -377,7 +377,8 @@ python -m gaia.mcp.mcp_bridge
 
 **Changes that REQUIRE an eval run before merge:**
 
-- ChatAgent / DocumentQAAgent / FileIOAgent / ChatAgentLite system prompts (`_get_system_prompt()`) or any mixin prompt fragment
+- GaiaAgent / ChatAgent / ChatAgentLite system prompts (`_get_system_prompt()`) or any mixin prompt fragment
+- Any `SKILL.md` under `hub/skills/` — a skill body is prompt text the flagship loads at runtime
 - The base agent's `_compose_system_prompt`, prompt-assembly order, or `_format_tools_for_prompt`
 - Tool registration, tool docstrings, or the JSON tool schema sent to Lemonade
 - Error classification (`LemonadeError` subclasses, `_classify_chat_exception`, `_extract_lemonade_user_message`) or the agent-loop catchall
@@ -533,7 +534,6 @@ gaia/
 │   └── test_*.py       # Top-level feature tests (sdk, api, chat, code, rag, eval…)
 ├── scripts/            # Build, install, and launch scripts
 ├── docs/               # Documentation (MDX format)
-├── workshop/           # Tutorial materials
 └── .github/workflows/  # CI/CD pipelines
 ```
 

@@ -56,19 +56,22 @@ down in proportion to how hard the change is to undo.
 
 ## Guardrails are not bugs
 
-`write_file` and `edit_file` refuse system directories, dotfiles like `.env`
-or `.ssh/*`, and anything above a 10 MB size limit — these are the platform's
-sandbox, not something to route around. If a write is denied, that is the
-answer; report it and ask the user where they'd actually like the file, don't
-look for another tool that skips the check.
+`write_file` and `edit_file` refuse system directories, files whose name
+marks them as secret-bearing (dotenv files, private keys, password stores),
+certificate and keystore extensions, and anything above a 10 MB size limit —
+these are the platform's sandbox, not something to route around. If a write is
+denied, that is the answer; report it and ask the user where they'd actually
+like the file, don't look for another tool that skips the check.
 
 ## What this skill does not cover
 
-`read_file` is for text — Python, Markdown, config, plain text. It refuses
-binary document formats (PDF, DOCX, XLSX, and similar) outright, because
-reading them raw produces garbage the model then reasons over as if it were
-real content. Those need `index_document` + `query_documents` instead — see
-the `document-brief` skill.
+`read_file` is for text — Python, Markdown, config, plain text. Hand it a
+binary document (PDF, DOCX, XLSX, and similar) and it does **not** fail: it
+comes back `"status": "success"` with `"is_binary": true` and a placeholder
+`"[Binary file, N bytes]"` where the content would be. Treat that placeholder
+as "wrong tool," never as the document — summarising it produces an answer
+about a byte count. Those formats need `index_document` + `query_documents`
+instead; see the `document-brief` skill.
 
 ## Fork this
 

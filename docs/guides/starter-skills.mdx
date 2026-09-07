@@ -78,7 +78,7 @@ it registers the web, RAG, scratchpad, memory, file, and shell tools that these
 skills consume. A skill loaded into a narrower agent still works, but any tool
 it names that the agent lacks is logged as unavailable.
 
-## The ten skills
+## The thirteen skills
 
 ### research-report
 
@@ -204,6 +204,48 @@ function, declared in `metadata.gaia.tools` and registered as
 - **Configure** — a feed URL. Handles both RSS 2.0 and Atom.
 - **Note** — it fetches through GAIA's `WebClient`, so private and loopback
   addresses are refused.
+
+### file-ops
+
+Reads, writes, and edits files on disk, with the ordering that keeps an edit
+from silently discarding someone else's change: locate, read, then edit.
+
+- **Demonstrates** — file I/O against the platform's write sandbox, and asking
+  before an irreversible write.
+- **Consumes** — `read_file`, `write_file`, `edit_file`, `find_files`,
+  `search_file_content`, `get_file_info`, `request_user_input`.
+- **Configure** — nothing.
+- **Note** — `read_file` refuses binary document formats (PDF, DOCX, XLSX).
+  Those go through `document-brief` instead.
+
+### summarize
+
+Picks a summary style from what the content actually is — transcript, email
+thread, report — and folds long input forward section by section rather than
+reading the front and guessing the rest.
+
+- **Demonstrates** — style selection, and a chunking procedure that survives
+  input longer than the context window.
+- **Consumes** — `index_document`, `summarize_document`,
+  `list_indexed_documents`, `dump_document`, `read_file`.
+- **Configure** — a file path or pasted text.
+- **Note** — `summarize_document` accepts exactly `brief`, `detailed`, and
+  `bullets`. The style vocabulary in the body is guidance for *shaping* the
+  answer, not extra values to pass.
+
+### coding
+
+Works on a codebase: find the file, change it, then prove the change works
+before reporting it. Written around the failure mode where a plausible-looking
+edit is confidently wrong for hours.
+
+- **Demonstrates** — semantic code search alongside grep, and a shell grant
+  narrowed to a single binary.
+- **Consumes** — `read_file`, `edit_file`, `search_file_content`,
+  `search_code_index`, `execute_python_file`.
+- **Configure** — a repository path.
+- **Note** — its `shell:execute:pytest` permission is the whole grant; any
+  other command still asks. `execute_python_file` always asks.
 
 ## Fork one
 

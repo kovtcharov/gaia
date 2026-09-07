@@ -300,8 +300,16 @@ async def create_chat_completion(request: ChatCompletionRequest):
 
     # Validate model exists
     if not registry.model_exists(request.model):
+        # Naming the survivors matters more than it used to: the per-task
+        # agents this endpoint used to expose are skills now, so a client
+        # still configured for one of them lands here.
+        available = ", ".join(m["id"] for m in registry.list_models())
         raise HTTPException(
-            status_code=404, detail=f"Model '{request.model}' not found"
+            status_code=404,
+            detail=(
+                f"Model '{request.model}' not found. Available models: "
+                f"{available}. GET /v1/models lists them."
+            ),
         )
 
     # Extract workspace root from messages (for converting relative paths to absolute)
