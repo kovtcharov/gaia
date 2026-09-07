@@ -1,0 +1,1253 @@
+[
+ {
+  "id": "C1",
+  "line": 71,
+  "security": true,
+  "title": "Tool bodies drop the agent-identity contextvar, so the per-agent connector grant check is silently bypassed",
+  "tracked": "none",
+  "fixed_by": "#3363",
+  "status": "FIXED"
+ },
+ {
+  "id": "C2",
+  "line": 73,
+  "security": true,
+  "title": "notify_desktop builds a PowerShell command by string-interpolating model-controlled text → command injection on Windows",
+  "tracked": "none",
+  "fixed_by": "#3359",
+  "status": "FIXED"
+ },
+ {
+  "id": "C3",
+  "line": 75,
+  "security": true,
+  "title": "PowerShell command injection via a document *filename* — no model, no confirmation",
+  "tracked": "none",
+  "fixed_by": "#3359",
+  "status": "FIXED"
+ },
+ {
+  "id": "C4",
+  "line": 77,
+  "security": true,
+  "title": "Windows shell \"read-only allowlist\" is bypassable — arbitrary command execution via cmd.exe, and file writes through allowlisted git/wmic",
+  "tracked": "#2768 (audit of `ALLOWED_COMMANDS`, closest), #2785 (adjacent)",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C5",
+  "line": 79,
+  "security": true,
+  "title": "shell:execute:gh skill grant ALLOWs gh auth status --show-token / -t, printing the GitHub credential unprompted",
+  "tracked": "none",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C6",
+  "line": 81,
+  "security": true,
+  "title": "Hub-supplied artifact.filename is joined onto the temp workdir unvalidated → pre-consent arbitrary file write from a hostile hub origin",
+  "tracked": "none",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C7",
+  "line": 83,
+  "security": true,
+  "title": "Fifteen file/RAG/vision tools read or write outside the allowed_paths sandbox — a sandbox that is on by default and that three docs call a production security control",
+  "tracked": "#3316 covers only the `hasattr` inconsistency",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C8",
+  "line": 85,
+  "security": true,
+  "title": "A session's file allowlist silently expands to the whole directory an attached document sits in ($HOME included), reads have no sensitive-file denylist, and the write guard misses shell-rc / autostart / git-hook files",
+  "tracked": "none (#2768 audits `ALLOWED_COMMANDS`, not the write guard)",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C9",
+  "line": 87,
+  "security": true,
+  "title": "fetch_webpage / open_url (ChatAgent inline tools in the flagship's default full profile) bypass the SSRF/private-IP guard the browser mixin enforces",
+  "tracked": "none",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C10",
+  "line": 89,
+  "security": true,
+  "title": "The generic AgentServer REST API (the server hub packages are documented to use for --api) has no caller auth and Origin-reflecting credentialed CORS; the OpenAI-compatible API has no auth on chat completions",
+  "tracked": "#2951 (names `server",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C11",
+  "line": 91,
+  "security": true,
+  "title": "Agent UI backend: 41 of 92 mutating routes are CSRF-able from any website — one body-less cross-origin POST publishes the user's Agent UI to the internet; no Host/Origin validation anywhere",
+  "tracked": "none",
+  "fixed_by": "#3366",
+  "status": "FIXED"
+ },
+ {
+  "id": "C12",
+  "line": 93,
+  "security": true,
+  "title": "The Agent UI backend trusts every *.ngrok-free.app and *.use.devtunnels.ms origin with credentials and allow_headers=[\"*\"] — anyone can rent one, and it defeats the X-Gaia-UI guard C11 relies on",
+  "tracked": "none (#2951 is about two other servers)",
+  "fixed_by": "#3366",
+  "status": "FIXED"
+ },
+ {
+  "id": "C13",
+  "line": 95,
+  "security": true,
+  "title": "MCP bridge answers every origin with Access-Control-Allow-Origin: * and runs unauthenticated by default",
+  "tracked": "#2951 (adjacent), none for the bridge",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C14",
+  "line": 97,
+  "security": true,
+  "title": "Electron: unvalidated shell.openExternal + a renderer link allow-list that passes /… and //host/… — one click on an LLM-rendered link can launch a local binary or a UNC path",
+  "tracked": "none (#976 is the ancestor)",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C15",
+  "line": 99,
+  "security": true,
+  "title": "Agent UI \"Always allow this tool\" is persisted forever in localStorage, keyed by tool *name*, auto-approved client-side with remember=false, with no UI to revoke",
+  "tracked": "none",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C16",
+  "line": 101,
+  "security": true,
+  "title": "A chat turn can mint system / profile / permission memory rows that render at the top of every future system prompt — three write paths skip the category validator",
+  "tracked": "none",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C17",
+  "line": 103,
+  "security": true,
+  "title": "PUT /api/connectors/{id}/grants/{agent_id} writes the authorization ledger with no scope ceiling and no existence checks",
+  "tracked": "none",
+  "fixed_by": "#3363",
+  "status": "FIXED"
+ },
+ {
+  "id": "C18",
+  "line": 105,
+  "security": true,
+  "title": "The Telegram adapter answers anyone by default, indexes strangers' uploads into the user's global RAG library, has no rate limit — and the guide tells users off-list senders are ignored",
+  "tracked": "#3239 (docs wording), #2062 (no e2e)",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C19",
+  "line": 107,
+  "security": true,
+  "title": "The C++ MCP client hands every server argument to /bin/sh -c unescaped",
+  "tracked": "#2803 (MCP correctness, partial)",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C20",
+  "line": 109,
+  "security": true,
+  "title": "Fork PRs execute on persistent self-hosted Windows lab runners with no same-repo gate on ten workflows",
+  "tracked": "none",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C21",
+  "line": 111,
+  "security": true,
+  "title": "Third-party actions in the publish/sign path are pinned to mutable tags — one a branch — inside jobs that hold PyPI/npm OIDC and release-upload tokens",
+  "tracked": "none",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C22",
+  "line": 115,
+  "security": false,
+  "title": "gaia skill remove . deletes all of ~/.gaia/skills (signing keys, trust store, lock); .. deletes ~/.gaia",
+  "tracked": "none",
+  "fixed_by": "#3358",
+  "status": "FIXED"
+ },
+ {
+  "id": "C23",
+  "line": 117,
+  "security": false,
+  "title": "GAIA_HOME pointed at the user's home turns gaia uninstall --purge into deletion of ~/Documents and ~/venv",
+  "tracked": "none",
+  "fixed_by": "#3361",
+  "status": "FIXED"
+ },
+ {
+  "id": "C24",
+  "line": 119,
+  "security": false,
+  "title": "gaia kill --port N / gaia api stop / gaia kill --lemonade can kill unrelated processes",
+  "tracked": "#789 (CLOSED — the same substring bug was reported and closed earlier)",
+  "fixed_by": "#3361",
+  "status": "FIXED"
+ },
+ {
+  "id": "C25",
+  "line": 121,
+  "security": false,
+  "title": "replace_function silently deletes code between the target and the next def/class",
+  "tracked": "none",
+  "fixed_by": "#3358",
+  "status": "FIXED"
+ },
+ {
+  "id": "C26",
+  "line": 123,
+  "security": false,
+  "title": "download_file overwrites an existing user file with server-chosen content, and the sensitive-filename guard then deletes it",
+  "tracked": "none (#1460 umbrella)",
+  "fixed_by": "#3364",
+  "status": "FIXED"
+ },
+ {
+  "id": "C27",
+  "line": 125,
+  "security": false,
+  "title": "Every /v1/chat/completions request to gaia api fails: the server passes a workspace_root kwarg no agent accepts",
+  "tracked": "none",
+  "fixed_by": "#3364",
+  "status": "FIXED"
+ },
+ {
+  "id": "C28",
+  "line": 127,
+  "security": false,
+  "title": "Memory consolidation never completes for sessions longer than 20 turns; they are re-summarised (and re-stored) on every startup and the older turns are pruned undistilled",
+  "tracked": "none (#2865, #2676 adjacent)",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C29",
+  "line": 129,
+  "security": false,
+  "title": "Two renderer \"cleaners\" delete or mangle legitimate answer content in normal use",
+  "tracked": "none",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C30",
+  "line": 133,
+  "security": false,
+  "title": "TUI: Esc/Ctrl+C does NOT stop the released gaia-agent binary — the cancelled turn (and the user's next message) keeps running, then the TUI errors with \"file already closed\"",
+  "tracked": "none (#2474 is the daemon's sidecar reaping; #2917 adjacent)",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C31",
+  "line": 135,
+  "security": true,
+  "title": "TUI: cancelling a turn respawns the agent from its ORIGINAL launch flags — /bypass off is silently undone (banner gone) and loaded skills / \"always\" grants / /model switch are lost",
+  "tracked": "none",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C32",
+  "line": 137,
+  "security": false,
+  "title": "Web fetch cannot open most CDN-fronted HTTPS sites — the IP-pinning adapter sends no SNI",
+  "tracked": "none open (#1207 closed was the same symptom)",
+  "fixed_by": "#3364",
+  "status": "FIXED"
+ },
+ {
+  "id": "C33",
+  "line": 139,
+  "security": false,
+  "title": "gaia talk keeps the microphone live while it speaks — on laptop speakers it can transcribe its own reply as the next user turn",
+  "tracked": "none (#2985/#702 adjacent)",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C34",
+  "line": 141,
+  "security": false,
+  "title": "gaia talk accepts --model, --max-tokens, --use-claude, --use-chatgpt, --claude-model, --base-url and --stats and then runs without them (#124 still reproduces)",
+  "tracked": "#124 (open since v0",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C35",
+  "line": 143,
+  "security": false,
+  "title": "Electron: NotificationService calls TrayManager.setNotificationCount, which does not exist — badge never updates, and the agent crash-limit path throws inside an EventEmitter listener → process.exit(1)",
+  "tracked": "none",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C36",
+  "line": 145,
+  "security": false,
+  "title": "Electron: cold-start gaia://hub/install/<id> deep links are dispatched before the backend listens, so \"Open in GAIA\" from the website fails whenever GAIA was closed",
+  "tracked": "none",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C37",
+  "line": 147,
+  "security": false,
+  "title": "The Agent UI can block a chat turn forever on an input() prompt printed to the *server's* terminal",
+  "tracked": "none",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C38",
+  "line": 149,
+  "security": false,
+  "title": "import gaia dies at import when the home directory cannot be resolved",
+  "tracked": "none",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C39",
+  "line": 153,
+  "security": false,
+  "title": "Tagging v0.23.1 today fails publish.yml twice, the tag would still force-move the release branch, and the release gate is red for an unrelated reason",
+  "tracked": "#1128 (release-prep check), #1344 (judge auth); the concrete breakage is untracked",
+  "fixed_by": "#3354",
+  "status": "FIXED"
+ },
+ {
+  "id": "C40",
+  "line": 155,
+  "security": false,
+  "title": "The release build's backend test step cannot fail: pytest tests/unit/chat/ui/ … || echo \"Backend tests skipped (dependencies not available)\"",
+  "tracked": "none",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "C41",
+  "line": 157,
+  "security": false,
+  "title": "On Windows the tests/unit tree is effectively unrunnable on main, and no CI lane runs it there",
+  "tracked": "none",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I1",
+  "line": 167,
+  "security": false,
+  "title": "@tool silently overwrites same-named tools — the flagship registers three read_files, two browse_directorys (different signatures) and two search_webs; the last wins.",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I2",
+  "line": 168,
+  "security": false,
+  "title": "AgentSDK.send() sends the system prompt twice and update_config(system_prompt=…) leaves the old one in place",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I3",
+  "line": 169,
+  "security": false,
+  "title": "AgentSDK._enhance_with_rag silently falls back to a non-RAG answer; send/send_stream desynchronise history on error",
+  "tracked": "#3315 (tool-layer twin only)",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I4",
+  "line": 170,
+  "security": false,
+  "title": "list_recent_files returns every match with no output cap",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I5",
+  "line": 171,
+  "security": false,
+  "title": "Bundle-vs-hub SKILL.md consistency check compares only name/security_tier/permissions, not metadata.gaia.tools/version",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I6",
+  "line": 172,
+  "security": false,
+  "title": "Memory extraction \"timeout\" does not bound latency",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I7",
+  "line": 173,
+  "security": false,
+  "title": "Hybrid memory search drops FAISS hits outside the top-200-by-confidence pool",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I8",
+  "line": 174,
+  "security": false,
+  "title": "Date-only time_to silently drops the whole final day from recall",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I9",
+  "line": 175,
+  "security": false,
+  "title": "Memory misc:",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I10",
+  "line": 176,
+  "security": false,
+  "title": "Flagship GET /v1/gaia/init reports \"Lemonade not reachable\" when LEMONADE_BASE_URL uses the documented /api/v1 form",
+  "tracked": "#3203",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I11",
+  "line": 177,
+  "security": false,
+  "title": "session_registry.delete() closes an agent without claiming run_lock",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I12",
+  "line": 178,
+  "security": false,
+  "title": "SDK docs say default max_steps is 20; the framework default is 50",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I13",
+  "line": 179,
+  "security": false,
+  "title": "The \"session-scoped\" allowlist silently unions a machine-global, CLI-written grant list",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I14",
+  "line": 180,
+  "security": false,
+  "title": "The Tavily API key is handed to any caller with no grant check — and stays ungated even after C1 is fixed",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I15",
+  "line": 184,
+  "security": false,
+  "title": "NPU users get the GPU model downloaded and loaded on every cold start",
+  "tracked": "#1676 (related)",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I16",
+  "line": 185,
+  "security": false,
+  "title": "gaia init pins Gemma-4 to a 32K window that the runtime immediately reloads to 64K",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I17",
+  "line": 186,
+  "security": false,
+  "title": "check_model_loaded() checks \"downloaded\" (substring match on /models), and init's verify step then calls a global unload_model()",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I18",
+  "line": 187,
+  "security": false,
+  "title": "Context-overflow on the NPU profile is mis-classified as retryable and re-sent once",
+  "tracked": "#2884",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I19",
+  "line": 188,
+  "security": false,
+  "title": "VLMClient rewrites https://… and any path prefix to http://host:port/api/v1",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I20",
+  "line": 189,
+  "security": false,
+  "title": "VLM extraction failures are returned as document text (\"[VLM extraction failed: …]\") instead of raised",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I21",
+  "line": 190,
+  "security": false,
+  "title": ".env.example:14 sets LEMONADE_BASE_URL=http://localhost:8000/api/v1",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I22",
+  "line": 191,
+  "security": false,
+  "title": "create_lemonade_client() / initialize_lemonade() (public SDK factories) ignore LEMONADE_BASE_URL and force http://",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I23",
+  "line": 192,
+  "security": true,
+  "title": "The Lemonade MSI/PKG is authenticated only by TLS to github.com — GAIA pins a SHA-256 for its own embedded server and sidecar but not for the third-party installer it runs elevated, in both the runtime installer and the signed Windows installer build",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I24",
+  "line": 193,
+  "security": false,
+  "title": "The NSIS \"also remove your GAIA data?\" dialog under-describes what it deletes",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I25",
+  "line": 194,
+  "security": false,
+  "title": "A symlinked or junctioned entry under ~/.gaia crashes --purge mid-run",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I26",
+  "line": 195,
+  "security": false,
+  "title": "apt purge (installer/debian/postrm:34-38) runs gaia uninstall --purge --yes as $SUDO_USER with stderr discarded and || true",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I27",
+  "line": 196,
+  "security": false,
+  "title": "PPA install reports success even when the post-install probe finds nothing",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I28",
+  "line": 197,
+  "security": false,
+  "title": "gaia init --profile mcp --check takes the write path and always exits 0",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I29",
+  "line": 198,
+  "security": false,
+  "title": "Failure paths that exit 0:",
+  "tracked": "#3307 (umbrella)",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I30",
+  "line": 199,
+  "security": false,
+  "title": "gaia mcp stop deletes the PID file even when the kill failed (:7529-7534 runs unconditionally), and the PID/log files live in CWD",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I31",
+  "line": 200,
+  "security": false,
+  "title": "CLI reference vs argparse (verified against the real parser):",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I32",
+  "line": 201,
+  "security": false,
+  "title": "The UI's pre-flight reload halves a GPU session's context window, silently",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I33",
+  "line": 202,
+  "security": false,
+  "title": "rich.Console().print in the Lemonade client writes to stdout and corrupts gaia mcp serve --stdio's JSON-RPC stream",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I34",
+  "line": 206,
+  "security": true,
+  "title": "The tunnel token is a full read token for the user's entire home directory",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I35",
+  "line": 207,
+  "security": true,
+  "title": "MCP-server secrets skip the insecure-keyring refusal the OAuth path enforces",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I36",
+  "line": 208,
+  "security": false,
+  "title": "Filesystem index: latent sibling-deletion and FTS5 syntax bugs, currently masked by a silent fallback",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I37",
+  "line": 209,
+  "security": false,
+  "title": "Non-streaming /v1/chat/completions blocks the whole event loop",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I38",
+  "line": 210,
+  "security": false,
+  "title": "MCP bridge:",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I39",
+  "line": 211,
+  "security": false,
+  "title": "gaia telegram start --background never polls",
+  "tracked": "#3133",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I40",
+  "line": 212,
+  "security": false,
+  "title": "gaia schedule add accepts an invalid cron; every later list/show/run/daemon then crashes",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I41",
+  "line": 213,
+  "security": false,
+  "title": "The UI scheduler computes fixed-time schedules in UTC",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I42",
+  "line": 214,
+  "security": false,
+  "title": "Three schedulers coexist with different semantics and no shared ledger",
+  "tracked": "#2156/#2379 (daemon clock)",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I43",
+  "line": 215,
+  "security": false,
+  "title": "Daemon hygiene (local-only, same user):",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I44",
+  "line": 216,
+  "security": false,
+  "title": "POST /v1/connections/{provider} persists OAuth secrets before validating the provider",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I45",
+  "line": 217,
+  "security": true,
+  "title": "A consent prompt can drop a destructive argument behind a bare ellipsis",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I46",
+  "line": 218,
+  "security": false,
+  "title": "ui/routers/memory.py concentrates 18 fail-loudly violations",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I47",
+  "line": 219,
+  "security": false,
+  "title": "Browser history reaches the profiling LLM undelimited, and the approved output lands in the system prompt",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I48",
+  "line": 220,
+  "security": false,
+  "title": "GET /api/connectors/agent-mcps returns MCP command + args verbatim",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I98",
+  "line": 221,
+  "security": true,
+  "title": "Tunnel auth is fail-open during the first seconds of every tunnel start",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I49",
+  "line": 225,
+  "security": true,
+  "title": "SSRF filter allows 100.64.0.0/10 (CGNAT / Tailscale mesh)",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I50",
+  "line": 226,
+  "security": false,
+  "title": "A partial embedding batch silently misaligns chunks and vectors — retrieval returns the wrong chunk text",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I51",
+  "line": 227,
+  "security": false,
+  "title": "40 % of a default chunk, and 61–71 % of the 768/1024-token chunks rag.mdx recommends, is never embedded",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I52",
+  "line": 228,
+  "security": false,
+  "title": "remove_document re-embeds the entire remaining corpus through Lemonade while holding _state_lock",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I53",
+  "line": 229,
+  "security": false,
+  "title": "RAG cache integrity: a signature failure is reported with the same wording and recovery as ordinary staleness (\"Cache outdated or corrupted\"), then the evidence is deleted",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I54",
+  "line": 230,
+  "security": false,
+  "title": "db_query has no execution timeout, row cap or memory cap",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I55",
+  "line": 231,
+  "security": false,
+  "title": "Code-index consistency is a row-count check that lives in the wrong place, and get_status never runs it",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I56",
+  "line": 232,
+  "security": false,
+  "title": "Tavily --budget is documented as per-session (cli.mdx:2967, help at cli.py:1770) but enforced against the lifetime ledger",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I57",
+  "line": 233,
+  "security": false,
+  "title": "On a *first* hub wheel install, a non-writable site-packages leaves the .installed sentinel on disk after install() has raised",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I58",
+  "line": 234,
+  "security": false,
+  "title": "_index_document's path validation is vacuous",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I59",
+  "line": 235,
+  "security": false,
+  "title": "rag/pdf_utils.py:183 swallows an XObject-resolution failure into \"this page has no images\", and sdk.py:815-818 swallows it a second time",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I60",
+  "line": 239,
+  "security": false,
+  "title": "A microphone failure leaves gaia talk spinning on \"Listening…\" (whisper_asr.py:160-162 never clears is_recording at :176/:189; _check_mic_levels hides",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I61",
+  "line": 245,
+  "security": false,
+  "title": "Outlook timestamps are parsed as Gmail epoch-millis and collapse to 0",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I62",
+  "line": 246,
+  "security": false,
+  "title": "Every Gmail search operator except from:/subject:/is:unread|read/newer_than/older_than reaches Microsoft Graph as dead KQL text and silently returns nothing",
+  "tracked": "#2996 (open)",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I63",
+  "line": 247,
+  "security": true,
+  "title": "Email snippet, Subject: and From: reach the LLM outside the untrusted-body delimiters and without the forged-delimiter scrub",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I64",
+  "line": 248,
+  "security": false,
+  "title": "docs/guides/email.mdx:639-641 still lists Outlook as unsupported (#963 is closed) on the page that documents it working at :204, :393, :433-444.",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I65",
+  "line": 252,
+  "security": false,
+  "title": "Claude-credential preflight walks UP the directory tree for .env, but the agent's bare load_dotenv() starts its walk at claude.py's own directory",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I66",
+  "line": 253,
+  "security": false,
+  "title": "Subprocess transport buffers the agent's stderr without bound for the life of the process",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I67",
+  "line": 254,
+  "security": true,
+  "title": "Packaged Windows Electron build falls back to irm https://astral.sh/uv/install.ps1 | iex (unpinned, -ExecutionPolicy Bypass) and then to an unverified system uv",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I68",
+  "line": 255,
+  "security": false,
+  "title": "gaia init failure during first-run install is reported as \"Lemonade Server setup complete\" and the install marked READY",
+  "tracked": "#3307 (pattern)",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I69",
+  "line": 256,
+  "security": true,
+  "title": "Docs promise auto-update, but shipped builds have no update channel (NO_CHANNEL); the feed accepts plain http://; no Authenticode check is configured",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I70",
+  "line": 257,
+  "security": false,
+  "title": "Agent child stdin has no error listener",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I71",
+  "line": 258,
+  "security": true,
+  "title": "No Content-Security-Policy anywhere in the Agent UI",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I72",
+  "line": 262,
+  "security": false,
+  "title": "C++ streaming mode recovers a plain-JSON error body (lemonade_client.cpp:385-416) but throws away an SSE-framed one: rawBytes holds data: framing, so",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I73",
+  "line": 263,
+  "security": true,
+  "title": "experiments/whatsapp-webjs/ is an orphaned spike whose .wwebjs_auth/ WhatsApp Web session credentials have no ignore rule (run.log is covered by .log)",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I74",
+  "line": 267,
+  "security": false,
+  "title": "Windows-red-for-environmental-reasons beyond C41:",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I75",
+  "line": 268,
+  "security": false,
+  "title": "Tests that never run, and tests that cannot fail:",
+  "tracked": "#875 (umbrella)",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I76",
+  "line": 272,
+  "security": false,
+  "title": "The eval \"one run at a time\" guard is a silent no-op on Windows",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I77",
+  "line": 273,
+  "security": false,
+  "title": "--fix runs claude -p … --dangerously-skip-permissions on the developer's working tree with no clean-tree/branch guard",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I78",
+  "line": 274,
+  "security": false,
+  "title": "Baseline plumbing contradicts the documented workflow",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I79",
+  "line": 278,
+  "security": false,
+  "title": "publish.yml creates the GitHub Release even when desktop installers are missing (continue-on-error on all three downloads, :648-667) and its if: (:554-558) ignores build-tui failures",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I80",
+  "line": 279,
+  "security": false,
+  "title": "Dead, racing and mis-scoped workflows:",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I81",
+  "line": 280,
+  "security": false,
+  "title": "Runner monitoring and Dependabot blind spots:",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I97",
+  "line": 281,
+  "security": true,
+  "title": "claude.yml auto-fix: anyone who files a bug report gets Claude running Bash with contents: write and the maintainer's Claude OAuth token in scope — an accepted risk whose stated bound cannot be verified from outside",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I82",
+  "line": 282,
+  "security": false,
+  "title": "Five workflows have no top-level permissions: block",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I83",
+  "line": 286,
+  "security": false,
+  "title": "Doc code examples import names that do not exist — copy-paste fails on line one",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I84",
+  "line": 287,
+  "security": false,
+  "title": "docs/reference/cli.mdx:2683-2900 documents 21 gaia tui … invocations the gaia CLI rejects",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I85",
+  "line": 288,
+  "security": false,
+  "title": "npm @amd-gaia/agent-email 0.6.0 is published with all nine README doc links (plus one in CHANGELOG.md) pinned to tag agent-pkg-email-v0.6.0, which does not exist",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I86",
+  "line": 289,
+  "security": false,
+  "title": "CLAUDE.md steers agents at the wrong code:",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I87",
+  "line": 290,
+  "security": false,
+  "title": ".claude/agents, .claude/skills, AGENTS.md, CONTRIBUTING.md cite eight deleted files/agents",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I88",
+  "line": 291,
+  "security": false,
+  "title": "Security-model docs vs implementation:",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I89",
+  "line": 292,
+  "security": false,
+  "title": "Other doc/code contradictions (each verified):",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I90",
+  "line": 313,
+  "security": false,
+  "title": "Catalog writes are unconditional read-modify-write",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I91",
+  "line": 314,
+  "security": false,
+  "title": "Inline publish is not atomic",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I92",
+  "line": 315,
+  "security": false,
+  "title": "Artifact filenames can collide with the per-version doc objects",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I93",
+  "line": 316,
+  "security": false,
+  "title": "Both published schemas are stale.",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I94",
+  "line": 317,
+  "security": false,
+  "title": "The install one-liners are served by an out-of-repo Cloudflare redirect to GitHub main",
+  "tracked": "#778",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I95",
+  "line": 318,
+  "security": false,
+  "title": "website-router's documented HTML edge cache is not happening in production",
+  "tracked": "",
+  "fixed_by": "",
+  "status": "OPEN"
+ },
+ {
+  "id": "I96",
+  "line": 319,
+  "security": false,
+  "title": "The flagship's live hub page tells visitors to pip install gaia-agent-gaia, which does not exist",
+  "tracked": "#3101 (same root cause), #1179",
+  "fixed_by": "",
+  "status": "OPEN"
+ }
+]
