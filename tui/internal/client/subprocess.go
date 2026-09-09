@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -43,7 +44,7 @@ func detectLemonadeURL() string {
 	return ""
 }
 
-// procHandle owns one child process.
+// procHandle owns one child process AND every process that child started.
 //
 // Reaping is the READER's job: os/exec forbids calling Wait before all reads
 // from a pipe have completed, so a kill from elsewhere must not also reap — it
@@ -51,6 +52,7 @@ func detectLemonadeURL() string {
 // spurious "file already closed" read error.
 type procHandle struct {
 	cmd      *exec.Cmd
+	group    *processGroup
 	waitOnce sync.Once
 	state    *os.ProcessState
 }
@@ -61,15 +63,36 @@ func (p *procHandle) reap() *os.ProcessState {
 	p.waitOnce.Do(func() {
 		_ = p.cmd.Wait()
 		p.state = p.cmd.ProcessState
+		if p.group != nil {
+			p.group.close()
+		}
 	})
 	return p.state
 }
 
-// kill signals the child without reaping it.
-func (p *procHandle) kill() {
-	if p.cmd.Process != nil {
-		_ = p.cmd.Process.Kill()
+// kill terminates the child AND its descendants, without reaping it.
+//
+// The whole tree, not just cmd.Process: the released agent is a PyInstaller
+// one-file binary, so cmd.Process is the bootloader and the interpreter that
+// runs the turn is its child, holding both ends of the pipe. Killing the
+// bootloader alone left the cancelled tool call running to completion, and the
+// surviving child then consumed the user's next message.
+//
+// Both mechanisms are tried and both failures are returned: a group kill that
+// did not work must never be reported as a stopped agent.
+func (p *procHandle) kill() error {
+	var errs []error
+	if p.group != nil {
+		if err := p.group.terminate(); err != nil {
+			errs = append(errs, err)
+		}
 	}
+	if p.cmd.Process != nil {
+		if err := p.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			errs = append(errs, fmt.Errorf("could not stop agent process %d: %w", p.cmd.Process.Pid, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // SubprocessClient communicates with a local agent binary via stdin/stdout JSONL.
@@ -91,6 +114,16 @@ type SubprocessClient struct {
 	// turnDone is closed by the in-flight turn's reader when it exits. nil when
 	// no turn is running.
 	turnDone chan struct{}
+	// bypass is the permission mode the SESSION is in, which is not necessarily
+	// the one the child was launched with. A respawn rebuilds argv from this, so
+	// a `/bypass off` typed before a hard cancel cannot come back on by itself.
+	bypass bool
+	// respawned records that the child now backing this client is a REPLACEMENT
+	// for one that was killed. Read and cleared by the next Send, which reports
+	// it: the replacement has no loaded skills, no "always" grants and no prompt
+	// history, and a user who is not told that is reasoning about a session the
+	// agent no longer has.
+	respawned string
 }
 
 // NewSubprocessClient creates a client for an agent binary and its arguments.
@@ -100,11 +133,35 @@ type SubprocessClient struct {
 // string (e.g. `gaia tui chat --subprocess "..."`) split it with
 // SplitCommandLine, which honours quoting.
 func NewSubprocessClient(path string, args []string, debug bool) *SubprocessClient {
-	return &SubprocessClient{
+	c := &SubprocessClient{
 		path:  path,
 		args:  args,
 		debug: debug,
 	}
+	c.bypass = c.BypassAtLaunch()
+	return c
+}
+
+// spawnArgs is argv for the NEXT child: the launch arguments with the bypass
+// flag forced to match the session's current permission mode.
+//
+// Respawning from s.args verbatim silently reverted `/bypass off` — the killed
+// child had prompts back on, its replacement did not, and the banner that is
+// supposed to make unattended mode impossible to miss was gone. Deriving argv
+// from the live mode means the flag cannot disagree with it; the control line
+// SetBypassPermissions writes stays the mechanism for a LIVE child.
+func (s *SubprocessClient) spawnArgs(bypass bool) []string {
+	out := make([]string, 0, len(s.args)+1)
+	for _, a := range s.args {
+		if a == BypassPermissionsFlag {
+			continue
+		}
+		out = append(out, a)
+	}
+	if bypass {
+		out = append(out, BypassPermissionsFlag)
+	}
+	return out
 }
 
 // NewCanonicalSubprocessClient is NewSubprocessClient for an agent that speaks
@@ -128,23 +185,49 @@ type turnState struct {
 	proc     *procHandle
 	stderr   *bytes.Buffer
 	turnDone chan struct{}
+	// notice is non-empty when this turn is the first against a REPLACEMENT
+	// child, and says what the replacement no longer knows.
+	notice string
 }
 
 // startLocked spawns the subprocess if needed and returns the turn's handles.
 // The caller MUST hold s.mu.
 func (s *SubprocessClient) startLocked() (turnState, error) {
 	if s.started {
+		// Serialization is a contract, not a hope: two turns sharing one
+		// bufio.Scanner means two goroutines reading the same pipe, and the
+		// first one to finish closes it under the second ("file already
+		// closed"). A caller that got here overlapped its Send calls.
+		if s.turnDone != nil {
+			select {
+			case <-s.turnDone:
+			default:
+				return turnState{}, fmt.Errorf(
+					"the previous message is still running, so this one cannot be sent — " +
+						"press Esc to stop it first")
+			}
+		}
 		done := make(chan struct{})
 		s.turnDone = done
-		return turnState{s.stdin, s.stdout, s.proc, s.stderr, done}, nil
+		notice := s.respawned
+		s.respawned = ""
+		return turnState{s.stdin, s.stdout, s.proc, s.stderr, done, notice}, nil
 	}
 	if s.path == "" {
 		return turnState{}, fmt.Errorf("no agent binary was given, so nothing can be launched")
 	}
 
-	cmd := exec.Command(s.path, s.args...)
+	cmd := exec.Command(s.path, s.spawnArgs(s.bypass)...)
 	stderr := &bytes.Buffer{}
 	cmd.Stderr = stderr
+
+	// Created before Start so a POSIX child is forked straight into its own
+	// process group; on Windows the job is joined immediately after Start.
+	group, err := newProcessGroup()
+	if err != nil {
+		return turnState{}, err
+	}
+	group.prepare(cmd)
 
 	// Auto-detect Lemonade URL if not set in environment
 	if os.Getenv("LEMONADE_BASE_URL") == "" {
@@ -158,10 +241,12 @@ func (s *SubprocessClient) startLocked() (turnState, error) {
 
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
+		group.close()
 		return turnState{}, fmt.Errorf("failed to create stdin pipe: %w", err)
 	}
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
+		group.close()
 		return turnState{}, fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
 
@@ -170,17 +255,31 @@ func (s *SubprocessClient) startLocked() (turnState, error) {
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 
 	if err := cmd.Start(); err != nil {
+		group.close()
 		return turnState{}, fmt.Errorf("failed to start agent %q: %w", s.path, err)
+	}
+	// A grouping failure is fatal, not a warning: without it a later cancel
+	// would kill only the bootloader and leave the real agent running the tool
+	// call the user asked to stop.
+	if err := group.attach(cmd); err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		group.close()
+		return turnState{}, fmt.Errorf(
+			"started agent %q but could not take ownership of its child processes, "+
+				"so a cancelled turn could not be stopped — refusing to run it: %w", s.path, err)
 	}
 
 	done := make(chan struct{})
 	s.stdin = stdinPipe
 	s.stdout = scanner
 	s.stderr = stderr
-	s.proc = &procHandle{cmd: cmd}
+	s.proc = &procHandle{cmd: cmd, group: group}
 	s.started = true
 	s.turnDone = done
-	return turnState{stdinPipe, scanner, s.proc, stderr, done}, nil
+	notice := s.respawned
+	s.respawned = ""
+	return turnState{stdinPipe, scanner, s.proc, stderr, done, notice}, nil
 }
 
 // Send writes a query to stdin and returns a channel of parsed events.
