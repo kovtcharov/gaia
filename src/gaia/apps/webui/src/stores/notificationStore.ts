@@ -18,8 +18,35 @@ import { confirmTool } from '../services/api';
 /** Maximum notifications kept in the center to prevent unbounded growth. */
 const MAX_NOTIFICATIONS = 500;
 
-/** localStorage key for the "always allow" tool list. */
-export const ALWAYS_ALLOW_TOOLS_KEY = 'gaia_always_allow_tools';
+/**
+ * Legacy localStorage key for the "always allow" tool list.
+ *
+ * Always-allow is now SESSION-scoped and lives in this store only: a tick on
+ * `run_shell_command` must not silently approve every shell command in every
+ * future session for the life of the browser profile. The key is still named
+ * here so `purgeLegacyAlwaysAllow()` can delete any grant a previous build
+ * persisted.
+ */
+export const LEGACY_ALWAYS_ALLOW_TOOLS_KEY = 'gaia_always_allow_tools';
+
+/**
+ * Drop any always-allow list persisted by an older build. Called once at app
+ * start; grants from a previous run are not carried into this session.
+ */
+export function purgeLegacyAlwaysAllow(): void {
+    try {
+        if (localStorage.getItem(LEGACY_ALWAYS_ALLOW_TOOLS_KEY) !== null) {
+            localStorage.removeItem(LEGACY_ALWAYS_ALLOW_TOOLS_KEY);
+            console.warn(
+                '[notificationStore] Discarded a persisted "always allow" tool list from an ' +
+                'earlier version — always-allow is now session-scoped and revocable in ' +
+                'Settings → Tools & Permissions.'
+            );
+        }
+    } catch (err) {
+        console.error('[notificationStore] Could not clear the legacy always-allow list:', err);
+    }
+}
 
 // ── State Interface ──────────────────────────────────────────────────────
 
@@ -40,8 +67,23 @@ interface NotificationState {
   setShowPanel: (show: boolean) => void;
   setTypeFilter: (type: NotificationType | null) => void;
 
+  /**
+   * Tools the user chose to always allow, for THIS session only. Cleared on
+   * reload; revocable from Settings → Tools & Permissions.
+   */
+  alwaysAllowTools: string[];
+
   /** Respond to a permission request notification. */
   respondToPermission: (id: string, action: 'allow' | 'deny', remember: boolean) => Promise<void>;
+
+  /** Whether a tool carries a session always-allow grant. */
+  isAlwaysAllowed: (tool: string) => boolean;
+
+  /** Revoke one session always-allow grant. */
+  revokeAlwaysAllow: (tool: string) => void;
+
+  /** Revoke every session always-allow grant. */
+  revokeAllAlwaysAllow: () => void;
 }
 
 // ── Store Implementation ─────────────────────────────────────────────────
@@ -50,6 +92,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   notifications: [],
   showPanel: false,
   typeFilter: null,
+  alwaysAllowTools: [],
 
   addNotification: (notification) =>
     set((state) => ({
@@ -106,15 +149,14 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         return;
       }
     }
-    // Persist "always allow" preference in localStorage
-    if (action === 'allow' && remember) {
-      if (notification?.tool) {
-        const existing: string[] = JSON.parse(localStorage.getItem(ALWAYS_ALLOW_TOOLS_KEY) || '[]');
-        if (!existing.includes(notification.tool)) {
-          existing.push(notification.tool);
-          localStorage.setItem(ALWAYS_ALLOW_TOOLS_KEY, JSON.stringify(existing));
-        }
-      }
+    // Record "always allow" for this session only — never persisted.
+    if (action === 'allow' && remember && notification?.tool) {
+      const tool = notification.tool;
+      set((state) =>
+        state.alwaysAllowTools.includes(tool)
+          ? state
+          : { alwaysAllowTools: [...state.alwaysAllowTools, tool] }
+      );
     }
     // Update local state after response is delivered
     set((state) => ({
@@ -125,6 +167,15 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       ),
     }));
   },
+
+  isAlwaysAllowed: (tool) => get().alwaysAllowTools.includes(tool),
+
+  revokeAlwaysAllow: (tool) =>
+    set((state) => ({
+      alwaysAllowTools: state.alwaysAllowTools.filter((t) => t !== tool),
+    })),
+
+  revokeAllAlwaysAllow: () => set({ alwaysAllowTools: [] }),
 
 }));
 
@@ -148,6 +199,10 @@ export const selectVisibleNotifications = (state: NotificationState): GaiaNotifi
   }
   return visible;
 };
+
+/** Tools always-allowed for this session. */
+export const selectAlwaysAllowTools = (state: NotificationState): string[] =>
+  state.alwaysAllowTools;
 
 /** Get the first pending permission request (reactive selector for PermissionPrompt). */
 export const selectActivePermissionPrompt = (state: NotificationState): GaiaNotification | null =>

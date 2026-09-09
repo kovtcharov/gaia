@@ -70,6 +70,11 @@ const {
   dispatchDeepLink,
   buildInstallPrompt,
 } = require("./services/deep-link.cjs");
+const {
+  isAllowedExternalUrl,
+  isInAppNavigation,
+  describeBlockedUrl,
+} = require("./services/link-policy.cjs");
 
 // ── F7: Ozone hint (issue #782) ─────────────────────────────────────────────
 // Electron-recommended switch for distro-agnostic Linux behaviour: picks
@@ -492,6 +497,17 @@ function findDistPath() {
   return null;
 }
 
+/** Refuse a link loudly — the user clicked it, so they get told why nothing happened. */
+function reportBlockedLink(url) {
+  const message = describeBlockedUrl(url);
+  console.error(`[main] ${message}`);
+  try {
+    dialog.showErrorBox("Link blocked", message);
+  } catch {
+    /* dialog may be unavailable — the log line above still fires */
+  }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: windowConfig.width,
@@ -511,10 +527,29 @@ function createWindow() {
   // Remove default menu bar
   mainWindow.setMenuBarVisibility(false);
 
-  // Open external links in the default browser
+  // Open external links in the default browser. The URL here is already
+  // RESOLVED against the file:// document, so a scheme-less markdown link
+  // arrives as file:///C:/… — check the scheme before handing it to the OS.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (isAllowedExternalUrl(url)) {
+      shell.openExternal(url);
+    } else {
+      reportBlockedLink(url);
+    }
     return { action: "deny" };
+  });
+
+  // Nothing may navigate the app window away from its own document. In-page
+  // anchors pass; web links open in the browser; everything else is refused.
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    const currentUrl = mainWindow.webContents.getURL();
+    if (isInAppNavigation(url, currentUrl)) return;
+    event.preventDefault();
+    if (isAllowedExternalUrl(url)) {
+      shell.openExternal(url);
+      return;
+    }
+    reportBlockedLink(url);
   });
 
   // ── Minimize-to-tray on close (C4 fix) ──────────────────────────────
@@ -889,16 +924,42 @@ async function runDeepLink(command) {
   }
 }
 
-/** Drain a queued deep link, plus any gaia:// URL present in the cold-start argv. */
-function processStartupDeepLinks() {
+/**
+ * Drain a queued deep link, plus any gaia:// URL present in the cold-start argv.
+ *
+ * Must run only once the backend is answering: the install gate resolves the
+ * agent through the backend's catalog API and fails closed, so dispatching
+ * earlier turns every cold-start "Open in GAIA" into "Could not verify this
+ * agent".
+ *
+ * @param {boolean} backendReady Whether the backend API responded to health.
+ */
+function processStartupDeepLinks(backendReady) {
+  let url = null;
   if (pendingDeepLinkUrl) {
-    const url = pendingDeepLinkUrl;
+    url = pendingDeepLinkUrl;
     pendingDeepLinkUrl = null;
-    handleDeepLink(url);
+  } else {
+    url = extractDeepLinkFromArgv(process.argv);
+  }
+  if (!url) return;
+
+  if (!backendReady) {
+    const message =
+      `GAIA could not open "${url}" because its backend did not start ` +
+      `within ${Math.round(STARTUP_TIMEOUT / 1000)}s, so the agent cannot be ` +
+      "verified before install. Check the GAIA window for a startup error, " +
+      "then click the link again once the app is running.";
+    console.error(`[main] ${message}`);
+    try {
+      dialog.showErrorBox("GAIA is not ready yet", message);
+    } catch {
+      /* best-effort */
+    }
     return;
   }
-  const fromArgv = extractDeepLinkFromArgv(process.argv);
-  if (fromArgv) handleDeepLink(fromArgv);
+
+  handleDeepLink(url);
 }
 
 // macOS delivers deep links via this event; it can fire before whenReady, so
@@ -1029,10 +1090,6 @@ app.whenReady().then(async () => {
   // Setup Windows Jump List (T11)
   setupJumpList();
 
-  // Act on any gaia:// deep link that arrived during bootstrap or via the
-  // cold-start command line (issue #1725). Services are now wired.
-  processStartupDeepLinks();
-
   // Show loading state
   await loadApp();
 
@@ -1041,15 +1098,21 @@ app.whenReady().then(async () => {
   // API becomes available and dismisses its "Cannot connect" banner.
   // We do NOT reload the window with http://localhost:4200/ because
   // the pip-installed backend has no frontend files — only the API.
+  let backendReady = false;
   if (backendProcess) {
     console.log("Waiting for backend to start...");
-    const ready = await waitForBackend(STARTUP_TIMEOUT);
-    if (ready) {
+    backendReady = await waitForBackend(STARTUP_TIMEOUT);
+    if (backendReady) {
       console.log("Backend API is ready on port", backendPort);
     } else {
       console.warn("Backend did not respond within timeout.");
     }
   }
+
+  // Act on any gaia:// deep link that arrived during bootstrap or via the
+  // cold-start command line (issue #1725) — after the backend is listening,
+  // because the install gate queries its catalog API.
+  processStartupDeepLinks(backendReady);
 
   // Auto-start enabled agents (T2)
   if (agentProcessManager) {

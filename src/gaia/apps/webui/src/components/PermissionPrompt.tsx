@@ -199,7 +199,12 @@ function PermissionPromptInner({ notification, onRespond }: PromptInnerProps) {
             onChange={(e) => setRemember(e.target.checked)}
             disabled={isResponding}
           />
-          <span>Always allow this tool</span>
+          <span>
+            Allow this tool for the rest of this session
+            <small className="permission-remember-hint">
+              Ends when GAIA restarts. Revoke any time in Settings → Tools &amp; Permissions.
+            </small>
+          </span>
         </label>
       </div>
 
