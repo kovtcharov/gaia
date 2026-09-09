@@ -533,7 +533,7 @@ jobs:
         # evaluated AFTER `if:`, which is why we can't inline the secret
         # forwarding here.
         if: matrix.platform == 'windows' && env.SIGNPATH_API_TOKEN != '' && env.SIGNPATH_ORG_ID != ''
-        uses: signpath/github-action-submit-signing-request@v2
+        uses: signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627  # v2
         with:
           api-token: ${{ env.SIGNPATH_API_TOKEN }}
           organization-id: ${{ env.SIGNPATH_ORG_ID }}
@@ -1270,7 +1270,7 @@ jobs:
           name: ${{ matrix.platform }}-installer
           path: release-assets
       - name: Upload to GitHub Release (draft)
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3
         with:
           tag_name: ${{ inputs.tag }}
           files: release-assets/*

@@ -68,6 +68,83 @@ updates:
   # root-npm-dependencies owns that lockfile. A nested npm entry split upgrades
   # across two red PRs (amd/gaia#3261).
 
+  # JavaScript - published npm sidecars. Both ship to npm with `--provenance`
+  # from release_agent_{email,gaia}.yml and are outside the root workspace globs
+  # (`src/gaia/electron`, `src/gaia/apps/*/webui`), so nothing was watching the
+  # dependency tree of a package users install.
+  - package-ecosystem: "npm"
+    directory: "/hub/agents/email/npm"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "javascript"
+    open-pull-requests-limit: 5
+    groups:
+      email-sidecar-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/hub/agents/gaia/npm"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "javascript"
+    open-pull-requests-limit: 5
+    groups:
+      gaia-sidecar-dependencies:
+        patterns:
+          - "*"
+
+  # JavaScript - the public docs site and the Agent Hub Cloudflare Worker. Both
+  # are deployed to production from release_components.yml.
+  - package-ecosystem: "npm"
+    directory: "/website"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "javascript"
+    open-pull-requests-limit: 5
+    groups:
+      website-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/workers/agent-hub"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "javascript"
+    open-pull-requests-limit: 5
+    groups:
+      agent-hub-worker-dependencies:
+        patterns:
+          - "*"
+
+  # Go - the TUI, published as the `gaia-*` release binaries.
+  - package-ecosystem: "gomod"
+    directory: "/tui"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "go"
+    open-pull-requests-limit: 5
+    groups:
+      tui-dependencies:
+        patterns:
+          - "*"
+
   # GitHub Actions dependencies
   - package-ecosystem: "github-actions"
     directory: "/"

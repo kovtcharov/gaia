@@ -285,9 +285,14 @@ jobs:
           fi
 
       - name: Run backend tests
+        # No `|| echo`, no `2>/dev/null`: a UI-router regression must block the
+        # publish, not print "skipped" and ship the wheel (CLAUDE.md "No Silent
+        # Fallbacks"). `[api]` carries fastapi/httpx for TestClient; the
+        # pytest plugins match test_unit.yml, which runs the same directory.
         run: |
-          pip install -e ".[dev]" 2>/dev/null || pip install -e .
-          python -m pytest tests/unit/chat/ui/ -x --tb=short 2>/dev/null || echo "Backend tests skipped (dependencies not available)"
+          python -m pip install pytest pytest-asyncio pytest-mock
+          python -m pip install -e ".[api]"
+          python -m pytest tests/unit/chat/ui/ -x --tb=short
 
       - name: Upload built frontend
         uses: actions/upload-artifact@v7
@@ -380,7 +385,7 @@ jobs:
           name: python-package-distributions
           path: dist/
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@ec4db0b4ddc65acdf4bff5fa45ac92d78b56bdf0  # v1.9.0
         with:
           # Make re-runs idempotent: if this version is already on PyPI
           # (e.g. a later stage failed and the workflow is re-run), skip the
@@ -571,7 +576,7 @@ jobs:
           path: dist/
 
       - name: Sign with Sigstore
-        uses: sigstore/gh-action-sigstore-python@v3.5.0
+        uses: sigstore/gh-action-sigstore-python@790bc6befb9d733738f18d8f895854b453640ec9  # v3.5.0
         with:
           inputs: >-
             ./dist/*.tar.gz
@@ -667,7 +672,7 @@ jobs:
         continue-on-error: true
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3
         with:
           files: |
             release-assets/*

@@ -140,7 +140,7 @@ jobs:
       # Config and enabled set live in tui/.golangci.yml. The set was chosen by
       # measuring: every linter in it reports zero findings on the tree today, so
       # this lands green and only fires on new code.
-      - uses: golangci/golangci-lint-action@v9
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a  # v9
         with:
           version: v2.12.2
           working-directory: tui
