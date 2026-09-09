@@ -346,9 +346,15 @@ def test_signed_rss_digest_installs_cleanly_and_experimental_notes_refuses(
 
 
 @pytest.mark.parametrize(
-    "filename, required_keys",
+    "filename, required_keys, enforced",
     [
-        ("quality_gate_thresholds.json", {"min_judged_pass_rate", "min_avg_score"}),
+        (
+            "quality_gate_thresholds.json",
+            {"min_judged_pass_rate", "min_avg_score"},
+            # Enforcing on absolute floors since d5e038cc; the perf gate still
+            # reports because its budgets need a runner baseline to calibrate.
+            True,
+        ),
         (
             "perf_gate_thresholds.json",
             {
@@ -359,15 +365,19 @@ def test_signed_rss_digest_installs_cleanly_and_experimental_notes_refuses(
                 "max_llm_calls_per_turn",
                 "max_tool_calls_per_turn",
             },
+            False,
         ),
     ],
 )
-def test_gate_threshold_manifests_parse_and_ship_report_mode(filename, required_keys):
+def test_gate_threshold_manifests_parse_and_pin_their_mode(
+    filename, required_keys, enforced
+):
     manifest = json.loads((FIXTURES / filename).read_text(encoding="utf-8"))
     assert required_keys <= set(manifest)
-    assert manifest["enforce"] is False, (
-        f"{filename} must ship enforce:false until the first runner baseline "
-        "is committed (flipping it is a data change, reviewed on its own)"
+    assert manifest["enforce"] is enforced, (
+        f"{filename} ships enforce:{manifest['enforce']}, expected {enforced} — "
+        "flipping a gate is a data change reviewed on its own, so update this "
+        "pin in the same commit"
     )
     for key in required_keys:
         assert isinstance(manifest[key], (int, float)), f"{key} must be numeric"

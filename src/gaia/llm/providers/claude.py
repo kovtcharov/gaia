@@ -192,6 +192,8 @@ class ClaudeProvider(LLMClient):
             )
         self._system_prompt = system_prompt
         self._last_usage: Optional[dict] = None
+        # Rebuilt per request by _to_anthropic_tools; sanitized -> original.
+        self._tool_name_map: Dict[str, str] = {}
 
     @property
     def provider_name(self) -> str:
@@ -219,11 +221,11 @@ class ClaudeProvider(LLMClient):
         return re.sub(r"[^a-zA-Z0-9_-]", "_", name)[:128]
 
     def _restore_tool_name(self, api_name: str) -> str:
-        return getattr(self, "_tool_name_map", {}).get(api_name, api_name)
+        return self._tool_name_map.get(api_name, api_name)
 
     def _to_anthropic_tools(self, tools: Optional[List[dict]]) -> Optional[List[dict]]:
         """OpenAI ``{"type":"function","function":{...}}`` → Anthropic shape."""
-        self._tool_name_map: dict = {}
+        self._tool_name_map = {}
         if not tools:
             return None
         converted = []
