@@ -49,6 +49,9 @@ class AudioClient:
         use_claude=False,
         use_chatgpt=False,
         system_prompt=None,
+        model=None,
+        claude_model="claude-sonnet-5",
+        base_url=None,
     ):
         self.log = get_logger(__name__)
         self.log.setLevel(getattr(__import__("logging"), logging_level))
@@ -71,6 +74,8 @@ class AudioClient:
         self.llm_client = create_client(
             use_claude=use_claude,
             use_openai=use_chatgpt,
+            model=claude_model if use_claude else model,
+            base_url=base_url,
             system_prompt=system_prompt,
         )
 
@@ -342,27 +347,72 @@ class AudioClient:
                     f'Failed to initialize TTS:\n{e}\nInstall talk dependencies with: uv pip install ".[talk]"\nYou can also use --no-tts option to disable TTS'
                 )
 
+    def _drain_transcription_queue(self) -> None:
+        """Discard whatever was transcribed while the assistant was speaking."""
+        dropped = 0
+        while True:
+            try:
+                self.transcription_queue.get_nowait()
+                dropped += 1
+            except queue.Empty:
+                break
+        if dropped:
+            self.log.debug("Dropped %d transcription(s) captured during playback", dropped)
+
     async def speak_text(self, text: str) -> None:
-        """Speak text using initialized TTS, if available."""
+        """Speak text using initialized TTS, if available.
+
+        Returns only once playback has finished. The microphone stays paused
+        for the whole utterance and anything transcribed meanwhile is dropped
+        -- otherwise the assistant hears itself and answers its own reply.
+        """
         if not self.enable_tts:
             return
         if not getattr(self, "tts", None):
             self.log.debug("TTS is not initialized; skipping speak_text")
             return
+
         # Reuse the streaming path used in process_voice_input
         text_queue = queue.Queue(maxsize=100)
         interrupt_event = threading.Event()
+
+        def tts_status_callback(is_speaking: bool) -> None:
+            self.is_speaking = is_speaking
+            if self.whisper_asr:
+                if is_speaking:
+                    self.whisper_asr.pause_recording()
+                else:
+                    self.whisper_asr.resume_recording()
+
+        # Pause before the thread starts: synthesis latency would otherwise
+        # leave the mic live with the reply already queued.
+        if self.whisper_asr:
+            self.whisper_asr.pause_recording()
+        self.is_speaking = True
+
         tts_thread = threading.Thread(
             target=self.tts.generate_speech_streaming,
             args=(text_queue,),
-            kwargs={"interrupt_event": interrupt_event},
+            kwargs={
+                "status_callback": tts_status_callback,
+                "interrupt_event": interrupt_event,
+            },
             daemon=True,
         )
-        tts_thread.start()
-        # Send the whole text and end
-        text_queue.put(text)
-        text_queue.put("__END__")
-        tts_thread.join(timeout=5.0)
+        self.tts_thread = tts_thread
+        try:
+            tts_thread.start()
+            # Send the whole text and end
+            text_queue.put(text)
+            text_queue.put("__END__")
+            # Full join. A timeout here resumes the mic mid-sentence, which is
+            # exactly the self-transcription this method exists to prevent.
+            tts_thread.join()
+        finally:
+            self.is_speaking = False
+            self._drain_transcription_queue()
+            if self.whisper_asr:
+                self.whisper_asr.resume_recording()
 
     def _check_mic_levels(self):
         """Brief microphone level check at startup to verify audio capture."""
