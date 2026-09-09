@@ -427,15 +427,16 @@ BOOTSTRAP_GRAPH: Dict[str, BootstrapQuestion] = {
 
 
 # ============================================================================
-# Validation — the store does not validate categories, so we must
+# Validation — catch a bad graph before the first question, not at write time
 # ============================================================================
 
 
 def _validate_category(category: str, where: str) -> None:
     """Raise if *category* is not a category MemoryStore recognises.
 
-    ``MemoryStore.store()`` accepts any string, so an unknown category would be
-    written silently and then never render into a system prompt.
+    ``MemoryStore.store()`` rejects an unknown category too, but only once the
+    user has answered; checking the graph up front means a typo fails at import
+    of the question set instead of half-way through onboarding.
 
     Args:
         category: The category to check.
@@ -449,9 +450,8 @@ def _validate_category(category: str, where: str) -> None:
             f"Bootstrap {where} uses category '{category}', which is not a "
             f"MemoryStore category. Valid categories: {sorted(VALID_CATEGORIES)} "
             "(see VALID_CATEGORIES in src/gaia/agents/base/memory_store.py). "
-            "MemoryStore.store() does not validate categories, so this row "
-            "would be stored and then never recalled — fix the category in "
-            "BOOTSTRAP_GRAPH (src/gaia/agents/base/bootstrap.py)."
+            "Fix the category in BOOTSTRAP_GRAPH "
+            "(src/gaia/agents/base/bootstrap.py)."
         )
 
 
@@ -613,6 +613,9 @@ def _store_entry(
     """
     try:
         knowledge_id = store.store(
+            # Onboarding is an admin path: the user answered the question, so
+            # profile rows are theirs, not a chat turn's.
+            allow_privileged=True,
             category=entry.category,
             content=entry.content,
             context=entry.context,

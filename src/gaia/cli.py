@@ -5771,6 +5771,9 @@ def _bootstrap_infer():
 
                 try:
                     store.store(
+                        # `gaia memory` is an admin path and every row here was
+                        # just approved at the prompt.
+                        allow_privileged=True,
                         category="profile",
                         content=content,
                         source="inferred",
@@ -5988,6 +5991,7 @@ def _bootstrap_system(force: bool = True):
         for fact in facts:
             try:
                 store.store(
+                    allow_privileged=True,  # system-context collection
                     category="system",
                     content=fact["content"],
                     domain=fact.get("domain"),

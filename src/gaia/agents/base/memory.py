@@ -48,6 +48,7 @@ from uuid import uuid4
 import numpy as np
 
 from gaia.agents.base.memory_store import (
+    CONSOLIDATION_MIN_TURNS,
     EXTRACTABLE_CATEGORIES,
     MAX_CONTENT_LENGTH,
     VALID_CATEGORIES,
@@ -191,8 +192,16 @@ EXTRACTION_TIMEOUT_S = 8
 #: Consolidation age threshold in days.
 CONSOLIDATION_AGE_DAYS = 14
 
-#: Minimum turns for a session to be eligible for consolidation.
-CONSOLIDATION_MIN_TURNS = 5
+#: Turns distilled per consolidation pass. A longer session is consolidated one
+#: window at a time, oldest first, across successive passes.
+CONSOLIDATION_WINDOW_TURNS = 20
+
+#: Windows one session may consume in a single run — bounds the LLM calls a
+#: startup pays for a very long session; the rest is picked up on the next run.
+CONSOLIDATION_MAX_WINDOWS_PER_SESSION = 10
+
+# CONSOLIDATION_MIN_TURNS is imported from memory_store: prune() needs the same
+# threshold to know which old turns are still queued for distillation.
 
 
 # ============================================================================
@@ -585,12 +594,12 @@ class MemoryMixin(ProceduralMemoryMixin):
         # Step 5: apply_confidence_decay()
         self._memory_store.apply_confidence_decay()
 
-        # Steps 6-7 (reconcile + consolidate) require self.chat (AgentSDK) which
-        # isn't available until Agent.__init__() completes — defer to first query.
+        # Steps 6-8 (reconcile + consolidate + prune) require self.chat
+        # (AgentSDK), which isn't available until Agent.__init__() completes —
+        # defer to first query. prune() goes with them: it hard-deletes old
+        # turns, so it must run AFTER consolidation has had its pass at them,
+        # never before.
         self._memory_post_init_pending = True
-
-        # Step 8: prune() (90-day hard delete)
-        self._memory_store.prune()
 
         # Step 9: Generate session UUID
         self._memory_session_id = str(uuid4())
@@ -697,6 +706,7 @@ class MemoryMixin(ProceduralMemoryMixin):
         for fact in facts:
             try:
                 self._memory_store.store(
+                    allow_privileged=True,  # system-context collection
                     category="system",
                     content=fact["content"],
                     domain=fact.get("domain"),
@@ -1440,6 +1450,18 @@ class MemoryMixin(ProceduralMemoryMixin):
                             op["category"],
                         )
                 elif op_type == "update" and "knowledge_id" in op and "content" in op:
+                    # An update carries an optional category, and rewriting a
+                    # row into system/profile/permission is the same escalation
+                    # as adding one — drop the whole op rather than guess which
+                    # category the model meant.
+                    cat = op.get("category")
+                    if cat is not None and cat not in EXTRACTABLE_CATEGORIES:
+                        logger.warning(
+                            "[MemoryMixin] dropped extracted update op: category "
+                            "%r may not be written from a chat turn",
+                            cat,
+                        )
+                        continue
                     valid_ops.append(op)
                 elif op_type == "delete" and "knowledge_id" in op:
                     valid_ops.append(op)
@@ -1561,7 +1583,8 @@ class MemoryMixin(ProceduralMemoryMixin):
         Called automatically on the first process_query() invocation, by which
         time Agent.__init__() has completed and self.chat is available.
         Steps: reconcile_memory (max 20 pairs), consolidate_old_sessions (max 5),
-        then _synthesize_skills (procedural memory, #887).
+        _synthesize_skills (procedural memory, #887), then prune() — pruning is
+        last so old turns are distilled before anything is deleted.
         """
         # Step 6: reconcile_memory() (max 20 pairs)
         try:
@@ -1591,6 +1614,15 @@ class MemoryMixin(ProceduralMemoryMixin):
         except Exception as e:
             logger.warning("[MemoryMixin] post-init skill synthesis failed: %s", e)
 
+        # Step 9: prune() (90-day hard delete) — last, so consolidation has
+        # already distilled what it could this run. Turns whose session is
+        # still queued for consolidation survive the prune (see
+        # MemoryStore.prune(keep_unconsolidated=True)).
+        try:
+            self._memory_store.prune()
+        except Exception as e:
+            logger.warning("[MemoryMixin] post-init prune failed: %s", e)
+
     # ==================================================================
     # Conversation Consolidation
     # ==================================================================
@@ -1600,14 +1632,24 @@ class MemoryMixin(ProceduralMemoryMixin):
 
         Uses LLM to summarize each session and extract durable knowledge.
 
+        Consolidation is *windowed*: each pass takes the oldest
+        ``CONSOLIDATION_WINDOW_TURNS`` turns that are not yet consolidated and
+        marks exactly those, so a long session is distilled front-to-back
+        across successive windows instead of having its newest 20 turns
+        re-summarised on every startup while the older ones are never touched.
+        A session keeps its eligibility until every turn is consolidated, and
+        ``prune()`` leaves those turns alone until then.
+
         Args:
             max_sessions: Maximum number of sessions to consolidate per run.
 
         Returns:
-            Dict with {consolidated: int, extracted_items: int}.
+            Dict with {consolidated: int, windows: int, extracted_items: int} —
+            ``consolidated`` counts sessions that made progress, ``windows`` the
+            turn-windows distilled across them.
         """
         store = self._memory_store
-        result = {"consolidated": 0, "extracted_items": 0}
+        result = {"consolidated": 0, "windows": 0, "extracted_items": 0}
 
         try:
             session_ids = store.get_unconsolidated_sessions(
@@ -1623,132 +1665,166 @@ class MemoryMixin(ProceduralMemoryMixin):
             return result
 
         for session_id in session_ids:
-            try:
-                # Fetch turns for this session (up to 20, oldest first)
-                turns = store.get_history(session_id, limit=20)
-                if not turns:
-                    continue
+            windows = 0
+            while windows < CONSOLIDATION_MAX_WINDOWS_PER_SESSION:
+                try:
+                    # Oldest unconsolidated turns first — never get_history(),
+                    # which returns the NEWEST turns and would leave the start
+                    # of a long session permanently undistilled.
+                    turns = store.get_unconsolidated_turns(
+                        session_id, limit=CONSOLIDATION_WINDOW_TURNS
+                    )
+                    if not turns:
+                        break
 
-                # Build turns text
-                turns_text_parts = []
-                turn_ids = []
-                for turn in turns:
-                    role = turn.get("role", "user")
-                    content = turn.get("content", "")[:500]
-                    turns_text_parts.append(f"{role}: {content}")
-                    if "id" in turn:
+                    turns_text_parts = []
+                    turn_ids = []
+                    for turn in turns:
+                        role = turn.get("role", "user")
+                        content = turn.get("content", "")[:500]
+                        turns_text_parts.append(f"{role}: {content}")
                         turn_ids.append(turn["id"])
 
-                turns_text = "\n".join(turns_text_parts)
+                    turns_text = "\n".join(turns_text_parts)
 
-                first_ts = turns[0].get("timestamp", "unknown")
-                last_ts = turns[-1].get("timestamp", "unknown")
+                    first_ts = turns[0].get("timestamp", "unknown")
+                    last_ts = turns[-1].get("timestamp", "unknown")
 
-                prompt = _CONSOLIDATION_PROMPT.format(
-                    n_turns=len(turns),
-                    first_ts=first_ts,
-                    last_ts=last_ts,
-                    turns_text=turns_text,
-                )
-
-                response = self.chat.send_messages(
-                    messages=[{"role": "user", "content": prompt}],
-                    system_prompt="You are a conversation summarizer. Return valid JSON only.",
-                    temperature=0.1,
-                    max_tokens=1024,
-                )
-
-                raw_text = response.text if hasattr(response, "text") else str(response)
-                raw_text = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.DOTALL)
-                raw_text = raw_text.strip()
-                if raw_text.startswith("```"):
-                    raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
-                    raw_text = re.sub(r"\s*```$", "", raw_text)
-
-                data = json.loads(raw_text)
-
-                # Store summary as a note
-                summary = data.get("summary", "")
-                if summary:
-                    summary_id = store.store(
-                        category="note",
-                        content=summary,
-                        source="consolidation",
-                        domain=f"session:{session_id[:8]}",
-                        confidence=0.5,
-                        context=self._memory_context,
+                    prompt = _CONSOLIDATION_PROMPT.format(
+                        n_turns=len(turns),
+                        first_ts=first_ts,
+                        last_ts=last_ts,
+                        turns_text=turns_text,
                     )
-                    # Embed the summary
-                    try:
-                        vec = self._embed_text(summary)
-                        store.store_embedding(summary_id, _embedding_to_blob(vec))
-                        self._faiss_add(summary_id, vec)
-                    except Exception as e:
-                        # Non-fatal: the row is stored; the vector is backfilled
-                        # on the next init. Logged so the gap is never silent.
-                        logger.debug(
-                            "[MemoryMixin] consolidation summary embed failed "
-                            "(id=%s, backfilled on restart): %s",
-                            summary_id,
-                            e,
-                        )
 
-                # Store extracted knowledge items
-                knowledge_items = data.get("knowledge", [])
-                for ki in knowledge_items:
-                    if isinstance(ki, dict) and "content" in ki and "category" in ki:
+                    response = self.chat.send_messages(
+                        messages=[{"role": "user", "content": prompt}],
+                        system_prompt="You are a conversation summarizer. Return valid JSON only.",
+                        temperature=0.1,
+                        max_tokens=1024,
+                    )
+
+                    raw_text = (
+                        response.text if hasattr(response, "text") else str(response)
+                    )
+                    raw_text = re.sub(
+                        r"<think>.*?</think>", "", raw_text, flags=re.DOTALL
+                    )
+                    raw_text = raw_text.strip()
+                    if raw_text.startswith("```"):
+                        raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
+                        raw_text = re.sub(r"\s*```$", "", raw_text)
+
+                    data = json.loads(raw_text)
+
+                    # Store summary as a note
+                    summary = data.get("summary", "")
+                    if summary:
+                        summary_id = store.store(
+                            category="note",
+                            content=summary,
+                            source="consolidation",
+                            domain=f"session:{session_id[:8]}",
+                            confidence=0.5,
+                            context=self._memory_context,
+                        )
+                        # Embed the summary
+                        try:
+                            vec = self._embed_text(summary)
+                            store.store_embedding(summary_id, _embedding_to_blob(vec))
+                            self._faiss_add(summary_id, vec)
+                        except Exception as e:
+                            # Non-fatal: the row is stored; the vector is
+                            # backfilled on the next init. Logged so the gap is
+                            # never silent.
+                            logger.debug(
+                                "[MemoryMixin] consolidation summary embed failed "
+                                "(id=%s, backfilled on restart): %s",
+                                summary_id,
+                                e,
+                            )
+
+                    # Store extracted knowledge items
+                    knowledge_items = data.get("knowledge", [])
+                    for ki in knowledge_items:
+                        if not (
+                            isinstance(ki, dict) and "content" in ki and "category" in ki
+                        ):
+                            continue
                         # EXTRACTABLE_CATEGORIES, not VALID_CATEGORIES: a session
                         # summary must not mint a system/profile/permission row.
-                        if ki["category"] in EXTRACTABLE_CATEGORIES:
+                        if ki["category"] not in EXTRACTABLE_CATEGORIES:
+                            continue
+                        try:
+                            kid = store.store(
+                                category=ki["category"],
+                                content=ki["content"],
+                                source="consolidation",
+                                entity=ki.get("entity"),
+                                confidence=0.5,
+                                context=self._memory_context,
+                            )
+                            # Embed
                             try:
-                                kid = store.store(
-                                    category=ki["category"],
-                                    content=ki["content"],
-                                    source="consolidation",
-                                    entity=ki.get("entity"),
-                                    confidence=0.5,
-                                    context=self._memory_context,
-                                )
-                                # Embed
-                                try:
-                                    vec = self._embed_text(ki["content"])
-                                    store.store_embedding(kid, _embedding_to_blob(vec))
-                                    self._faiss_add(kid, vec)
-                                except Exception as e:
-                                    # Non-fatal: row stored; vector backfilled on
-                                    # next init. Logged so the gap is not silent.
-                                    logger.debug(
-                                        "[MemoryMixin] consolidation item embed "
-                                        "failed (id=%s, backfilled on restart): "
-                                        "%s",
-                                        kid,
-                                        e,
-                                    )
-                                result["extracted_items"] += 1
+                                vec = self._embed_text(ki["content"])
+                                store.store_embedding(kid, _embedding_to_blob(vec))
+                                self._faiss_add(kid, vec)
                             except Exception as e:
+                                # Non-fatal: row stored; vector backfilled on
+                                # next init. Logged so the gap is not silent.
                                 logger.debug(
-                                    "[MemoryMixin] consolidation knowledge store failed: %s",
+                                    "[MemoryMixin] consolidation item embed "
+                                    "failed (id=%s, backfilled on restart): %s",
+                                    kid,
                                     e,
                                 )
+                            result["extracted_items"] += 1
+                        except Exception as e:
+                            logger.debug(
+                                "[MemoryMixin] consolidation knowledge store failed: %s",
+                                e,
+                            )
 
-                # Mark turns as consolidated
-                if turn_ids:
-                    store.mark_turns_consolidated(turn_ids)
+                    # Mark ONLY this window, and only now that it is distilled.
+                    marked = store.mark_turns_consolidated(turn_ids)
+                    if marked == 0:
+                        # Nothing moved — another process got there first, or the
+                        # rows vanished. Stop rather than re-summarise forever.
+                        logger.warning(
+                            "[MemoryMixin] consolidation marked 0 of %d turns for "
+                            "session %s; stopping to avoid a re-summarise loop",
+                            len(turn_ids),
+                            session_id[:8],
+                        )
+                        break
 
+                    windows += 1
+                    result["windows"] += 1
+
+                except json.JSONDecodeError as e:
+                    logger.warning(
+                        "[MemoryMixin] consolidation JSON parse failed for %s: %s",
+                        session_id[:8],
+                        e,
+                    )
+                    break
+                except Exception as e:
+                    logger.warning(
+                        "[MemoryMixin] consolidation failed for %s: %s",
+                        session_id[:8],
+                        e,
+                    )
+                    break
+
+            if windows:
                 result["consolidated"] += 1
-
-            except json.JSONDecodeError as e:
-                logger.warning(
-                    "[MemoryMixin] consolidation JSON parse failed for %s: %s",
-                    session_id[:8],
-                    e,
-                )
-            except Exception as e:
-                logger.warning(
-                    "[MemoryMixin] consolidation failed for %s: %s",
-                    session_id[:8],
-                    e,
-                )
+                if windows == CONSOLIDATION_MAX_WINDOWS_PER_SESSION:
+                    logger.info(
+                        "[MemoryMixin] session %s hit the %d-window per-run cap; "
+                        "the remaining turns are distilled on the next run",
+                        session_id[:8],
+                        CONSOLIDATION_MAX_WINDOWS_PER_SESSION,
+                    )
 
         return result
 
@@ -2547,10 +2623,12 @@ class MemoryMixin(ProceduralMemoryMixin):
             if not fact or not fact.strip():
                 return {"status": "error", "message": "fact must not be empty."}
 
-            if category not in VALID_CATEGORIES:
+            if category not in EXTRACTABLE_CATEGORIES:
                 return {
                     "status": "error",
-                    "message": f"Invalid category. Use: {sorted(VALID_CATEGORIES)}",
+                    "message": (
+                        f"Invalid category. Use: {sorted(EXTRACTABLE_CATEGORIES)}"
+                    ),
                 }
 
             # A moment isn't a rule: an error observation about a tool's own
@@ -2856,10 +2934,13 @@ class MemoryMixin(ProceduralMemoryMixin):
                     }
                 kwargs["content"] = content[:MAX_CONTENT_LENGTH]
             if category:
-                if category not in VALID_CATEGORIES:
+                if category not in EXTRACTABLE_CATEGORIES:
                     return {
                         "status": "error",
-                        "message": f"Invalid category. Use: {sorted(VALID_CATEGORIES)}",
+                        "message": (
+                            f"Invalid category. Use: "
+                            f"{sorted(EXTRACTABLE_CATEGORIES)}"
+                        ),
                     }
                 kwargs["category"] = category
             if domain:

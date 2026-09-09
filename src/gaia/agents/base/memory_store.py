@@ -107,16 +107,24 @@ VALID_CATEGORIES: frozenset = frozenset(
     }
 )
 
-#: Privileged categories that only an explicit memory tool / the system may
-#: write — never the LLM conversation extractor. A chat turn must not be able to
-#: mint a permission grant, a system fact, or a profile entry by emitting that
-#: category, so the extraction/consolidation paths validate against
-#: EXTRACTABLE_CATEGORIES below, not VALID_CATEGORIES.
+#: Privileged categories that only the system / an explicit admin path may
+#: write — never a chat turn. These rows lead the system prompt, so minting one
+#: from conversation is persistent prompt injection (and ``permission`` is a
+#: self-granted autonomy approval). ``store()`` and ``update()`` REJECT these
+#: unless the caller passes ``allow_privileged=True``; the paths that may are
+#: onboarding (``bootstrap.py``), system-context collection, ``gaia memory``,
+#: ``seed_bulk`` and the reviewed dashboard commits. The LLM extractor, the
+#: consolidation pass and the ``remember`` tool use EXTRACTABLE_CATEGORIES.
 _PRIVILEGED_CATEGORIES: frozenset = frozenset({"system", "profile", "permission"})
 
 #: Categories the LLM conversation extractor and consolidation pass may emit.
 #: Subset of VALID_CATEGORIES; mirrors the set advertised in _EXTRACTION_PROMPT.
 EXTRACTABLE_CATEGORIES: frozenset = VALID_CATEGORIES - _PRIVILEGED_CATEGORIES
+
+#: Minimum turns before a session is worth consolidating. Lives here rather
+#: than in memory.py because prune() needs the same threshold to decide which
+#: old turns are still queued for distillation.
+CONSOLIDATION_MIN_TURNS: int = 5
 
 #: Maximum stored content length (chars).  Longer content is truncated by
 #: callers before reaching store() so the database stays compact.
@@ -341,6 +349,38 @@ _V2_INDEX_SQL = [
 # ============================================================================
 # MemoryStore
 # ============================================================================
+
+
+def _validate_category(category: str, *, allow_privileged: bool, where: str) -> None:
+    """Reject unknown categories, and privileged ones from unprivileged callers.
+
+    Args:
+        category: The category the caller wants to write.
+        allow_privileged: True only for admin/system callers (onboarding,
+            system-context collection, ``gaia memory``, reviewed dashboard
+            commits).
+        where: Method name, used in the error message.
+
+    Raises:
+        ValueError: The category is unknown, or it is privileged and the caller
+            did not opt in.
+    """
+    if category not in VALID_CATEGORIES:
+        raise ValueError(
+            f"MemoryStore.{where}(): category={category!r} is not a known "
+            f"category, so the row would be stored and never recalled. Use one "
+            f"of {sorted(VALID_CATEGORIES)} (VALID_CATEGORIES in "
+            f"src/gaia/agents/base/memory_store.py)."
+        )
+    if category in _PRIVILEGED_CATEGORIES and not allow_privileged:
+        raise ValueError(
+            f"MemoryStore.{where}(): category={category!r} is privileged and "
+            f"the caller did not pass allow_privileged=True. Privileged rows "
+            f"lead every system prompt, so only onboarding, system-context "
+            f"collection and the memory admin paths may write them. Chat-turn "
+            f"callers (LLM extraction, consolidation, the remember tool) must "
+            f"use one of {sorted(EXTRACTABLE_CATEGORIES)}."
+        )
 
 
 class MemoryStore:
@@ -760,17 +800,29 @@ class MemoryStore:
         context: str = "global",
         sensitive: bool = False,
         entity: str | None = None,
+        allow_privileged: bool = False,
     ) -> str:
         """Store a knowledge entry with deduplication.
 
         >80% word overlap in same category+context → replaces with newer content.
         Validates due_at is a valid ISO 8601 string if provided.
 
+        Args:
+            allow_privileged: Opt-in required to write a category in
+                ``_PRIVILEGED_CATEGORIES`` (system/profile/permission). Only
+                onboarding, system-context collection, ``gaia memory`` and the
+                reviewed dashboard commits pass it; anything reachable from a
+                chat turn must not.
+
         Returns the knowledge ID (existing if deduped, new UUID if created).
 
         Raises:
-            ValueError: If content is empty or due_at is not valid ISO 8601.
+            ValueError: If the category is unknown or privileged without
+                ``allow_privileged``, content is empty, or due_at is not valid
+                ISO 8601.
         """
+        _validate_category(category, allow_privileged=allow_privileged, where="store")
+
         # Reject empty content early — FTS5 indexes empty strings, wasting space
         # and polluting search results with no-op entries.
         if not content or not content.strip():
@@ -1314,6 +1366,7 @@ class MemoryStore:
         due_at: str | None = None,
         reminded_at: str | None = None,
         superseded_by: str | None = None,
+        allow_privileged: bool = False,
     ) -> bool:
         """Update an existing knowledge entry. Only provided fields are changed.
 
@@ -1323,7 +1376,19 @@ class MemoryStore:
             superseded_by: ID of the newer knowledge item that replaces this one.
                 When set, this item is considered historical/inactive and will be
                 excluded from active queries (search, get_by_*, system prompt).
+            allow_privileged: Opt-in required to move a row into a privileged
+                category — same rule and same callers as :meth:`store`.
+                Re-categorising an existing row is a write of that category.
+
+        Raises:
+            ValueError: Same category rules as :meth:`store`, plus a
+                self-supersede or a malformed timestamp.
         """
+        if category is not None:
+            _validate_category(
+                category, allow_privileged=allow_privileged, where="update"
+            )
+
         # A row may never supersede itself — that would set superseded_by to its
         # own id and hide it from every active query (recall, get_by_category).
         if superseded_by is not None and superseded_by == knowledge_id:
@@ -1737,6 +1802,45 @@ class MemoryStore:
         with self._lock:
             cursor = self._conn.execute(sql, (min_turns, cutoff, limit))
             return [row[0] for row in cursor.fetchall()]
+
+    def get_unconsolidated_turns(self, session_id: str, limit: int = 20) -> List[Dict]:
+        """Oldest-first turns of *session_id* that have not been consolidated.
+
+        This is the window a consolidation pass distils. It is deliberately not
+        :meth:`get_history`, which returns the NEWEST ``limit`` turns — using
+        that for consolidation leaves the oldest turns of a long session
+        unconsolidated forever while the session is re-summarised on every
+        startup (and the raw turns are then pruned undistilled).
+
+        Args:
+            session_id: Session to read.
+            limit: Window size — how many turns one pass distils.
+
+        Returns:
+            Up to ``limit`` turn dicts, oldest first. Empty when the session is
+            fully consolidated.
+        """
+        sql = """
+            SELECT id, session_id, role, content, context, timestamp
+            FROM conversations
+            WHERE session_id = ? AND consolidated_at IS NULL
+            ORDER BY id ASC
+            LIMIT ?
+        """
+        with self._lock:
+            rows = self._conn.execute(sql, (session_id, limit)).fetchall()
+
+        return [
+            {
+                "id": r[0],
+                "session_id": r[1],
+                "role": r[2],
+                "content": r[3],
+                "context": r[4],
+                "timestamp": r[5],
+            }
+            for r in rows
+        ]
 
     def mark_turns_consolidated(self, turn_ids: List[int]) -> int:
         """Set ``consolidated_at`` to now on the specified conversation turn IDs.
@@ -2908,12 +3012,32 @@ class MemoryStore:
         )
         return rowcount
 
-    def prune(self, days: int = 90) -> Dict:
+    def prune(self, days: int = 90, keep_unconsolidated: bool = True) -> Dict:
         """Prune old tool_history and conversation entries.
 
-        Returns counts of deleted rows.
+        Args:
+            days: Retention window. Rows older than this are eligible.
+            keep_unconsolidated: Keep old turns that a session is still queued
+                to distil — i.e. the session is long enough to consolidate
+                (``CONSOLIDATION_MIN_TURNS``) and has turns with
+                ``consolidated_at IS NULL``. Deleting those loses the
+                conversation before anything was learned from it. Sessions too
+                short to ever be consolidated are pruned normally, so this is
+                not an unbounded hold. Pass False only for an explicit purge.
+
+        Returns counts of deleted rows, plus ``conversations_retained`` — old
+        turns kept because their session is still awaiting consolidation.
         """
         cutoff = (datetime.now().astimezone() - timedelta(days=days)).isoformat()
+
+        #: Sessions whose turns prune() must not touch yet: long enough to be
+        #: consolidated, and not yet fully consolidated.
+        _pending_sessions_sql = """
+            SELECT session_id FROM conversations
+            GROUP BY session_id
+            HAVING COUNT(*) >= ?
+               AND SUM(CASE WHEN consolidated_at IS NULL THEN 1 ELSE 0 END) > 0
+        """
 
         with self._lock:
             try:
@@ -2923,9 +3047,28 @@ class MemoryStore:
                 ).rowcount
 
                 # Prune conversations (delete FTS entries via trigger)
-                conv_deleted = self._conn.execute(
-                    "DELETE FROM conversations WHERE timestamp < ?", (cutoff,)
-                ).rowcount
+                conv_retained = 0
+                if keep_unconsolidated:
+                    conv_retained = self._conn.execute(
+                        f"""
+                        SELECT COUNT(*) FROM conversations
+                        WHERE timestamp < ?
+                          AND session_id IN ({_pending_sessions_sql})
+                        """,
+                        (cutoff, CONSOLIDATION_MIN_TURNS),
+                    ).fetchone()[0]
+                    conv_deleted = self._conn.execute(
+                        f"""
+                        DELETE FROM conversations
+                        WHERE timestamp < ?
+                          AND session_id NOT IN ({_pending_sessions_sql})
+                        """,
+                        (cutoff, CONSOLIDATION_MIN_TURNS),
+                    ).rowcount
+                else:
+                    conv_deleted = self._conn.execute(
+                        "DELETE FROM conversations WHERE timestamp < ?", (cutoff,)
+                    ).rowcount
 
                 # Prune low-confidence knowledge
                 knowledge_deleted = self._conn.execute(
@@ -2964,10 +3107,23 @@ class MemoryStore:
             conv_deleted,
             knowledge_deleted,
         )
+        if conv_retained:
+            # Loud, not silent: a growing number here means consolidation is
+            # not keeping up (LLM unreachable, or more backlog than the
+            # per-startup budget), and the turns are being kept instead of
+            # distilled.
+            logger.warning(
+                "[MemoryStore] prune: kept %d conversation turn(s) older than "
+                "%d days because their session has not been consolidated yet; "
+                "they are retained rather than lost undistilled",
+                conv_retained,
+                days,
+            )
         return {
             "tool_history_deleted": tool_deleted,
             "conversations_deleted": conv_deleted,
             "knowledge_deleted": knowledge_deleted,
+            "conversations_retained": conv_retained,
         }
 
     def rebuild_fts(self) -> None:

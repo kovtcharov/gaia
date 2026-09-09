@@ -1050,6 +1050,7 @@ def _do_system_context_refresh() -> Dict:
     for fact in facts:
         try:
             store.store(
+                allow_privileged=True,  # system-context collection
                 category="system",
                 content=fact["content"],
                 domain=fact.get("domain"),
