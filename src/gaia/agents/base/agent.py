@@ -41,7 +41,9 @@ from gaia.agents.base.console import AgentConsole, SilentConsole
 from gaia.agents.base.errors import format_execution_trace
 from gaia.agents.base.tools import _TOOL_REGISTRY
 from gaia.agents.base.verification import (
+    NOT_EXECUTED,
     build_verification_scope,
+    check_was_executed,
     verification_check_label,
 )
 
@@ -3644,6 +3646,12 @@ Do NOT wrap conversational replies in JSON.
         """
         Execute a tool by name with the provided arguments.
 
+        Every exit that returns BEFORE the tool body runs carries
+        ``NOT_EXECUTED``. ``_execute_tool_timed`` records each return for the
+        verification footer, which otherwise reads a call rejected at dispatch
+        — unknown name, missing/unexpected/uncoercible argument, guardrail
+        refusal — as a check that ran and failed (#3677).
+
         Args:
             tool_name: Name of the tool to execute
             tool_args: Arguments to pass to the tool
@@ -3708,13 +3716,13 @@ Do NOT wrap conversational replies in JSON.
                     # here would point them at something that isn't there.
                     err = "Unknown tool name. Use only the tools you were given."
                 logger.error(err)
-                return {"status": "error", "error": err}
+                return {**NOT_EXECUTED, "status": "error", "error": err}
 
         # Validate first, confirm second: a call the guardrails already refuse
         # must never reach a prompt.
         refusal = self._policy_refusal(tool_name, tool_args)
         if refusal is not None:
-            return refusal
+            return {**refusal, **NOT_EXECUTED} if isinstance(refusal, dict) else refusal
 
         # Guardrail: require explicit user confirmation for high-risk tools.
         # Consoles that cannot reach a human deny rather than answer for them
@@ -3767,7 +3775,7 @@ Do NOT wrap conversational replies in JSON.
                 f"Missing required arguments for {tool_name}: {', '.join(missing_args)}"
             )
             logger.error(error_msg)
-            return {"status": "error", "error": error_msg}
+            return {**NOT_EXECUTED, "status": "error", "error": error_msg}
 
         # Reject arguments the tool does not accept before dispatch. A model that
         # hallucinates a kwarg (e.g. mailbox= on archive_message_batch) would
@@ -3797,7 +3805,7 @@ Do NOT wrap conversational replies in JSON.
                     f"Accepted argument(s): {', '.join(sorted(accepted_args)) or 'none'}."
                 )
                 logger.error(error_msg)
-                return {"status": "error", "error": error_msg}
+                return {**NOT_EXECUTED, "status": "error", "error": error_msg}
 
         # Models routinely send numbers as JSON strings ("120" for timeout: int).
         # Every tool body would otherwise have to defend itself, and the ones
@@ -3805,7 +3813,7 @@ Do NOT wrap conversational replies in JSON.
         tool_args, coercion_error = self._coerce_tool_args(tool_name, sig, tool_args)
         if coercion_error is not None:
             logger.error(coercion_error)
-            return {"status": "error", "error": coercion_error}
+            return {**NOT_EXECUTED, "status": "error", "error": coercion_error}
 
         # Before dispatch, not after: a tool that times out or raises may still
         # have pulled content into the turn, and its error string can carry it.
@@ -4743,10 +4751,13 @@ Do NOT wrap conversational replies in JSON.
     def _note_verification_signal(
         self, tool_name: str, tool_args: Dict[str, Any], result: Any
     ) -> None:
-        """Record one executed tool call for this turn's verification scope.
+        """Record one dispatched tool call for this turn's verification scope.
 
         Called from the single execution seam so every loop path — legacy,
-        native tool-calling, and the forced-call branch — is covered.
+        native tool-calling, and the forced-call branch — is covered. That seam
+        also returns for calls that never ran (allowlist refusal, declined
+        confirmation), so ``ran`` says which this was: without it a refused
+        ``pytest`` was reported as a test that ran and failed (#3677).
         """
         log = getattr(self, "_turn_tool_executions", None)
         if log is None:
@@ -4756,6 +4767,7 @@ Do NOT wrap conversational replies in JSON.
                 "tool": tool_name,
                 "check_label": verification_check_label(tool_name, tool_args),
                 "failed": self._is_error_result(result),
+                "ran": check_was_executed(result),
             }
         )
 
