@@ -1,0 +1,1 @@
+PASS: real browser -> HTTP -> Agent loop -> file tool -> SQLite. Backend restarted between turns. Fresh agent input includes saved native tool result; first final answer omitted planted fact; second answer retrieved it without a new tool call. Model transport was deterministic, not real inference.
