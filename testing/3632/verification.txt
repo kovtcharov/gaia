@@ -1,0 +1,1 @@
+Real UI + HTTP + Agent loop + file tool; controlled model transport. Source chars=140067; serialized excerpt chars=40000; omitted chars=102818. Both planted boundary facts retained; no claim of recoverable middle or real-model quality.
