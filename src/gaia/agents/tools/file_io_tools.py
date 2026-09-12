@@ -896,11 +896,19 @@ class FileIOToolsMixin:
             new_content: str,
             project_dir: Optional[str] = None,
         ) -> Dict[str, Any]:
-            """Edit any file by replacing old content with new content (no syntax validation).
+            """Change part of a text file in place, without rewriting the rest.
 
-            Use this tool for non-Python files like .tsx, .ts, .js, .json, etc.
-            Includes security guardrails: path validation, blocked directory enforcement,
-            sensitive file protection, backup creation, and audit logging.
+            The default way to edit anything: documentation (.md, .mdx, .rst),
+            source (.py, .go, .ts, .js, .rs, .cpp), configuration (.yml, .json,
+            .toml), plain text. Prefer it over rewriting a file with write_file,
+            and over shelling out to sed or a here-doc.
+
+            Use edit_python_file instead only when you want the edit REFUSED if
+            it would break Python syntax.
+
+            Includes security guardrails: path validation, blocked directory
+            enforcement, sensitive file protection, backup creation, and audit
+            logging.
 
             old_content must match exactly one location. Zero or several matches
             are errors that carry the file's current content, so a retry does not
