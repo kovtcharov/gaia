@@ -90,24 +90,22 @@ class VLMClient:
         # Use provided base_url, fall back to env var, then default
         if base_url is None:
             base_url = os.getenv("LEMONADE_BASE_URL", DEFAULT_LEMONADE_URL)
-        from urllib.parse import urlparse
-
         from gaia.llm.lemonade_client import LemonadeClient
 
         self.vlm_model = vlm_model
         self.base_url = base_url
 
-        # Parse base_url to extract host and port for LemonadeClient
-        parsed = urlparse(base_url)
-        host = parsed.hostname or "localhost"
-        port = parsed.port or 13305
-
-        # Get base server URL (without /api/v1) for user-facing messages
-        self.server_url = f"http://{host}:{port}"
-
+        # Hand the configured URL through whole. Decomposing it to host+port
+        # rebuilt every request as http://host:13305/api/v1, which downgraded
+        # https to http, dropped a reverse-proxy path prefix, and invented a
+        # port for a URL that named none — so a remote or tunnelled server was
+        # never actually contacted (#3553).
         self.client = LemonadeClient(
-            model=vlm_model, host=host, port=port, api_key=api_key
+            model=vlm_model, base_url=base_url, api_key=api_key
         )
+
+        # Base server URL (without the /api/vN suffix) for user-facing messages.
+        self.server_url = self.client.base_url.rsplit("/api/", 1)[0]
         self.auto_load = auto_load
         self.vlm_loaded = False
 

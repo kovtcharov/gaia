@@ -24,7 +24,9 @@ grep -n "requests\.post\|requests\.get\|OpenAI(" src/gaia/llm/lemonade_client.py
 ```
 
 ### Factory must mirror `__init__`
-`create_lemonade_client()` at the bottom of `lemonade_client.py` is a convenience factory. When adding a new `LemonadeClient.__init__` parameter, update the factory to accept and forward it — callers that use the factory (like CLI entry points) won't pick up the new param otherwise.
+`create_lemonade_client()` at the bottom of `lemonade_client.py` is a convenience factory. When adding a new `LemonadeClient.__init__` parameter, update the factory to accept and forward it, or callers that use the factory won't pick up the new param.
+
+It is a **public SDK surface, not the path the CLI takes** — the only in-tree callers are `__main__` and the client's own tests. A change here does not change CLI behaviour, and a change to the CLI does not go through here (#3558).
 
 ### Module-level helpers should be PUBLIC (no underscore)
 Helpers shared across packages (`vlm_client.py`, `ui/routers/system.py`, `ui/_chat_helpers.py`, `ui/server.py`, `agents/base/agent.py`) must be public-named (no leading `_`). Leading underscore signals "package-internal" and creates confusion. Precedent: `system.py` already imports `DEFAULT_CONTEXT_SIZE` from `lemonade_client`.
