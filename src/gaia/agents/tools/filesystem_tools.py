@@ -70,6 +70,21 @@ class FileSystemToolsMixin:
                 raise ValueError(f"Access denied: {reason}")
         return resolved
 
+    def workspace_roots(self) -> list:
+        """The agent's allowed paths, most specific first (#3576).
+
+        A sidecar is spawned by the daemon in its own package directory, so
+        ``Path.cwd()`` describes how the process was launched, not where the
+        user's work is — searching it answered "zero .go files" for a repo
+        holding 203. Falls back to the working directory only when no
+        validator is attached, which is library use with no sandbox declared.
+        """
+        validator = getattr(self, "path_validator", None) or getattr(
+            self, "_path_validator", None
+        )
+        roots = sorted(getattr(validator, "allowed_paths", None) or [], key=str)
+        return [str(r) for r in roots if r.exists()] or [str(Path.cwd())]
+
     def _get_default_excludes(self) -> set:
         """Get platform-specific default directory exclusion patterns."""
         excludes = {
@@ -1136,10 +1151,10 @@ class FileSystemToolsMixin:
         def _get_search_roots(scope: str) -> list:
             """Get search root directories based on scope."""
             home = str(Path.home())
-            cwd = str(Path.cwd())
+            workspace = self.workspace_roots()
 
             if scope == "cwd":
-                return [cwd]
+                return workspace
             elif scope == "home":
                 return [home]
             elif scope == "everywhere":
@@ -1153,7 +1168,7 @@ class FileSystemToolsMixin:
                     ]
                 return ["/"]
             elif scope == "smart":
-                roots = [cwd]
+                roots = list(workspace)
                 common = [
                     "Documents",
                     "Downloads",
@@ -1164,7 +1179,7 @@ class FileSystemToolsMixin:
                 ]
                 for folder in common:
                     p = Path(home) / folder
-                    if p.exists() and str(p) != cwd:
+                    if p.exists() and str(p) not in roots:
                         roots.append(str(p))
                 return roots
             else:

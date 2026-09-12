@@ -67,6 +67,21 @@ class FileSearchToolsMixin:
             self, "_path_validator", None
         )
 
+    def _search_roots(self) -> List[Path]:
+        """Where a filesystem search should look, most specific first (#3576).
+
+        The agent's allowed paths, not the process's working directory. A
+        sidecar is spawned by the daemon in its own package directory, so
+        ``Path.cwd()`` is an implementation detail of how it was launched —
+        searching it answered "zero .go files" for a repo holding 203.
+
+        Falls back to the working directory only when no validator is attached,
+        which is library use with no sandbox declared at all.
+        """
+        validator = self._get_path_validator()
+        roots = sorted(getattr(validator, "allowed_paths", None) or [], key=str)
+        return [r for r in roots if r.exists()] or [Path.cwd().resolve()]
+
     def _read_access_error(self, path: str):
         """Enforce the ``--allowed-paths`` sandbox on read operations.
 
@@ -100,15 +115,24 @@ class FileSearchToolsMixin:
             atomic=True,
         )
         def search_file(
-            file_pattern: str, deep_search: bool = False, file_types: str = None
+            file_pattern: str,
+            directory: str = None,
+            deep_search: bool = False,
+            file_types: str = None,
         ) -> Dict[str, Any]:
             """
-            Search for files with intelligent prioritization.
+            Find files by name or pattern.
 
-            Strategy:
-            1. Quick search: CWD + common document locations (fast)
-            2. Deep search: entire drive(s) (only when deep_search=True)
-            3. Filter by document file types for speed
+            Args:
+                file_pattern: name, substring, glob ("*.go") or regex to match.
+                directory: WHERE to look. Pass it whenever the user names a
+                    folder ("in tui/internal", "under docs") — without it the
+                    search covers the whole workspace and common document
+                    folders, which is slower and can match the wrong file.
+                deep_search: search entire drives. Slow; only after a normal
+                    search found nothing.
+                file_types: comma-separated extensions to restrict to, e.g.
+                    "go,md". Defaults to common document and source types.
             """
             try:
                 # Document file extensions to search
@@ -272,55 +296,94 @@ class FileSearchToolsMixin:
 
                     search_recursive(location, 0)
 
-                # Phase 0+1: Search CWD AND common locations together
-                # (always search both before returning, so Documents/Downloads
-                # files aren't missed just because CWD had some matches)
-                cwd = Path.cwd()
                 home = Path.home()
 
-                # Show progress to user
-                if hasattr(self, "console") and hasattr(self.console, "start_progress"):
-                    self.console.start_progress(
-                        f"🔍 Searching current directory ({cwd.name}) for '{file_pattern}'..."
-                    )
+                # An explicit directory is the whole scope: the user named a
+                # place, so searching anywhere else can only return the wrong
+                # file. It is sandbox-checked and must exist — a search that
+                # silently skipped it would report an honest-looking zero.
+                if directory:
+                    # Resolve BEFORE the sandbox check: "tui/internal" means a
+                    # folder in the user's workspace, not one under whatever
+                    # directory this process happens to have been spawned in.
+                    scope = Path(directory).expanduser()
+                    if not scope.is_absolute():
+                        for root in self._search_roots():
+                            if (root / scope).is_dir():
+                                scope = root / scope
+                                break
+                    scope = scope.resolve()
+                    # Sandbox before the existence probe, so an out-of-sandbox
+                    # path cannot be used as a directory-existence oracle
+                    # (same order as read_file / search_file_content).
+                    denied = self._read_access_error(str(scope))
+                    if denied:
+                        return denied
+                    if not scope.is_dir():
+                        return {
+                            "status": "error",
+                            "error": (
+                                f"Directory not found: '{directory}'. Nothing was "
+                                "searched — this is not an empty result."
+                            ),
+                            "searched_paths": [],
+                        }
+                    if hasattr(self, "console") and hasattr(
+                        self.console, "start_progress"
+                    ):
+                        self.console.start_progress(
+                            f"🔍 Searching {scope} for '{file_pattern}'..."
+                        )
+                    search_location(scope, max_depth=999)
+                    roots = [scope]
+                else:
+                    # Phase 0+1: the agent's allowed paths AND common document
+                    # locations (always both, so a Documents file isn't missed
+                    # just because a workspace root had some matches).
+                    roots = self._search_roots()
+                    if hasattr(self, "console") and hasattr(
+                        self.console, "start_progress"
+                    ):
+                        self.console.start_progress(
+                            f"🔍 Searching the workspace for '{file_pattern}'..."
+                        )
+                    logger.debug("Phase 0: searching %s", [str(r) for r in roots])
+                    for root in roots:
+                        search_location(root, max_depth=999)
 
-                logger.debug(
-                    f"Phase 0: Deep search of current directory for '{file_pattern}'..."
-                )
-                logger.debug(f"Current directory: {cwd}")
+                    # Always also search common locations (Documents, Downloads, etc.)
+                    if hasattr(self, "console") and hasattr(
+                        self.console, "start_progress"
+                    ):
+                        self.console.start_progress(
+                            "🔍 Searching common folders (Documents, Downloads, Desktop)..."
+                        )
 
-                # Search current directory thoroughly (unlimited depth)
-                search_location(cwd, max_depth=999)
+                    logger.debug("Phase 1: Searching common document locations...")
 
-                # Always also search common locations (Documents, Downloads, etc.)
-                if hasattr(self, "console") and hasattr(self.console, "start_progress"):
-                    self.console.start_progress(
-                        "🔍 Searching common folders (Documents, Downloads, Desktop)..."
-                    )
+                    common_locations = [
+                        home / "Documents",
+                        home / "Downloads",
+                        home / "Desktop",
+                        home / "OneDrive",
+                        home / "Google Drive",
+                        home / "Dropbox",
+                    ]
 
-                logger.debug("Phase 1: Searching common document locations...")
-
-                common_locations = [
-                    home / "Documents",
-                    home / "Downloads",
-                    home / "Desktop",
-                    home / "OneDrive",
-                    home / "Google Drive",
-                    home / "Dropbox",
-                ]
-
-                for location in common_locations:
-                    if len(matching_files) >= 20:
-                        break
-                    # Skip if already searched as part of CWD
-                    try:
-                        if location.resolve() == cwd.resolve() or str(
-                            location.resolve()
-                        ).startswith(str(cwd.resolve())):
-                            continue
-                    except (OSError, ValueError):
-                        pass
-                    search_location(location, max_depth=5)
+                    for location in common_locations:
+                        if len(matching_files) >= 20:
+                            break
+                        # Skip anything already covered by a searched root
+                        try:
+                            resolved = location.resolve()
+                            if any(
+                                resolved == root or str(resolved).startswith(str(root))
+                                for root in roots
+                            ):
+                                continue
+                        except (OSError, ValueError):
+                            pass
+                        search_location(location, max_depth=5)
 
                 # Deduplicate results (CWD and common locations may overlap)
                 unique_files = []
@@ -352,16 +415,26 @@ class FileSearchToolsMixin:
 
                 # Quick search found nothing
                 if not deep_search:
-                    # Return with hint that deep search is available
+                    # Name the places that were searched. A bare zero reads as
+                    # "there are none", and the model relays it that way (#3576).
+                    where = ", ".join(str(r) for r in roots) or "nowhere"
                     return {
                         "status": "success",
                         "files": [],
                         "count": 0,
                         "total_locations_searched": len(searched_locations),
-                        "search_context": "common_locations",
-                        "display_message": f"No files found matching '{file_pattern}' in common locations",
-                        "deep_search_available": True,
-                        "suggestion": "I can do a deep search across all drives if you'd like (this may take a minute).",
+                        "searched_paths": [str(p) for p in searched_locations],
+                        "search_context": "directory" if directory else "workspace",
+                        "display_message": (
+                            f"No files matching '{file_pattern}' under {where}"
+                        ),
+                        "deep_search_available": not directory,
+                        "suggestion": (
+                            "Zero here means zero UNDER THE PATHS LISTED IN "
+                            "searched_paths, not zero on the machine. Say where you "
+                            "looked. If the user named a folder, pass it as "
+                            "`directory`."
+                        ),
                     }
 
                 # Phase 2: Deep drive search (only when explicitly requested)
@@ -405,26 +478,13 @@ class FileSearchToolsMixin:
                         "user_instruction": "If multiple files found, display numbered list and ask user to select one.",
                     }
                 else:
-                    # Build helpful message about what was searched
-                    search_summary = []
-                    if str(cwd) in searched_locations:
-                        search_summary.append(f"current directory ({cwd.name})")
-                    if len(searched_locations) > 1:
-                        search_summary.append(
-                            f"{len(searched_locations)} total locations"
-                        )
-
-                    searched_str = (
-                        ", ".join(search_summary)
-                        if search_summary
-                        else f"{len(searched_locations)} locations"
-                    )
-
+                    searched_str = f"{len(searched_locations)} locations"
                     return {
                         "status": "success",
                         "files": [],
                         "count": 0,
                         "total_locations_searched": len(searched_locations),
+                        "searched_paths": [str(p) for p in searched_locations],
                         "search_summary": searched_str,
                         "display_message": f"❌ No files found matching '{file_pattern}'",
                         "searched": f"Searched {searched_str}",
