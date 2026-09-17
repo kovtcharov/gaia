@@ -654,7 +654,7 @@ def codework_table(traces: List[dict]) -> str:
             # of an empty population.
             else (
                 "| Search-tool results | — | no Grep/Glob calls in this corpus; "
-                "searching went through the shell |"
+                "any searching went through the shell |"
             )
         ),
         (
@@ -1563,7 +1563,10 @@ corpus-wide including subagents; "{cd_pct} of shell commands start with `cd`" is
 over.
 
 **Reproducing it.** `python -m gaia.factory.harvest.scan` followed by
-`python -m gaia.factory.harvest.report` regenerates every table above. It will not reproduce these figures *exactly* — the corpus grows while it is being
+`python -m gaia.factory.harvest.report --labels labels.txt > tables.md` regenerates every
+table above; without `--labels` the three use-case tables render "_no label file supplied_",
+and without the redirect the report only prints. `context` and `savings` are separate
+invocations — see the session-analytics guide. It will not reproduce these figures *exactly* — the corpus grows while it is being
 analysed, since the session doing the analysis is itself being recorded. Counts drift by
 tens of calls between runs; the shape is stable."""
 
