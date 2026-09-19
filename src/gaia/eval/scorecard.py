@@ -5,7 +5,12 @@
 Scorecard generator — builds scorecard.json + summary.md from scenario results.
 """
 
+import argparse
+import copy
+import json
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 # Statuses where the scenario was actually judged by the eval agent.
 # Infrastructure failures (TIMEOUT, BUDGET_EXCEEDED, ERRORED) are excluded
@@ -422,3 +427,39 @@ def write_junit_xml(scorecard):
     buf = io.BytesIO()
     tree.write(buf, encoding="utf-8", xml_declaration=True)
     return buf.getvalue().decode("utf-8")
+
+
+#: What a public copy leaves out: what the simulator and the agent said, the
+#: judge's reasoning, and raw CLI error output. Every score and status stays.
+_PRIVATE_FIELDS = ("user_message", "agent_response", "reasoning", "error")
+
+
+def public_scorecard(scorecard):
+    """The scorecard without conversation text, for an artifact anyone can read."""
+    public = copy.deepcopy(scorecard)
+    for scenario in public.get("scenarios", []):
+        scenario.pop("error", None)
+        for turn in scenario.get("turns") or []:
+            for field in _PRIVATE_FIELDS:
+                turn.pop(field, None)
+    return public
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="python -m gaia.eval.scorecard",
+        description="Write a scorecard's public copy: scores kept, conversation text removed.",
+    )
+    parser.add_argument("source", help="scorecard.json written by gaia eval agent")
+    parser.add_argument("dest", help="where to write the public copy")
+    args = parser.parse_args(argv)
+    card = json.loads(Path(args.source).read_text(encoding="utf-8"))
+    Path(args.dest).write_text(
+        json.dumps(public_scorecard(card), indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
