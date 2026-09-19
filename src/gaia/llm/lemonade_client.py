@@ -4096,6 +4096,14 @@ class LemonadeClient:
         url = f"{self.base_url}/health"
         return self._send_request("get", url)
 
+    @property
+    def last_model_load_seconds(self) -> Optional[float]:
+        """Seconds this client spent loading a model for its latest request.
+
+        ``None`` when that request found the model already resident.
+        """
+        return self._last_model_load_seconds
+
     def get_stats(self) -> Dict[str, Any]:
         """
         Get performance statistics from the last request.

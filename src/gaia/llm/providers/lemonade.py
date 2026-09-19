@@ -451,15 +451,18 @@ class LemonadeProvider(LLMClient):
         # HTTP round-trip and no last-request race.
         usage = response.get("usage")
         if isinstance(usage, dict):
-            timings = response.get("timings")
+            timings = response.get("timings") or {}
             self._last_usage = {
                 "prompt_tokens": int(usage.get("prompt_tokens") or 0),
                 "completion_tokens": int(usage.get("completion_tokens") or 0),
                 "total_tokens": int(usage.get("total_tokens") or 0),
-                "tokens_per_second": float(
-                    (timings or {}).get("predicted_per_second") or 0.0
-                ),
+                "tokens_per_second": float(timings.get("predicted_per_second") or 0.0),
             }
+            # This request's own prefill time, i.e. its time to first token.
+            if timings.get("prompt_ms"):
+                self._last_usage["time_to_first_token"] = (
+                    float(timings["prompt_ms"]) / 1000
+                )
 
         if not response["choices"] or len(response["choices"]) == 0:
             raise ValueError("Empty choices in response from Lemonade Server")
@@ -529,10 +532,16 @@ class LemonadeProvider(LLMClient):
                 for key, value in (self._last_usage or {}).items()
                 if key != "tokens_per_second"
             }
-        # A non-streaming local call carries its own usage. /stats counts only
-        # the uncached part of whichever request the server served last.
+        # A non-streaming local call carries its own usage and timing. /stats
+        # describes whichever request the server served last, uncached part only.
         if self._last_usage:
-            return dict(self._last_usage)
+            stats = dict(self._last_usage)
+            stats["input_tokens"] = stats["prompt_tokens"]
+            stats["output_tokens"] = stats["completion_tokens"]
+            load = self._backend.last_model_load_seconds
+            if isinstance(load, (int, float)):
+                stats["model_load_seconds"] = load
+            return stats
         return self._backend.get_stats() or {}
 
     def get_last_usage(self) -> Optional[dict]:

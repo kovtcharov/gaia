@@ -375,23 +375,80 @@ def test_local_provider_keeps_lemonade_performance_stats(monkeypatch):
     get_stats.assert_called_once()
 
 
-def test_local_provider_prefers_the_calls_own_usage(monkeypatch):
-    """/stats counts only uncached tokens of the server's last request (#4003)."""
+def _local_call(monkeypatch, load_seconds=None):
+    """One non-streaming local call, answered the way llama.cpp answers it."""
     adapter = LemonadeProvider(model="Gemma-4-E4B-it-GGUF")
     get_stats = MagicMock(
         return_value={"input_tokens": 89, "cache_tokens": 6553, "output_tokens": 7}
     )
     monkeypatch.setattr(adapter._backend, "get_stats", get_stats)
-    adapter._last_model = "Gemma-4-E4B-it-GGUF"
-    adapter._last_usage = {
+    monkeypatch.setattr(adapter._backend, "_last_model_load_seconds", load_seconds)
+    monkeypatch.setattr(
+        adapter._backend,
+        "chat_completions",
+        lambda **kwargs: {
+            "usage": {
+                "prompt_tokens": 6642,
+                "completion_tokens": 7,
+                "total_tokens": 6649,
+            },
+            "timings": {"prompt_ms": 812.0, "predicted_per_second": 25.0},
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "hi"},
+                    "finish_reason": "stop",
+                }
+            ],
+        },
+    )
+    adapter.chat([{"role": "user", "content": "hi"}], stream=False)
+    return adapter, get_stats
+
+
+def test_local_provider_reports_the_calls_own_usage_and_timing(monkeypatch):
+    """/stats counts only uncached tokens of the server's last request (#4003)."""
+    adapter, get_stats = _local_call(monkeypatch)
+    assert adapter.get_performance_stats() == {
         "prompt_tokens": 6642,
         "completion_tokens": 7,
         "total_tokens": 6649,
+        "input_tokens": 6642,
+        "output_tokens": 7,
         "tokens_per_second": 25.0,
+        "time_to_first_token": 0.812,
     }
-
-    assert adapter.get_performance_stats() == adapter._last_usage
     get_stats.assert_not_called()
+
+
+def test_a_cold_local_call_carries_its_model_load_time(monkeypatch):
+    adapter, _ = _local_call(monkeypatch, load_seconds=3.5)
+    assert adapter.get_performance_stats()["model_load_seconds"] == 3.5
+
+
+def test_local_timing_reaches_the_turn_metrics_and_the_turns_ttft(monkeypatch):
+    from gaia.agents.base.agent import _query_ttft_seconds
+    from gaia.agents.base.turn_metrics import TurnRecorder
+
+    adapter, _ = _local_call(monkeypatch, load_seconds=3.5)
+    stats = adapter.get_performance_stats()
+
+    metrics = TurnRecorder(
+        query="hi", agent_name="t", model_id="m", system_prompt="s", tool_schemas=[]
+    )
+    metrics.start_llm_call(1, "s hi")
+    metrics.end_llm_call(stats)
+    call = metrics.llm_calls[-1]
+    assert call["ttft_s"] == 0.812 and call["input_tokens"] == 6642
+    assert call["prefill_tok_per_s"] > 0
+
+    conversation = [
+        {
+            "role": "system",
+            "content": {"type": "stats", "step": 1, "performance_stats": stats},
+        }
+    ]
+    assert _query_ttft_seconds(conversation) == pytest.approx(0.812 + 3.5)
 
 
 def test_model_availability_failure_emits_diagnostic(client, monkeypatch, caplog):
