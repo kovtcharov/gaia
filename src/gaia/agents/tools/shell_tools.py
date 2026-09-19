@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from gaia.agents.base.verification import NOT_EXECUTED
+from gaia.tool_cancellation import tool_cancelled
 
 logger = logging.getLogger(__name__)
 
@@ -698,6 +699,10 @@ class ShellToolsMixin:
         )
         return True
 
+    #: Slice length for the pacing wait. Short enough that a Stop lands
+    #: promptly, long enough not to spin.
+    _PACE_POLL_SECONDS = 0.25
+
     def _pace_rate_limit(self) -> tuple:
         """Wait out the rate limit rather than refuse, up to a cap.
 
@@ -712,8 +717,17 @@ class ShellToolsMixin:
             allowed, reason, wait_time = self._check_rate_limit()
             if allowed or waited + wait_time > cap:
                 return allowed, reason, wait_time, waited
-            time.sleep(wait_time)
-            waited += wait_time
+            # Sliced, not one long sleep: this runs inside _call_tool_bounded's
+            # window, so a wait that ignored the flag would keep the worker
+            # alive past a Stop and past its own timeout (#2600).
+            remaining = wait_time
+            while remaining > 0:
+                if tool_cancelled():
+                    return False, "Rate limit wait cancelled", remaining, waited
+                slice_s = min(self._PACE_POLL_SECONDS, remaining)
+                time.sleep(slice_s)
+                remaining -= slice_s
+                waited += slice_s
 
     def _check_rate_limit(self) -> tuple:
         """
@@ -1125,19 +1139,6 @@ class ShellToolsMixin:
                 Dictionary with status, output, and error information
             """
             try:
-                # Check rate limits first to prevent DOS
-                allowed, reason, wait_time, waited = self._pace_rate_limit()
-                if not allowed:
-                    return {
-                        **NOT_EXECUTED,
-                        "status": "error",
-                        "error": f"{reason}. Please wait {wait_time:.1f} seconds.",
-                        "has_errors": True,
-                        "rate_limited": True,
-                        "wait_time_seconds": wait_time,
-                        "hint": "Rate limiting prevents excessive command execution",
-                    }
-
                 # Validate working directory if specified
                 if working_directory:
                     if not os.path.exists(working_directory):
@@ -1184,6 +1185,21 @@ class ShellToolsMixin:
                 error, segments = self._validate_shell_command(command)
                 if error:
                     return error
+
+                # Paced only once the command is known to be runnable: a
+                # command that was always going to be refused should not spend
+                # the wait first.
+                allowed, reason, wait_time, waited = self._pace_rate_limit()
+                if not allowed:
+                    return {
+                        **NOT_EXECUTED,
+                        "status": "error",
+                        "error": f"{reason}. Please wait {wait_time:.1f} seconds.",
+                        "has_errors": True,
+                        "rate_limited": True,
+                        "wait_time_seconds": wait_time,
+                        "hint": "Rate limiting prevents excessive command execution",
+                    }
 
                 granted = skill_granted_binaries(self)
                 cmd_parts = [part for segment in segments for part in segment]
