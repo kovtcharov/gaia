@@ -604,7 +604,7 @@ gaia eval sessions --dataset-only --out eval/results/sessions
 | `--dataset-only` | Build the dataset and stop — no agent, no judge |
 
 <Warning>
-  The dataset and results contain your own prompts and the answers Claude Code gave you. `eval/results/sessions*/` is gitignored for that reason; don't commit it or upload it as a CI artifact.
+  The dataset and results contain your own prompts and the answers Claude Code gave you. `eval/results/sessions*/` is gitignored for that reason; don't commit it or upload it as a CI artifact. A custom `--out` outside `eval/results/` is **not** covered by that ignore rule.
 </Warning>
 
 Judging uses Claude and needs `ANTHROPIC_API_KEY`; the repo's `.env` is read

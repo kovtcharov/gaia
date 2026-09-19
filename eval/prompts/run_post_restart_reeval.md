@@ -20,7 +20,7 @@ Previous fix phase scores (server was NOT restarted):
 - Do NOT restart servers
 - **DO NOT call `delete_session` on ANY session** — conversations must be preserved
 - ALWAYS pass `session_id` when calling `index_document` — required for Fix 3 compatibility
-- Use absolute paths for index_document: `C:/Users/14255/Work/gaia4/eval/corpus/documents/`
+- Use absolute paths for index_document: `C:/Users/you/Work/gaia4/eval/corpus/documents/`
 - After ALL steps complete, print "POST-RESTART RE-EVAL COMPLETE"
 
 ---
@@ -37,7 +37,7 @@ Call `system_status` — confirm Agent UI is on :4200.
 1. Create session: "Post-Restart: concise_response"
    - Note the session_id returned
 2. Index document WITH session_id:
-   - filepath: `C:/Users/14255/Work/gaia4/eval/corpus/documents/acme_q3_report.md`
+   - filepath: `C:/Users/you/Work/gaia4/eval/corpus/documents/acme_q3_report.md`
    - session_id: [the session_id from step 1]
    - This links the doc to the session so the agent can see it (required for Fix 3)
 3. Send Turn 1: "Hi"
@@ -73,14 +73,14 @@ Call `system_status` — confirm Agent UI is on :4200.
 1. Create session: "Post-Restart: negation_handling"
    - Note the session_id returned
 2. Index document WITH session_id:
-   - filepath: `C:/Users/14255/Work/gaia4/eval/corpus/documents/employee_handbook.md`
+   - filepath: `C:/Users/you/Work/gaia4/eval/corpus/documents/employee_handbook.md`
    - session_id: [the session_id from step 1]
 3. Send Turn 1: "Who is NOT eligible for health benefits and retirement benefits?"
    - Ground truth: Contractors/part-time/temporary employees NOT eligible. Only full-time qualify.
    - Score correctness (0-10)
 4. Send Turn 2: "What about dental and vision coverage?"
    - Ground truth: Same — full-time only, contractors excluded
-   - KEY TEST for Fix 1: Did the agent use wrong absolute path (C:/Users/14255/employee_handbook.md)?
+   - KEY TEST for Fix 1: Did the agent use wrong absolute path (C:/Users/you/employee_handbook.md)?
      - If Fix 1 worked: basename fallback resolved it automatically, ≤3 tool calls total
      - If not fixed: agent tried wrong path, had to recover in 9+ steps
    - Score (0-10)

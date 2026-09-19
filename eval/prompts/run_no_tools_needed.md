@@ -1,7 +1,7 @@
 # Eval Scenario: no_tools_needed
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase3\no_tools_needed.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase3\no_tools_needed.json`
 
 ## Scenario Purpose
 Test whether the agent responds DIRECTLY to greetings and general knowledge questions
@@ -40,7 +40,7 @@ WITHOUT calling any RAG/file tools. Over-tooling is a failure mode — if a user
 
 7. Call `delete_session(session_id)` to clean up.
 
-8. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase3\no_tools_needed.json`
+8. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase3\no_tools_needed.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05

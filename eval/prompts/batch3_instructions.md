@@ -7,7 +7,7 @@ Read this file completely before starting. Execute all 5 scenarios in order.
 - ALWAYS pass `session_id` when calling `index_document`
 - Results: `eval/results/rerun/<scenario_id>.json`
 - Log progress to: `eval/eval_run_report.md` (append only)
-- Corpus path: `C:/Users/14255/Work/gaia4/eval/corpus/documents/`
+- Corpus path: `C:/Users/you/Work/gaia4/eval/corpus/documents/`
 
 ## SCORING FORMULA
 overall_score = correctness×0.25 + tool_selection×0.20 + context_retention×0.20 + completeness×0.15 + efficiency×0.10 + personality×0.05 + error_recovery×0.05
@@ -29,7 +29,7 @@ Maximum 2 fix attempts per turn. If still failing after 2 attempts, score honest
 
 **Setup:**
 1. `create_session` name="Rerun: csv_analysis" → note session_id
-2. `index_document` filepath="C:/Users/14255/Work/gaia4/eval/corpus/documents/sales_data_2025.csv" session_id=<session_id>
+2. `index_document` filepath="C:/Users/you/Work/gaia4/eval/corpus/documents/sales_data_2025.csv" session_id=<session_id>
 NOTE: Do NOT also index acme_q3_report.md — Fix 3 means only the CSV should be visible to this session.
 
 **Turns:**
@@ -57,14 +57,14 @@ NOTE: Do NOT also index acme_q3_report.md — Fix 3 means only the CSV should be
 2. Do NOT pre-index any documents — agent should index on demand when given the path
 
 **Turns:**
-- Turn 1: "Please read the file at C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\meeting_notes_q3.txt and tell me when the next meeting is."
+- Turn 1: "Please read the file at C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\meeting_notes_q3.txt and tell me when the next meeting is."
   - Ground truth: October 15, 2025 at 2:00 PM PDT, Conference Room B and Zoom
   - Expected tool flow: index_document with given path, then query_specific_file
   - PASS if correct date/time returned
 - Turn 2: "What were the action items discussed in that meeting?"
   - Ground truth: Raj Patel → finalize pipeline data by Oct 7; Sandra Kim → confirm QA timeline by Oct 10; All VPs → submit Q4 OKR check-ins to Jane Smith by Oct 14; decisions: Q4 launch dates locked, if Salesforce slips mobile app delays instead, API deprecation plan by Nov 1
   - "that meeting" = meeting_notes_q3.txt from Turn 1
-- Turn 3: "Now read C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\acme_q3_report.md and tell me the Q3 revenue."
+- Turn 3: "Now read C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\acme_q3_report.md and tell me the Q3 revenue."
   - Ground truth: $14.2 million, 23% YoY growth
   - Agent should index the new file and query it
 
@@ -99,7 +99,7 @@ NOTE: Do NOT also index acme_q3_report.md — Fix 3 means only the CSV should be
 1. `create_session` name="Rerun: search_empty_fallback" → note session_id
 2. Do NOT pre-index any documents — scenario tests discovery behavior
 
-**Known issue:** The api_reference.py file is at C:/Users/14255/Work/gaia4/eval/corpus/documents/api_reference.py
+**Known issue:** The api_reference.py file is at C:/Users/you/Work/gaia4/eval/corpus/documents/api_reference.py
 The original run failed because agent searched for "*.md" but never tried "*.py".
 
 **Turns:**
@@ -126,14 +126,14 @@ The original run failed because agent searched for "*.md" but never tried "*.py"
 2. Do NOT pre-index any documents
 
 **Turns:**
-- Turn 1: "Please read and summarize C:\\Users\\14255\\Documents\\quarterly_report_2024.pdf"
+- Turn 1: "Please read and summarize C:\\Users\\you\\Documents\\quarterly_report_2024.pdf"
   - Ground truth: File does NOT exist. Agent should attempt to read/index, get an error, then gracefully say file not found and offer alternatives.
   - CRITICAL FAIL if agent fabricates content for the non-existent PDF
-- Turn 2: "Try C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\emplyee_handbook.md"
+- Turn 2: "Try C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\emplyee_handbook.md"
   - Note: "emplyee" is a TYPO (missing 'o'). Correct name is "employee_handbook.md"
   - Ground truth: File not found at typo path; agent should find "employee_handbook.md" nearby and summarize it
   - PASS if agent handles the typo gracefully and finds/summarizes the correct file
-- Turn 3: "OK, try C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\employee_handbook.md"
+- Turn 3: "OK, try C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\employee_handbook.md"
   - Ground truth: Correct path. Agent should read and provide a detailed summary.
   - Expected content: employment types (full-time/part-time/contractors), PTO (15 days first year), benefits (health/dental/vision for full-time), remote work (3 days/week with approval)
 

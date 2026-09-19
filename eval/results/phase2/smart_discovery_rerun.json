@@ -27,7 +27,7 @@
       "overall_score": 4.0,
       "pass": false,
       "failure_category": "incomplete_discovery",
-      "reasoning": "Agent correctly used list_indexed_documents to check for existing docs and search_file to search, which shows intent to discover. However, search_file only scanned common Windows folders (Documents, Downloads, Desktop) and did not search the project/corpus directory at C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\. Agent never used browse_files to explore the project directory, never called index_document, and never answered the question. Offered a 'deep search' but did not proactively execute it. No hallucination (no critical fail), but discovery failed due to narrow search scope."
+      "reasoning": "Agent correctly used list_indexed_documents to check for existing docs and search_file to search, which shows intent to discover. However, search_file only scanned common Windows folders (Documents, Downloads, Desktop) and did not search the project/corpus directory at C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\. Agent never used browse_files to explore the project directory, never called index_document, and never answered the question. Offered a 'deep search' but did not proactively execute it. No hallucination (no critical fail), but discovery failed due to narrow search scope."
     },
     {
       "turn": 2,
@@ -56,7 +56,7 @@
   ],
   "discovery_summary": {
     "target_file": "employee_handbook.md",
-    "target_path": "C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\employee_handbook.md",
+    "target_path": "C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\employee_handbook.md",
     "file_discovered": false,
     "file_indexed": false,
     "turn1_correct": false,
@@ -65,7 +65,7 @@
     "tools_missing": ["browse_files", "index_document"],
     "search_scope_issue": "search_file tool only scanned common Windows folders; corpus directory is a project subfolder not covered"
   },
-  "root_cause": "The search_file tool has a limited search scope — it only scans standard Windows user folders (Documents, Downloads, Desktop) and the current working directory (gaia4 root). The eval corpus lives in C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\ which is a subdirectory not covered by the default search. The agent never fell back to browse_files to explore the project tree, and it lacked awareness that project-specific data directories exist. In Turn 2 the agent showed no adaptation from Turn 1's failed approach.",
+  "root_cause": "The search_file tool has a limited search scope — it only scans standard Windows user folders (Documents, Downloads, Desktop) and the current working directory (gaia4 root). The eval corpus lives in C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\ which is a subdirectory not covered by the default search. The agent never fell back to browse_files to explore the project tree, and it lacked awareness that project-specific data directories exist. In Turn 2 the agent showed no adaptation from Turn 1's failed approach.",
   "recommended_fix": "1. The search_file tool should recursively search the current working directory tree (not just root level) when common-folder search fails. 2. The agent prompt or tooling should include a 'browse project directory' fallback step when search_file returns no results. 3. Alternatively, add a browse_files call to the agent's default discovery workflow so it actively explores project subdirectories (eval/, corpus/, docs/) before giving up. 4. Improve Turn 2 context retention so the agent recognizes it already attempted discovery in the prior turn and escalates to a different method rather than repeating the same search.",
   "infra": {
     "model": "Qwen3-Coder-30B-A3B-Instruct-GGUF",

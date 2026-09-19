@@ -6,7 +6,7 @@
     {
       "turn": 1,
       "user_message": "What was Acme's Q3 revenue?",
-      "agent_response": "**$14.2 million** — according to *C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\acme_q3_report.md*, that's what Acme brought in during Q3 2025.",
+      "agent_response": "**$14.2 million** — according to *C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\acme_q3_report.md*, that's what Acme brought in during Q3 2025.",
       "agent_tools": ["query_documents", "query_specific_file"],
       "scores": {
         "correctness": 10,
@@ -39,12 +39,12 @@
       "overall_score": 8.6,
       "pass": true,
       "failure_category": null,
-      "reasoning": "Exact match with ground truth (15 days). No CRITICAL FAIL — agent correctly switched to HR domain with zero financial data contamination. Minor path hallucination on first tool call (used truncated path 'C:\\Users\\14255\\employee_handbook.md') required an extra recovery step via list_indexed_documents, which cost efficiency and tool_selection points. Error recovery was graceful."
+      "reasoning": "Exact match with ground truth (15 days). No CRITICAL FAIL — agent correctly switched to HR domain with zero financial data contamination. Minor path hallucination on first tool call (used truncated path 'C:\\Users\\you\\employee_handbook.md') required an extra recovery step via list_indexed_documents, which cost efficiency and tool_selection points. Error recovery was graceful."
     },
     {
       "turn": 3,
       "user_message": "OK back to the financials — what was the YoY growth?",
-      "agent_response": "According to C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\acme_q3_report.md:\n\nAcme Corp's Q3 2025 revenue was $14.2 million, representing a 23% year-over-year (YoY) growth compared to Q3 2024's $11.5 million.",
+      "agent_response": "According to C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\acme_q3_report.md:\n\nAcme Corp's Q3 2025 revenue was $14.2 million, representing a 23% year-over-year (YoY) growth compared to Q3 2024's $11.5 million.",
       "agent_tools": ["query_documents", "query_specific_file"],
       "scores": {
         "correctness": 10,
@@ -80,7 +80,7 @@
       "reasoning": "Agent correctly resolved the ambiguous pronoun 'that' to the YoY growth from Turn 3 (context_retention=10). Cited Q4 projected growth (15-18%) and compared against 23% Q3 result — satisfying the expected answer. However, tool selection was inefficient: 4 tool calls including a redundant second query_documents and an unnecessary query_specific_file against employee_handbook.md for PTO policy (irrelevant to the financial question). Context bleed appeared at tool level but did NOT contaminate the final answer. Score reflects tool-level inefficiency without penalising the correct final output."
     }
   ],
-  "root_cause": "Two efficiency issues observed: (1) Turn 2 — path hallucination in query_specific_file tool call used a truncated path ('C:\\Users\\14255\\employee_handbook.md') instead of the full indexed path, requiring a list_indexed_documents recovery step. (2) Turn 4 — agent queried both documents including the employee_handbook.md (retrieving PTO policy) despite the question clearly being financial; context bleed occurred at the tool-selection layer but was filtered before the final answer.",
+  "root_cause": "Two efficiency issues observed: (1) Turn 2 — path hallucination in query_specific_file tool call used a truncated path ('C:\\Users\\you\\employee_handbook.md') instead of the full indexed path, requiring a list_indexed_documents recovery step. (2) Turn 4 — agent queried both documents including the employee_handbook.md (retrieving PTO policy) despite the question clearly being financial; context bleed occurred at the tool-selection layer but was filtered before the final answer.",
   "recommended_fix": "1. Improve path resolution in query_specific_file: when a partial filename is supplied, match against indexed document filenames before failing. 2. Implement conversation-topic tracking to avoid querying all indexed documents on every ambiguous turn — use recent tool history or explicit domain tags to prioritise the relevant document. This would improve efficiency scores from ~5 to ~9 on turns where topic context is established.",
   "cost_estimate": {
     "turns": 4,

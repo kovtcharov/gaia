@@ -1,10 +1,10 @@
 # Eval Scenario: conversation_summary
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase3\conversation_summary.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase3\conversation_summary.json`
 
 ## Ground Truth
-File: `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+File: `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
 - Q3 revenue: $14.2 million
 - YoY growth: 23%
 - Q4 outlook: 15-18% growth
@@ -25,7 +25,7 @@ The history_pairs limit (5 pairs = 10 messages) should be the boundary — verif
 
 2. Call `create_session("Eval: conversation_summary")`
 
-3. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+3. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
 
 4. **Turn 1** — Call `send_message(session_id, "What was Acme's Q3 revenue?")`
    - Expected: $14.2 million
@@ -54,7 +54,7 @@ The history_pairs limit (5 pairs = 10 messages) should be the boundary — verif
 
 11. Call `delete_session(session_id)` to clean up.
 
-12. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase3\conversation_summary.json`
+12. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase3\conversation_summary.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05

@@ -104,7 +104,7 @@ func TestProseIsNotMistakenForASubject(t *testing.T) {
 }
 
 func TestLongPathsAreElidedToTheirIdentifyingTail(t *testing.T) {
-	long := `C:\Users\14255\AppData\Local\Temp\gaia-codebench-1dg42j1q\edit-refactor\report.py`
+	long := `C:\Users\you\AppData\Local\Temp\gaia-codebench-1dg42j1q\edit-refactor\report.py`
 	got := elideMemoryPaths("File " + long + " changed")
 
 	if strings.Contains(got, "AppData") {
@@ -121,7 +121,7 @@ func TestLongPathsAreElidedToTheirIdentifyingTail(t *testing.T) {
 // separators arrive doubled. Splitting on a single one yielded empty segments
 // and the tail rendered as `…\.bin\\autoprefixer` — caught in live data.
 func TestPathsWithDoubledSeparatorsElideCleanly(t *testing.T) {
-	got := elideMemoryPaths(`'C:\\Users\\14255\\Work\\gaia\\src\\node_modules\\.bin\\autoprefixer'`)
+	got := elideMemoryPaths(`'C:\\Users\\you\\Work\\gaia\\src\\node_modules\\.bin\\autoprefixer'`)
 
 	if strings.Contains(got, `\\`) {
 		t.Errorf("doubled separators survived into the elided path: %q", got)

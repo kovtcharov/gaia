@@ -1,10 +1,10 @@
 # Eval Scenario: search_empty_fallback
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase3\search_empty_fallback.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase3\search_empty_fallback.json`
 
 ## Ground Truth
-File: `C:\Users\14255\Work\gaia4\eval\corpus\documents\api_reference.py`
+File: `C:\Users\you\Work\gaia4\eval\corpus\documents\api_reference.py`
 
 Known facts:
 - Authentication method: Bearer token via the Authorization header
@@ -46,7 +46,7 @@ The agent should NOT give up after one failed search — it must try other appro
 
 7. Call `delete_session(session_id)` to clean up.
 
-8. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase3\search_empty_fallback.json`
+8. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase3\search_empty_fallback.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05
@@ -82,6 +82,6 @@ The agent should NOT give up after one failed search — it must try other appro
 ## IMPORTANT
 - Use absolute Windows paths with backslashes for all file operations
 - The `eval/results/phase3/` directory already exists
-- Note: api_reference.py is at `C:\Users\14255\Work\gaia4\eval\corpus\documents\api_reference.py`
+- Note: api_reference.py is at `C:\Users\you\Work\gaia4\eval\corpus\documents\api_reference.py`
 - The key test is fallback behavior: agent must try multiple approaches, not give up after one empty search
 - "Bearer token via Authorization header" is the ground truth for Turn 1

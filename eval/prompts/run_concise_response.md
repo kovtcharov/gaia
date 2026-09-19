@@ -1,7 +1,7 @@
 # Eval Scenario: concise_response
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase3\concise_response.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase3\concise_response.json`
 
 ## Scenario Purpose
 Test whether the agent gives **appropriately concise responses** to simple questions.
@@ -14,7 +14,7 @@ Over-verbose responses to simple questions are a personality failure.
 
 2. Call `create_session("Eval: concise_response")`
 
-3. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+3. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
 
 4. **Turn 1 (simple greeting)** — Call `send_message(session_id, "Hi")`
    - Expected: Short greeting response (1-2 sentences MAX). Something like "Hi! How can I help?"
@@ -38,7 +38,7 @@ Over-verbose responses to simple questions are a personality failure.
 
 8. Call `delete_session(session_id)` to clean up.
 
-9. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase3\concise_response.json`
+9. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase3\concise_response.json`
 
 ## Scoring Notes
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05

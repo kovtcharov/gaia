@@ -6,7 +6,7 @@
     {
       "turn": 1,
       "user_message": "What is the PTO policy for new employees?",
-      "agent_response": "Based on my search of the indexed documents, I found information about PTO policies in the employee handbook. According to the employee handbook (C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\employee_handbook.md): First-year employees receive 15 days of paid time off, which begins accruing from the employee's start date at a rate of 1.25 days per month. Full-time employees accrue 10 days of PTO per year after 90 days of employment. Part-time employees accrue 5 days of PTO annually after 6 months of service.",
+      "agent_response": "Based on my search of the indexed documents, I found information about PTO policies in the employee handbook. According to the employee handbook (C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\employee_handbook.md): First-year employees receive 15 days of paid time off, which begins accruing from the employee's start date at a rate of 1.25 days per month. Full-time employees accrue 10 days of PTO per year after 90 days of employment. Part-time employees accrue 5 days of PTO annually after 6 months of service.",
       "agent_tools": ["query_documents"],
       "scores": {
         "correctness": 10,

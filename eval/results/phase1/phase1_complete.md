@@ -41,7 +41,7 @@
 
 ## manifest.json
 
-Written to `C:\Users\14255\Work\gaia4\eval\corpus\manifest.json`
+Written to `C:\Users\you\Work\gaia4\eval\corpus\manifest.json`
 
 - **Total documents:** 9
 - **Total facts:** 15
@@ -58,7 +58,7 @@ Located at `src/gaia/eval/audit.py` — evaluation audit module for analyzing RA
 
 ## architecture_audit.json
 
-Written to `C:\Users\14255\Work\gaia4\eval\results\phase1\architecture_audit.json`
+Written to `C:\Users\you\Work\gaia4\eval\results\phase1\architecture_audit.json`
 
 Contents:
 ```json

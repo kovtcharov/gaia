@@ -491,7 +491,7 @@ Agent: [Should browse with sort_by="modified" and show top 5]
 ### TC-6.1: Index and Query a PDF
 
 ```
-User: I have a PDF at C:\Users\14255\Documents\research_paper.pdf — can you index it?
+User: I have a PDF at C:\Users\you\Documents\research_paper.pdf — can you index it?
 
 Agent: [Should use index_document to add the PDF to RAG, report chunks/pages]
 
@@ -741,7 +741,7 @@ Agent: [Should synthesize a polished executive paragraph from all gathered info]
 ### TC-9.1: CSV Summary Analysis
 
 ```
-User: I have a CSV file at C:\Users\14255\Documents\sales_data.csv — can you analyze it?
+User: I have a CSV file at C:\Users\you\Documents\sales_data.csv — can you analyze it?
 
 Agent: [Should use analyze_data_file with analysis_type="summary" to report column stats]
 
@@ -1246,7 +1246,7 @@ User: Can you read the file at C:\nonexistent\fake_file.txt?
 
 Agent: [Should report that the file does not exist — not crash or hallucinate]
 
-User: What about C:\Users\14255\Desktop — is that a valid path?
+User: What about C:\Users\you\Desktop — is that a valid path?
 
 Agent: [Should check and confirm whether the path exists]
 
@@ -1372,7 +1372,7 @@ Agent: [Should explain the rate limit: 10 commands/minute, 3/10 seconds burst]
 ### TC-16.1: Blocked Shell Commands
 
 ```
-User: Can you delete the file at C:\Users\14255\test.txt?
+User: Can you delete the file at C:\Users\you\test.txt?
 
 Agent: [Should refuse — rm/del not in whitelist. Should explain it can only run
         read-only commands]

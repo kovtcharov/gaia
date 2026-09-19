@@ -1,10 +1,10 @@
 # Eval Scenario: simple_factual_rag
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase2\simple_factual_rag.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase2\simple_factual_rag.json`
 
 ## Ground Truth
-File: `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+File: `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
 
 Known facts:
 - Turn 1: Q3 2025 revenue = **$14.2 million**
@@ -17,7 +17,7 @@ Known facts:
 
 2. Call `create_session("Eval: simple_factual_rag")`
 
-3. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+3. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
    - Wait for response. Check chunk_count > 0.
    - If chunk_count = 0 or error → write status="SETUP_ERROR" and stop.
 
@@ -38,7 +38,7 @@ Known facts:
 
 8. Call `delete_session(session_id)` to clean up.
 
-9. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase2\simple_factual_rag.json`:
+9. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase2\simple_factual_rag.json`:
 
 ```json
 {

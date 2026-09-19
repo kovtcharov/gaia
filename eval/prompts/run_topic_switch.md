@@ -1,13 +1,13 @@
 # Eval Scenario: topic_switch
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase3\topic_switch.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase3\topic_switch.json`
 
 ## Ground Truth
-File A: `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+File A: `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
 - Q3 revenue: $14.2 million
 
-File B: `C:\Users\14255\Work\gaia4\eval\corpus\documents\employee_handbook.md`
+File B: `C:\Users\you\Work\gaia4\eval\corpus\documents\employee_handbook.md`
 - PTO for first-year employees: 15 days
 
 ## Scenario Purpose
@@ -21,8 +21,8 @@ from different domains.
 
 2. Call `create_session("Eval: topic_switch")`
 
-3. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
-4. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\employee_handbook.md`
+3. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+4. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\employee_handbook.md`
 
 5. **Turn 1 (financial question)** — Call `send_message(session_id, "What was Acme's Q3 revenue?")`
    - Expected: "$14.2 million" from acme_q3_report.md
@@ -45,7 +45,7 @@ from different domains.
 
 10. Call `delete_session(session_id)` to clean up.
 
-11. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase3\topic_switch.json`
+11. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase3\topic_switch.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05

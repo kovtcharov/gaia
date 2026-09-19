@@ -3,7 +3,7 @@
 Build all Phase 2 infrastructure files. Do NOT run any scenarios yet.
 
 ## Working directory
-All relative paths are from: `C:\Users\14255\Work\gaia4`
+All relative paths are from: `C:\Users\you\Work\gaia4`
 
 ---
 
@@ -950,7 +950,7 @@ Write `eval/results/phase2a/phase2a_complete.md` with:
 ## IMPORTANT NOTES
 
 - Always use absolute paths with double backslashes for file operations on Windows
-- The repo root is `C:\Users\14255\Work\gaia4`
+- The repo root is `C:\Users\you\Work\gaia4`
 - Use `uv run python` not `python`
 - Do NOT run any eval scenarios — this phase is build only
 - Do NOT modify or delete existing eval files (audit.py, claude.py, config.py, etc.)

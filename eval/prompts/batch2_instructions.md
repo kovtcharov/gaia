@@ -7,7 +7,7 @@ Read this file completely before starting. Execute all 4 scenarios in order.
 - ALWAYS pass `session_id` when calling `index_document`
 - Results: `eval/results/rerun/<scenario_id>.json`
 - Log progress to: `eval/eval_run_report.md` (append only)
-- Corpus path: `C:/Users/14255/Work/gaia4/eval/corpus/documents/`
+- Corpus path: `C:/Users/you/Work/gaia4/eval/corpus/documents/`
 
 ## SCORING FORMULA
 overall_score = correctness×0.25 + tool_selection×0.20 + context_retention×0.20 + completeness×0.15 + efficiency×0.10 + personality×0.05 + error_recovery×0.05
@@ -29,8 +29,8 @@ Maximum 2 fix attempts per turn. If still failing after 2 attempts, score honest
 
 **Setup:**
 1. `create_session` name="Rerun: multi_doc_context" → note session_id
-2. `index_document` filepath="C:/Users/14255/Work/gaia4/eval/corpus/documents/acme_q3_report.md" session_id=<session_id>
-3. `index_document` filepath="C:/Users/14255/Work/gaia4/eval/corpus/documents/employee_handbook.md" session_id=<session_id>
+2. `index_document` filepath="C:/Users/you/Work/gaia4/eval/corpus/documents/acme_q3_report.md" session_id=<session_id>
+3. `index_document` filepath="C:/Users/you/Work/gaia4/eval/corpus/documents/employee_handbook.md" session_id=<session_id>
 
 **Turns:**
 - Turn 1: "What was the Q3 2025 revenue and year-over-year growth for Acme Corp?"
@@ -53,7 +53,7 @@ Maximum 2 fix attempts per turn. If still failing after 2 attempts, score honest
 
 **Setup:**
 1. `create_session` name="Rerun: cross_section_rag" → note session_id
-2. `index_document` filepath="C:/Users/14255/Work/gaia4/eval/corpus/documents/acme_q3_report.md" session_id=<session_id>
+2. `index_document` filepath="C:/Users/you/Work/gaia4/eval/corpus/documents/acme_q3_report.md" session_id=<session_id>
 
 **Turns:**
 - Turn 1: "Give me a complete financial summary of Acme Corp's Q3 performance and what to expect in Q4."
@@ -76,7 +76,7 @@ Maximum 2 fix attempts per turn. If still failing after 2 attempts, score honest
 
 **Setup:**
 1. `create_session` name="Rerun: negation_handling" → note session_id
-2. `index_document` filepath="C:/Users/14255/Work/gaia4/eval/corpus/documents/employee_handbook.md" session_id=<session_id>
+2. `index_document` filepath="C:/Users/you/Work/gaia4/eval/corpus/documents/employee_handbook.md" session_id=<session_id>
 
 **Turns:**
 - Turn 1: "Are contractors eligible for health benefits?"
@@ -84,7 +84,7 @@ Maximum 2 fix attempts per turn. If still failing after 2 attempts, score honest
   - CRITICAL FAIL if agent says contractors ARE eligible
 - Turn 2: "What benefits or perks are contractors eligible for, if any?"
   - Ground truth: No contractor benefits listed. EAP applies to "all employees" but contractors are NOT classified as employees per Section 3.
-  - KEY TEST for Fix 1: Does agent use correct path? Previous runs used wrong path "C:/Users/14255/employee_handbook.md"
+  - KEY TEST for Fix 1: Does agent use correct path? Previous runs used wrong path "C:/Users/you/employee_handbook.md"
   - Fix 1 (fuzzy basename fallback) should resolve path automatically in ≤3 tool calls
   - Score fix1_validated: true if Turn 2 completes correctly in ≤3 tool calls
 - Turn 3: "What about part-time employees — are they eligible for benefits?"
@@ -100,7 +100,7 @@ Maximum 2 fix attempts per turn. If still failing after 2 attempts, score honest
 
 **Setup:**
 1. `create_session` name="Rerun: table_extraction" → note session_id
-2. `index_document` filepath="C:/Users/14255/Work/gaia4/eval/corpus/documents/sales_data_2025.csv" session_id=<session_id>
+2. `index_document` filepath="C:/Users/you/Work/gaia4/eval/corpus/documents/sales_data_2025.csv" session_id=<session_id>
 
 **Known limitation:** The CSV (~500 rows) is indexed into only 2 RAG chunks. Full aggregation is not possible via RAG alone. Agent should attempt all queries and acknowledge data limitations honestly.
 

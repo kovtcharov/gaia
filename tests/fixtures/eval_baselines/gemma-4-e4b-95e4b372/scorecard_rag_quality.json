@@ -646,7 +646,7 @@
         {
           "turn": 2,
           "user_message": "Which product has the better star rating and by how much?",
-          "agent_response": "ProFlow has the better star rating, scoring **4.7 out of 5 stars**, which is **0.5 stars higher** than StreamLine's average user rating of 4.2 out of 5 stars, according to `/Users/kovtcharov/Work/gaia/eval/corpus/documents/product_comparison.html`.",
+          "agent_response": "ProFlow has the better star rating, scoring **4.7 out of 5 stars**, which is **0.5 stars higher** than StreamLine's average user rating of 4.2 out of 5 stars, according to `/Users/you/Work/gaia/eval/corpus/documents/product_comparison.html`.",
           "agent_tools": [
             "rag_query"
           ],
@@ -662,7 +662,7 @@
           "overall_score": 8.85,
           "pass": true,
           "failure_category": null,
-          "reasoning": "Exact match: ProFlow=4.7, StreamLine=4.2, difference=0.5. Agent correctly identified the higher-rated product and quantified the gap. Minor personality penalty for surfacing an absolute internal filesystem path (`/Users/kovtcharov/Work/gaia/eval/corpus/documents/product_comparison.html`) as the source citation — this leaks implementation details to the user. Context retention is 9 (correctly maintained the product-comparison context from Turn 1).",
+          "reasoning": "Exact match: ProFlow=4.7, StreamLine=4.2, difference=0.5. Agent correctly identified the higher-rated product and quantified the gap. Minor personality penalty for surfacing an absolute internal filesystem path (`/Users/you/Work/gaia/eval/corpus/documents/product_comparison.html`) as the source citation — this leaks implementation details to the user. Context retention is 9 (correctly maintained the product-comparison context from Turn 1).",
           "performance": {
             "tokens_per_second": null,
             "time_to_first_token": null,

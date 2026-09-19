@@ -9,7 +9,7 @@
 | Fix 3 | P1 | `src/gaia/ui/_chat_helpers.py` | Eliminate cross-session document contamination |
 
 ### Fix 1: Path Truncation Bug (`rag_tools.py` lines 550–574)
-When `query_specific_file` fails to find the provided path in `indexed_files`, it now tries a **fuzzy basename fallback**: extracts `Path(file_path).name` and searches for an indexed file whose `Path.name` matches exactly. 1 match → proceeds normally. 0 matches → returns original error. 2+ matches → returns ambiguity error with full paths. This recovers the common LLM pattern of guessing an absolute path like `C:\Users\14255\employee_handbook.md` when only `employee_handbook.md` is indexed.
+When `query_specific_file` fails to find the provided path in `indexed_files`, it now tries a **fuzzy basename fallback**: extracts `Path(file_path).name` and searches for an indexed file whose `Path.name` matches exactly. 1 match → proceeds normally. 0 matches → returns original error. 2+ matches → returns ambiguity error with full paths. This recovers the common LLM pattern of guessing an absolute path like `C:\Users\you\employee_handbook.md` when only `employee_handbook.md` is indexed.
 
 ### Fix 2: Verbosity Calibration (`agent.py` line 301)
 Added one bullet to the system prompt `WHO YOU ARE` section:
@@ -36,7 +36,7 @@ Changed `_resolve_rag_paths` to return `([], [])` when a session has no `documen
 
 **cross_section_rag (+2.60)** — The biggest success. The original CRITICAL FAIL in Turn 1 (agent queried `employee_handbook.md` instead of `acme_q3_report.md`, hallucinated all figures) was eliminated by correctly linking the document to the session via `session_id` in the `index_document` call. When `document_ids` is populated, `_resolve_rag_paths` returns only session-specific documents, so the agent only sees `acme_q3_report.md` in its system prompt. All three turns PASSED with correct figures, exact CEO quote, and correct dollar projections.
 
-**negation_handling (+3.48)** — Major improvement. Original: Turns 2+3 gave **no answer** at all (INCOMPLETE_RESPONSE). Fix phase: all 3 turns produced complete, correct answers. Turn 2 still showed the path bug (`C:/Users/14255/employee_handbook.md`) because Fix 1 requires a server restart, but the agent now successfully **recovers** and provides a full correct answer instead of terminating with an incomplete response. Turn 3 worked cleanly with bare filename in 2 steps.
+**negation_handling (+3.48)** — Major improvement. Original: Turns 2+3 gave **no answer** at all (INCOMPLETE_RESPONSE). Fix phase: all 3 turns produced complete, correct answers. Turn 2 still showed the path bug (`C:/Users/you/employee_handbook.md`) because Fix 1 requires a server restart, but the agent now successfully **recovers** and provides a full correct answer instead of terminating with an incomplete response. Turn 3 worked cleanly with bare filename in 2 steps.
 
 ### What Didn't Work (Yet)
 

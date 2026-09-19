@@ -1,10 +1,10 @@
 # Eval Scenario: cross_turn_file_recall
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase2\cross_turn_file_recall.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase2\cross_turn_file_recall.json`
 
 ## Ground Truth
-File: `C:\Users\14255\Work\gaia4\eval\corpus\documents\product_comparison.html`
+File: `C:\Users\you\Work\gaia4\eval\corpus\documents\product_comparison.html`
 
 Known facts:
 - StreamLine: **$49/month**
@@ -26,7 +26,7 @@ Test whether the agent recalls the indexed document across turns WITHOUT the use
 
 2. Call `create_session("Eval: cross_turn_file_recall")`
 
-3. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\product_comparison.html`
+3. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\product_comparison.html`
    - Check chunk_count > 0. If 0 or error → write status="SETUP_ERROR" and stop.
 
 4. **Turn 1** — Call `send_message(session_id, "What documents do you have access to?")`
@@ -53,7 +53,7 @@ Test whether the agent recalls the indexed document across turns WITHOUT the use
 
 8. Call `delete_session(session_id)` to clean up.
 
-9. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase2\cross_turn_file_recall.json`
+9. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase2\cross_turn_file_recall.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05

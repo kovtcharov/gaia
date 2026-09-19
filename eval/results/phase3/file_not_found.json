@@ -5,7 +5,7 @@
   "turns": [
     {
       "turn": 1,
-      "user_message": "Please read and summarize C:\\Users\\14255\\Documents\\quarterly_report_2024.pdf",
+      "user_message": "Please read and summarize C:\\Users\\you\\Documents\\quarterly_report_2024.pdf",
       "agent_response": "I couldn't find a file named 'quarterly_report_2024.pdf' in your Documents folder. Here are the files I found that might be related:\n\n- acme_q3_report.md (Markdown document)\n- employee_handbook.md (Markdown document)\n- sales_data_2025.csv (CSV data file)\n\nCould you please confirm if one of these is the correct file? Or perhaps it has a different name or location?",
       "agent_tools": ["list_indexed_documents", "index_document", "browse_directory"],
       "scores": {
@@ -24,7 +24,7 @@
     },
     {
       "turn": 2,
-      "user_message": "Try C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\emplyee_handbook.md",
+      "user_message": "Try C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\emplyee_handbook.md",
       "agent_response": "According to employee_handbook.md, this document outlines policies and procedures for employees at Acme Corp. It covers key areas including welcome information (Section 1), equal opportunity and non-discrimination (Section 2), employment classifications (Section 3) which distinguishes between full-time, part-time, contractors, and temporary employees. The handbook details time off policy (Section 4) with PTO accrual schedules based on years of service ranging from 15 days for first-year employees up to 30 days for those with 10+ years. Section 5 describes benefits packages available to eligible employees. Other important sections include IT usage guidelines (Section 6), performance management processes (Section 7), compensation structure (Section 8), workplace safety protocols (Section 9), code of conduct expectations (Section 10), leaves of absence provisions (Section 11), and separation/offboarding procedures (Section 12).",
       "agent_tools": ["list_indexed_documents", "summarize_document", "search_file", "index_document", "query_specific_file"],
       "scores": {
@@ -43,7 +43,7 @@
     },
     {
       "turn": 3,
-      "user_message": "OK, try C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\employee_handbook.md",
+      "user_message": "OK, try C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\employee_handbook.md",
       "agent_response": "**Employee Handbook Summary - Continued**\n\nHere are some additional details from key sections:\n\n### Employment Classifications (Section 3)\n- Full-time employees work 40 hours/week with benefits eligibility after probation period\n- Part-time employees work fewer than 40 hours/week without full benefits package\n- Temporary employees have fixed-term contracts with limited benefits\n- Independent contractors operate under separate service agreements not covered by this handbook\n\n### Time Off Policy (Section 4)\n- Vacation: Varies by tenure (2 weeks for first year, up to 3 weeks after 5 years)\n- Sick leave: Up to 10 days annually for personal illness or medical appointments\n- Personal days: One day per month (up to 12/year) for non-medical reasons\n- Floating holidays: Three company-wide floating holidays each year based on calendar quarter\n\n### Benefits Overview (Section 5)\n- **Health Insurance**: Comprehensive coverage including dental and vision plans at company expense\n- **401(k)**: Company matches up to 5% of salary contributions\n- **Life & Disability**: Standard insurance packages provided through third-party vendors\n- **EAP**: Free confidential counseling services available for all employees and family members\n\n### Remote Work Policy (Section 7)\nEmployees may request remote work arrangements subject to manager approval. The policy requires:\n- A written agreement outlining expectations and communication protocols\n- Regular check-ins with supervisors during remote periods\n- Compliance with security requirements when working off-site",
       "agent_tools": ["read_file", "summarize_document"],
       "scores": {

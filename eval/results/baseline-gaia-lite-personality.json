@@ -123,7 +123,7 @@
         {
           "turn": 1,
           "user_message": "How many employees does Acme Corp have?",
-          "agent_response": "Based on /Users/kovtcharov/Work/gaia/eval/corpus/documents/acme_q3_report.md, employee headcount is **not reported** in this quarterly financial report.\n\nHowever, here's what the Q3 2025 report does include:\n\n| Metric | Value | Change |\n|--------|-------|--------|\n| Revenue (Q3 2025) | $14.2 million | +23% vs prior year |\n| New customers added | 47 new customers | up from 38 in Q2 |\n| Net Promoter Score (NPS) | 62 | up from 54 in Q2 |\n| Gross margin | 68% | up from 65% in Q2 |\n\nThe CEO letter mentions \"our enterprise segment\" and \"existing accounts,\" but doesn't specify total staff or employee numbers anywhere in the document.",
+          "agent_response": "Based on /Users/you/Work/gaia/eval/corpus/documents/acme_q3_report.md, employee headcount is **not reported** in this quarterly financial report.\n\nHowever, here's what the Q3 2025 report does include:\n\n| Metric | Value | Change |\n|--------|-------|--------|\n| Revenue (Q3 2025) | $14.2 million | +23% vs prior year |\n| New customers added | 47 new customers | up from 38 in Q2 |\n| Net Promoter Score (NPS) | 62 | up from 54 in Q2 |\n| Gross margin | 68% | up from 65% in Q2 |\n\nThe CEO letter mentions \"our enterprise segment\" and \"existing accounts,\" but doesn't specify total staff or employee numbers anywhere in the document.",
           "agent_tools": [
             "index_documents",
             "query_documents"

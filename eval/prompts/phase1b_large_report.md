@@ -1,6 +1,6 @@
 # Phase 1b — Write large_report.md
 
-Write ONE file: `C:\Users\14255\Work\gaia4\eval\corpus\documents\large_report.md`
+Write ONE file: `C:\Users\you\Work\gaia4\eval\corpus\documents\large_report.md`
 
 ## Requirements
 
@@ -39,7 +39,7 @@ Each section should be ~150-250 words. With 75 sections at ~200 words each = ~15
 Run this verification:
 ```
 uv run python -c "
-content = open(r'C:\Users\14255\Work\gaia4\eval\corpus\documents\large_report.md', encoding='utf-8').read()
+content = open(r'C:\Users\you\Work\gaia4\eval\corpus\documents\large_report.md', encoding='utf-8').read()
 words = len(content.split())
 has_fact = 'Three minor non-conformities were identified in supply chain documentation' in content
 sec52_pos = content.find('## Section 52')
@@ -52,7 +52,7 @@ print(f'Section 52 at position {sec52_pos} of {total_pos} ({100*sec52_pos//total
 
 The buried fact must be present and Section 52 must be >60% through the document.
 
-Then write `C:\Users\14255\Work\gaia4\eval\results\phase1\phase1_complete.md` with a summary of all Phase 1 files created (see below).
+Then write `C:\Users\you\Work\gaia4\eval\results\phase1\phase1_complete.md` with a summary of all Phase 1 files created (see below).
 
 ## phase1_complete.md content
 Summarize:

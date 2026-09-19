@@ -1,10 +1,10 @@
 # Eval Scenario: cross_section_rag
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase3\cross_section_rag.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase3\cross_section_rag.json`
 
 ## Ground Truth
-File: `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+File: `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
 
 Known facts (distributed across multiple sections):
 - Q3 revenue: $14.2 million (Section: Revenue Summary)
@@ -24,7 +24,7 @@ Test whether the agent can **synthesize facts from multiple sections** of a sing
 
 2. Call `create_session("Eval: cross_section_rag")`
 
-3. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+3. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
    - Check chunk_count > 0. If 0 → write status="SETUP_ERROR" and stop.
 
 4. **Turn 1 (cross-section synthesis)** — Call `send_message(session_id, "Give me a complete financial summary of Acme Corp's Q3 performance and what to expect in Q4.")`
@@ -52,7 +52,7 @@ Test whether the agent can **synthesize facts from multiple sections** of a sing
 
 8. Call `delete_session(session_id)` to clean up.
 
-9. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase3\cross_section_rag.json`
+9. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase3\cross_section_rag.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05

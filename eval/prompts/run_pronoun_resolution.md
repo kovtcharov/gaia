@@ -1,10 +1,10 @@
 # Eval Scenario: pronoun_resolution
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase2\pronoun_resolution.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase2\pronoun_resolution.json`
 
 ## Ground Truth
-File: `C:\Users\14255\Work\gaia4\eval\corpus\documents\employee_handbook.md`
+File: `C:\Users\you\Work\gaia4\eval\corpus\documents\employee_handbook.md`
 
 Known facts:
 - Turn 1: PTO for first-year employees = **15 days** (Section 4, accrual table)
@@ -28,7 +28,7 @@ The agent MUST:
 
 2. Call `create_session("Eval: pronoun_resolution")`
 
-3. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\employee_handbook.md`
+3. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\employee_handbook.md`
    - Check chunk_count > 0. If 0 or error → write status="SETUP_ERROR" and stop.
 
 4. **Turn 1** — Call `send_message(session_id, "What is the PTO policy for new employees?")`
@@ -55,7 +55,7 @@ The agent MUST:
 
 8. Call `delete_session(session_id)` to clean up.
 
-9. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase2\pronoun_resolution.json`
+9. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase2\pronoun_resolution.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05

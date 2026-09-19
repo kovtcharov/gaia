@@ -90,7 +90,7 @@
     {
       "id": "path_truncation",
       "severity": "medium",
-      "description": "Agent guesses wrong absolute paths for already-indexed files. E.g., constructs C:\\Users\\14255\\employee_handbook.md instead of full corpus path.",
+      "description": "Agent guesses wrong absolute paths for already-indexed files. E.g., constructs C:\\Users\\you\\employee_handbook.md instead of full corpus path.",
       "affected_scenarios": ["pronoun_resolution"],
       "recommended_fix": "Inject session document paths into agent system context at turn start, OR fallback to session documents before failing with not-found."
     },

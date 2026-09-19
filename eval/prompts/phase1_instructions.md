@@ -8,7 +8,7 @@ Write everything to disk. Do NOT run any eval scenarios yet.
 
 ### A1. Verify existing documents match required facts
 
-Check `C:\Users\14255\Work\gaia4\eval\corpus\documents\` — currently has:
+Check `C:\Users\you\Work\gaia4\eval\corpus\documents\` — currently has:
 - acme_q3_report.md
 - budget_2025.md
 - employee_handbook.md
@@ -28,7 +28,7 @@ Check `C:\Users\14255\Work\gaia4\eval\corpus\documents\` — currently has:
 
 ### A2. Create new corpus documents
 
-**Create `C:\Users\14255\Work\gaia4\eval\corpus\documents\sales_data_2025.csv`**
+**Create `C:\Users\you\Work\gaia4\eval\corpus\documents\sales_data_2025.csv`**
 500 rows of sales data with columns: date,product,units,unit_price,revenue,region,salesperson
 Rules:
 - Best-selling product in March 2025: **Widget Pro X, 142 units, $28,400 revenue** (unit_price=$200)
@@ -40,31 +40,31 @@ Rules:
 - Regions: North, South, East, West
 - Salespeople: Sarah Chen, John Smith, Maria Garcia, David Kim, Emily Brown
 
-**Create `C:\Users\14255\Work\gaia4\eval\corpus\documents\api_reference.py`**
+**Create `C:\Users\you\Work\gaia4\eval\corpus\documents\api_reference.py`**
 A Python file with docstrings documenting a fictional REST API.
 Must embed: **Authentication uses Bearer token via the Authorization header**
 Include: 3-4 endpoint functions with full docstrings, type hints, example usage
 
-**Create `C:\Users\14255\Work\gaia4\eval\corpus\documents\meeting_notes_q3.txt`**
+**Create `C:\Users\you\Work\gaia4\eval\corpus\documents\meeting_notes_q3.txt`**
 Plain text meeting notes. Must embed: **Next meeting: October 15, 2025 at 2:00 PM**
 Include: attendees, agenda items, decisions, action items
 
-**Create `C:\Users\14255\Work\gaia4\eval\corpus\documents\large_report.md`**
+**Create `C:\Users\you\Work\gaia4\eval\corpus\documents\large_report.md`**
 A long markdown document (~75 "pages" worth of content, ~15,000 words).
 Must embed in Section 52 equivalent: **"Three minor non-conformities in supply chain documentation"**
 (This tests deep retrieval — the fact must be buried deep in the document)
 Use realistic-looking audit/compliance report content.
 
 **Create adversarial documents:**
-- `C:\Users\14255\Work\gaia4\eval\corpus\adversarial\empty.txt` — empty file (0 bytes)
-- `C:\Users\14255\Work\gaia4\eval\corpus\adversarial\unicode_test.txt` — text with heavy Unicode: Chinese, Arabic, emoji, mathematical symbols, mixed scripts
-- `C:\Users\14255\Work\gaia4\eval\corpus\adversarial\duplicate_sections.md` — markdown with 5 identical sections repeated 3 times each (tests deduplication)
+- `C:\Users\you\Work\gaia4\eval\corpus\adversarial\empty.txt` — empty file (0 bytes)
+- `C:\Users\you\Work\gaia4\eval\corpus\adversarial\unicode_test.txt` — text with heavy Unicode: Chinese, Arabic, emoji, mathematical symbols, mixed scripts
+- `C:\Users\you\Work\gaia4\eval\corpus\adversarial\duplicate_sections.md` — markdown with 5 identical sections repeated 3 times each (tests deduplication)
 
-Create the `C:\Users\14255\Work\gaia4\eval\corpus\adversarial\` directory if it doesn't exist.
+Create the `C:\Users\you\Work\gaia4\eval\corpus\adversarial\` directory if it doesn't exist.
 
 ## PART B: Create corpus manifest.json
 
-Write `C:\Users\14255\Work\gaia4\eval\corpus\manifest.json`:
+Write `C:\Users\you\Work\gaia4\eval\corpus\manifest.json`:
 ```json
 {
   "generated_at": "2026-03-20T00:00:00Z",
@@ -158,7 +158,7 @@ Write `C:\Users\14255\Work\gaia4\eval\corpus\manifest.json`:
 
 ## PART C: Architecture Audit
 
-Write `C:\Users\14255\Work\gaia4\src\gaia\eval\audit.py`:
+Write `C:\Users\you\Work\gaia4\src\gaia\eval\audit.py`:
 
 This module performs a deterministic (no LLM) inspection of the GAIA agent architecture to identify structural limitations before running scenarios.
 
@@ -278,10 +278,10 @@ if __name__ == "__main__":
 
 After writing audit.py, run it:
 ```
-uv run python C:\Users\14255\Work\gaia4\src\gaia\eval\audit.py
+uv run python C:\Users\you\Work\gaia4\src\gaia\eval\audit.py
 ```
 
-Write the output to `C:\Users\14255\Work\gaia4\eval\results\phase1\architecture_audit.json`
+Write the output to `C:\Users\you\Work\gaia4\eval\results\phase1\architecture_audit.json`
 
 ## PART E: Verify
 
@@ -291,7 +291,7 @@ After all steps, verify:
 3. audit.py runs without errors
 4. architecture_audit.json was written
 
-Write a completion report to `C:\Users\14255\Work\gaia4\eval\results\phase1\phase1_complete.md` summarizing what was created and any issues found.
+Write a completion report to `C:\Users\you\Work\gaia4\eval\results\phase1\phase1_complete.md` summarizing what was created and any issues found.
 
 ## IMPORTANT
 - Use absolute Windows paths (C:\...) for all file operations

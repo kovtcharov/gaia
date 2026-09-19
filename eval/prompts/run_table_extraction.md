@@ -1,10 +1,10 @@
 # Eval Scenario: table_extraction
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase3\table_extraction.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase3\table_extraction.json`
 
 ## Ground Truth
-File: `C:\Users\14255\Work\gaia4\eval\corpus\documents\sales_data_2025.csv`
+File: `C:\Users\you\Work\gaia4\eval\corpus\documents\sales_data_2025.csv`
 
 Known facts:
 - Best-selling product in March 2025: Widget Pro X (142 units, $28,400 revenue)
@@ -20,7 +20,7 @@ Test whether the agent can answer questions about **tabular / CSV data** by corr
 
 2. Call `create_session("Eval: table_extraction")`
 
-3. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\sales_data_2025.csv`
+3. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\sales_data_2025.csv`
    - Check chunk_count > 0. If 0 → write status="SETUP_ERROR" and stop.
 
 4. **Turn 1 (aggregation from CSV)** — Call `send_message(session_id, "What was the best-selling product in March 2025 by revenue?")`
@@ -46,7 +46,7 @@ Test whether the agent can answer questions about **tabular / CSV data** by corr
 
 8. Call `delete_session(session_id)` to clean up.
 
-9. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase3\table_extraction.json`
+9. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase3\table_extraction.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05

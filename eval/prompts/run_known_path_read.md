@@ -1,10 +1,10 @@
 # Eval Scenario: known_path_read
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase3\known_path_read.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase3\known_path_read.json`
 
 ## Ground Truth
-File: `C:\Users\14255\Work\gaia4\eval\corpus\documents\meeting_notes_q3.txt`
+File: `C:\Users\you\Work\gaia4\eval\corpus\documents\meeting_notes_q3.txt`
 
 Known facts:
 - Next meeting: October 15, 2025 at 2:00 PM
@@ -23,7 +23,7 @@ Test whether the agent uses the RIGHT tool when the user provides an exact file 
 2. Call `create_session("Eval: known_path_read")`
    - Do NOT pre-index any documents — session starts empty
 
-3. **Turn 1 (explicit path provided)** — Call `send_message(session_id, "Please read the file at C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\meeting_notes_q3.txt and tell me when the next meeting is.")`
+3. **Turn 1 (explicit path provided)** — Call `send_message(session_id, "Please read the file at C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\meeting_notes_q3.txt and tell me when the next meeting is.")`
    - Expected flow: Agent indexes the file → queries it → answers "October 15, 2025 at 2:00 PM"
    - CRITICAL FAIL if agent says "I can't access that file" without attempting to index it
    - CRITICAL FAIL if agent uses query_documents keyword search instead of indexing the specific file
@@ -37,7 +37,7 @@ Test whether the agent uses the RIGHT tool when the user provides an exact file 
    - Score efficiency=5 if agent re-indexes unnecessarily but answers correctly
    - Score context_retention=10 if agent correctly recalls which file "that meeting" refers to
 
-5. **Turn 3 (different file by path)** — Call `send_message(session_id, "Now read C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\acme_q3_report.md and tell me the Q3 revenue.")`
+5. **Turn 3 (different file by path)** — Call `send_message(session_id, "Now read C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\acme_q3_report.md and tell me the Q3 revenue.")`
    - Expected: Agent indexes the new file → queries it → answers "$14.2 million"
    - This tests whether agent can switch to a new file when user provides a different path
    - Score tool_selection=10 if agent indexes new file and answers correctly
@@ -47,7 +47,7 @@ Test whether the agent uses the RIGHT tool when the user provides an exact file 
 
 7. Call `delete_session(session_id)` to clean up.
 
-8. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase3\known_path_read.json`
+8. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase3\known_path_read.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05

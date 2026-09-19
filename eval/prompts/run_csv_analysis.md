@@ -1,10 +1,10 @@
 # Eval Scenario: csv_analysis
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase3\csv_analysis.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase3\csv_analysis.json`
 
 ## Ground Truth
-File: `C:\Users\14255\Work\gaia4\eval\corpus\documents\sales_data_2025.csv`
+File: `C:\Users\you\Work\gaia4\eval\corpus\documents\sales_data_2025.csv`
 
 ## Context from prior eval run (important)
 In the previous table_extraction scenario, it was discovered that sales_data_2025.csv is
@@ -32,7 +32,7 @@ aggregation (which is impossible with 2 chunks from 500 rows), but rather:
 
 2. Call `create_session("Eval: csv_analysis")`
 
-3. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\sales_data_2025.csv`
+3. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\sales_data_2025.csv`
    - Note the chunk_count in your result — expected ~2 chunks. If chunk_count=0 → write status="SETUP_ERROR".
 
 4. **Turn 1 (regional analysis)** — Call `send_message(session_id, "Which region had the highest sales in Q1 2025?")`
@@ -58,7 +58,7 @@ aggregation (which is impossible with 2 chunks from 500 rows), but rather:
 
 8. Call `delete_session(session_id)` to clean up.
 
-9. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase3\csv_analysis.json`
+9. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase3\csv_analysis.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05

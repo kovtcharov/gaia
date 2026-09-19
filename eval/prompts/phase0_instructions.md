@@ -3,7 +3,7 @@
 You are the GAIA Eval Agent. Execute this eval scenario using the gaia-agent-ui MCP tools available to you.
 
 ## GROUND TRUTH
-File: C:\Users\14255\Work\gaia4\eval\corpus\documents\product_comparison.html
+File: C:\Users\you\Work\gaia4\eval\corpus\documents\product_comparison.html
 
 Known facts:
 - Product names: StreamLine ($49/month) vs ProFlow ($79/month)
@@ -23,7 +23,7 @@ Record the session_id from the response.
 
 ### 3. Index document
 Call mcp__gaia-agent-ui__index_document with:
-  path = "C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\product_comparison.html"
+  path = "C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\product_comparison.html"
 Record chunk_count from the response.
 If chunk_count = 0 or error, write SETUP_ERROR to results and stop.
 
@@ -53,7 +53,7 @@ Call mcp__gaia-agent-ui__get_messages with the session_id.
 Note any agent_steps visible in the response.
 
 ### 8. Write results
-Write C:\Users\14255\Work\gaia4\eval\results\phase0\result.json with:
+Write C:\Users\you\Work\gaia4\eval\results\phase0\result.json with:
 {
   "scenario_id": "phase0_product_comparison",
   "status": "PASS or FAIL",
@@ -76,7 +76,7 @@ Write C:\Users\14255\Work\gaia4\eval\results\phase0\result.json with:
   "timestamp": "<ISO 8601 timestamp>"
 }
 
-Write C:\Users\14255\Work\gaia4\eval\results\phase0\summary.md with a readable summary.
+Write C:\Users\you\Work\gaia4\eval\results\phase0\summary.md with a readable summary.
 
 ## PASS CRITERIA
 - PASS if overall_score >= 6.0 (loop ran end-to-end, agent mostly correct)

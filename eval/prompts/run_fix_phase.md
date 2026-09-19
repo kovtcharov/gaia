@@ -13,7 +13,7 @@ We ran all 23 eval scenarios. Results are in:
 ### Fix 1 (P0): Path Truncation Bug in query_specific_file
 **Failing scenarios**: negation_handling (4.62), cross_section_rag (6.67), vague_request_clarification T3
 
-**Root cause**: After Turn 1 succeeds with a bare filename, the agent constructs a wrong absolute path like `C:\Users\14255\employee_handbook.md`. The `query_specific_file` tool fails because it requires an exact path match.
+**Root cause**: After Turn 1 succeeds with a bare filename, the agent constructs a wrong absolute path like `C:\Users\you\employee_handbook.md`. The `query_specific_file` tool fails because it requires an exact path match.
 
 **Fix target**: `src/gaia/mcp/servers/agent_ui_mcp.py`
 
@@ -86,7 +86,7 @@ Write `eval/results/fix_phase/fix_log.json`:
 Use gaia-agent-ui MCP tools:
 1. Call `system_status` to verify Agent UI is running on :4200
 2. Call `create_session` with name "Fix Rerun: negation_handling"
-3. Call `index_document` with ABSOLUTE path to `C:/Users/14255/Work/gaia4/eval/corpus/documents/employee_handbook.md`
+3. Call `index_document` with ABSOLUTE path to `C:/Users/you/Work/gaia4/eval/corpus/documents/employee_handbook.md`
 4. Send Turn 1: "Who is NOT eligible for health benefits and retirement benefits?"
    - Ground truth: Contractors are NOT eligible. Only full-time employees qualify.
    - Score correctness (0-10): Did it say contractors are excluded? No hedging?
@@ -113,7 +113,7 @@ Use gaia-agent-ui MCP tools:
 
 ### Step 5: Re-run scenario — concise_response
 1. Create a new session "Fix Rerun: concise_response"
-2. Index `C:/Users/14255/Work/gaia4/eval/corpus/documents/acme_q3_report.md`
+2. Index `C:/Users/you/Work/gaia4/eval/corpus/documents/acme_q3_report.md`
 3. Send Turn 1: "Hi"
    - Ground truth: ≤5 words, no tools used (e.g. "Hey! What are you working on?")
    - Score (0-10): PASS only if ≤2 sentences
@@ -128,7 +128,7 @@ Use gaia-agent-ui MCP tools:
 
 ### Step 6: Re-run scenario — cross_section_rag
 1. Create new session "Fix Rerun: cross_section_rag"
-2. Index `C:/Users/14255/Work/gaia4/eval/corpus/documents/acme_q3_report.md` ONLY (no handbook)
+2. Index `C:/Users/you/Work/gaia4/eval/corpus/documents/acme_q3_report.md` ONLY (no handbook)
 3. Send Turn 1: "Give me a complete picture of Acme's Q3 performance — revenue, growth, and CEO outlook all in one answer"
    - Ground truth: $14.2M revenue, 23% YoY growth, 15-18% Q4 outlook (all from acme_q3_report.md)
    - Score (0-10): FAIL if any wrong document data used or hallucinated figures
@@ -165,5 +165,5 @@ Write `eval/results/fix_phase/summary.md`:
 - Do NOT run npm build or restart servers
 - Do NOT create new directories beyond `eval/results/fix_phase/`
 - The Agent UI is already running on :4200
-- Use absolute paths for index_document calls: `C:/Users/14255/Work/gaia4/eval/corpus/documents/`
+- Use absolute paths for index_document calls: `C:/Users/you/Work/gaia4/eval/corpus/documents/`
 - After ALL steps complete, print "FIX PHASE COMPLETE"

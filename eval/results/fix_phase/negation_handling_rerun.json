@@ -28,7 +28,7 @@
     {
       "turn": 2,
       "user_message": "What about dental and vision coverage?",
-      "agent_response_summary": "Correct answer: dental and vision = full-time only, contractors excluded. Agent still tried 'C:/Users/14255/employee_handbook.md' (wrong path), got errors, but recovered via search_file + query_documents + correct full path. Final answer was complete and accurate.",
+      "agent_response_summary": "Correct answer: dental and vision = full-time only, contractors excluded. Agent still tried 'C:/Users/you/employee_handbook.md' (wrong path), got errors, but recovered via search_file + query_documents + correct full path. Final answer was complete and accurate.",
       "agent_tools": ["query_specific_file(FAIL)", "list_indexed_documents", "query_specific_file(FAIL)", "search_file", "index_document", "query_documents", "query_documents", "query_specific_file(OK)"],
       "tool_steps": 9,
       "scores": {
@@ -43,7 +43,7 @@
       "overall_score": 6.9,
       "pass": true,
       "failure_category": null,
-      "reasoning": "Path bug still visible (server not restarted, Fix 1 code change not yet live). Agent constructed 'C:/Users/14255/employee_handbook.md' again. HOWEVER unlike original run, agent fully recovered and provided a complete, correct answer. Major improvement vs original Turn 2 which gave NO answer. The fix_1 code change will fully resolve this after server restart."
+      "reasoning": "Path bug still visible (server not restarted, Fix 1 code change not yet live). Agent constructed 'C:/Users/you/employee_handbook.md' again. HOWEVER unlike original run, agent fully recovered and provided a complete, correct answer. Major improvement vs original Turn 2 which gave NO answer. The fix_1 code change will fully resolve this after server restart."
     },
     {
       "turn": 3,

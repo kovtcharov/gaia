@@ -1,10 +1,10 @@
 # Eval Scenario: smart_discovery
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase2\smart_discovery.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase2\smart_discovery.json`
 
 ## Ground Truth
-File to discover: `C:\Users\14255\Work\gaia4\eval\corpus\documents\employee_handbook.md`
+File to discover: `C:\Users\you\Work\gaia4\eval\corpus\documents\employee_handbook.md`
 
 Known facts (in that file):
 - Turn 1: PTO for first-year employees = **15 days** (Section 4)
@@ -53,7 +53,7 @@ The agent MUST:
 
 6. Call `delete_session(session_id)` to clean up.
 
-7. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase2\smart_discovery.json`
+7. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase2\smart_discovery.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05
@@ -66,7 +66,7 @@ The agent MUST:
 
 ## Corpus directory for discovery
 The corpus documents are located at:
-`C:\Users\14255\Work\gaia4\eval\corpus\documents\`
+`C:\Users\you\Work\gaia4\eval\corpus\documents\`
 
 Files available in corpus:
 - product_comparison.html

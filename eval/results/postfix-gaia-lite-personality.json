@@ -117,7 +117,7 @@
         {
           "turn": 1,
           "user_message": "How many employees does Acme Corp have?",
-          "agent_response": "Based on **/Users/kovtcharov/Work/gaia/eval/corpus/documents/acme_q3_report.md**, Acme Corp's total number of employees is **not reported** in this Q3 2025 quarterly financial report.\n\nHowever, here are some other workforce-related metrics from the document:\n\n- **New customer onboarding**: Added **47 new customers** in Q3 2025 (up from 38 in Q2)\n- **Average time-to-value**: Improved from 14 days to 9 days for new enterprise clients\n\nThe focus appears to be on revenue performance and growth rather than organizational size details. Is there another metric you'd like me to look up?",
+          "agent_response": "Based on **/Users/you/Work/gaia/eval/corpus/documents/acme_q3_report.md**, Acme Corp's total number of employees is **not reported** in this Q3 2025 quarterly financial report.\n\nHowever, here are some other workforce-related metrics from the document:\n\n- **New customer onboarding**: Added **47 new customers** in Q3 2025 (up from 38 in Q2)\n- **Average time-to-value**: Improved from 14 days to 9 days for new enterprise clients\n\nThe focus appears to be on revenue performance and growth rather than organizational size details. Is there another metric you'd like me to look up?",
           "agent_tools": [
             "index_documents",
             "query_documents"

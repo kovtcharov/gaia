@@ -88,7 +88,7 @@
           "overall_score": 6.15,
           "pass": true,
           "failure_category": "personality_violation",
-          "reasoning": "Agent correctly concluded the CFO is not mentioned in the document (matches null expected_answer), so core correctness is maintained. However, the 4B model generated a massive nonsensical table header with hundreds of concatenated business terms — a severe personality/output quality failure. The agent also used a hallucinated absolute file path (/Users/kovtcharov/Acme_Corp/financials/acme_q3_report.md) in the tool call, which happened to succeed due to RAG fuzzy matching. Output bloat (1276 tokens for a 'not in document' answer) indicates model instability.",
+          "reasoning": "Agent correctly concluded the CFO is not mentioned in the document (matches null expected_answer), so core correctness is maintained. However, the 4B model generated a massive nonsensical table header with hundreds of concatenated business terms — a severe personality/output quality failure. The agent also used a hallucinated absolute file path (/Users/you/Acme_Corp/financials/acme_q3_report.md) in the tool call, which happened to succeed due to RAG fuzzy matching. Output bloat (1276 tokens for a 'not in document' answer) indicates model instability.",
           "performance": {
             "tokens_per_second": 27.6,
             "time_to_first_token": 8.641,

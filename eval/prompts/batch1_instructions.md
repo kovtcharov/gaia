@@ -7,7 +7,7 @@ Read this file completely before starting. Execute all 5 scenarios in order.
 - ALWAYS pass `session_id` when calling `index_document`
 - Results: `eval/results/rerun/<scenario_id>.json`
 - Log progress to: `eval/eval_run_report.md` (append only)
-- Corpus path: `C:/Users/14255/Work/gaia4/eval/corpus/documents/`
+- Corpus path: `C:/Users/you/Work/gaia4/eval/corpus/documents/`
 
 ## SCORING FORMULA
 overall_score = correctness×0.25 + tool_selection×0.20 + context_retention×0.20 + completeness×0.15 + efficiency×0.10 + personality×0.05 + error_recovery×0.05
@@ -15,7 +15,7 @@ PASS = overall_score ≥ 6.0
 
 ## FIX PROTOCOL — APPLY AFTER EACH TURN
 After each agent response, evaluate it against the ground truth. If a turn would score below 6.0 OR shows a known failure pattern:
-1. **Path resolution failure** (agent uses wrong path like C:/Users/14255/employee_handbook.md): Re-send the same question. Fix 1 (basename fallback) should handle it. If still failing after 2 retries, document and move on.
+1. **Path resolution failure** (agent uses wrong path like C:/Users/you/employee_handbook.md): Re-send the same question. Fix 1 (basename fallback) should handle it. If still failing after 2 retries, document and move on.
 2. **No answer / incomplete response** (agent stops mid-way): Re-send: "Please complete your answer."
 3. **Verbose response to short question**: Re-send: "Please give a shorter answer — 1-2 sentences max."
 4. **Wrong document used** (cross-document contamination): Re-send with explicit context: "Please only use [filename] for this answer."
@@ -29,7 +29,7 @@ Maximum 2 fix attempts per turn. If still failing after 2 attempts, score honest
 
 **Setup:**
 1. `create_session` name="Rerun: simple_factual_rag" → note session_id
-2. `index_document` filepath="C:/Users/14255/Work/gaia4/eval/corpus/documents/acme_q3_report.md" session_id=<session_id>
+2. `index_document` filepath="C:/Users/you/Work/gaia4/eval/corpus/documents/acme_q3_report.md" session_id=<session_id>
 
 **Turns:**
 - Turn 1: "What was Acme Corp's Q3 2025 revenue?"
@@ -49,9 +49,9 @@ Maximum 2 fix attempts per turn. If still failing after 2 attempts, score honest
 
 **Setup:**
 1. `create_session` name="Rerun: hallucination_resistance" → note session_id
-2. `index_document` filepath="C:/Users/14255/Work/gaia4/eval/corpus/documents/acme_q3_report.md" session_id=<session_id>
-3. `index_document` filepath="C:/Users/14255/Work/gaia4/eval/corpus/documents/employee_handbook.md" session_id=<session_id>
-4. `index_document` filepath="C:/Users/14255/Work/gaia4/eval/corpus/documents/product_comparison.html" session_id=<session_id>
+2. `index_document` filepath="C:/Users/you/Work/gaia4/eval/corpus/documents/acme_q3_report.md" session_id=<session_id>
+3. `index_document` filepath="C:/Users/you/Work/gaia4/eval/corpus/documents/employee_handbook.md" session_id=<session_id>
+4. `index_document` filepath="C:/Users/you/Work/gaia4/eval/corpus/documents/product_comparison.html" session_id=<session_id>
 
 **Turns:**
 - Turn 1: "What was Acme Corp's Q3 2025 revenue?"
@@ -69,7 +69,7 @@ Maximum 2 fix attempts per turn. If still failing after 2 attempts, score honest
 
 **Setup:**
 1. `create_session` name="Rerun: pronoun_resolution" → note session_id
-2. `index_document` filepath="C:/Users/14255/Work/gaia4/eval/corpus/documents/employee_handbook.md" session_id=<session_id>
+2. `index_document` filepath="C:/Users/you/Work/gaia4/eval/corpus/documents/employee_handbook.md" session_id=<session_id>
 
 **Turns:**
 - Turn 1: "What is the PTO policy for new employees?"
@@ -88,9 +88,9 @@ Maximum 2 fix attempts per turn. If still failing after 2 attempts, score honest
 
 **Setup:**
 1. `create_session` name="Rerun: cross_turn_file_recall" → note session_id
-2. `index_document` filepath="C:/Users/14255/Work/gaia4/eval/corpus/documents/acme_q3_report.md" session_id=<session_id>
-3. `index_document` filepath="C:/Users/14255/Work/gaia4/eval/corpus/documents/employee_handbook.md" session_id=<session_id>
-4. `index_document` filepath="C:/Users/14255/Work/gaia4/eval/corpus/documents/product_comparison.html" session_id=<session_id>
+2. `index_document` filepath="C:/Users/you/Work/gaia4/eval/corpus/documents/acme_q3_report.md" session_id=<session_id>
+3. `index_document` filepath="C:/Users/you/Work/gaia4/eval/corpus/documents/employee_handbook.md" session_id=<session_id>
+4. `index_document` filepath="C:/Users/you/Work/gaia4/eval/corpus/documents/product_comparison.html" session_id=<session_id>
 
 **Turns:**
 - Turn 1: "What documents do you have access to?"

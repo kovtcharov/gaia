@@ -1,10 +1,10 @@
 # Eval Scenario: large_document
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase3\large_document.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase3\large_document.json`
 
 ## Ground Truth
-File: `C:\Users\14255\Work\gaia4\eval\corpus\documents\large_report.md`
+File: `C:\Users\you\Work\gaia4\eval\corpus\documents\large_report.md`
 - Size: ~19,193 words, 75 sections
 - Buried fact at ~65% depth (around Section 48-52):
   "Three minor non-conformities in supply chain documentation" — this is the compliance finding
@@ -21,7 +21,7 @@ quality at depth — not just retrieval of content near the beginning of the doc
 
 2. Call `create_session("Eval: large_document")`
 
-3. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\large_report.md`
+3. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\large_report.md`
    - Note the chunk_count — this should be a large number (20+ chunks for a 19K word doc)
    - If chunk_count=0 → write status="SETUP_ERROR" and stop.
    - If chunk_count < 5 → note as a potential coverage issue but continue
@@ -50,7 +50,7 @@ quality at depth — not just retrieval of content near the beginning of the doc
 
 8. Call `delete_session(session_id)` to clean up.
 
-9. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase3\large_document.json`
+9. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase3\large_document.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05

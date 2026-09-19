@@ -253,7 +253,7 @@ The count gate is deliberate: a silently-missing platform is how a user on that 
 
 - [ ] **Step 3: Validate the workflow parses**
 
-Run: `cd /Users/kovtcharov/Work/gaia && python -c "import yaml,sys; yaml.safe_load(open('.github/workflows/build_tui.yml'))" > /tmp/y.txt 2>&1; echo "exit=$?"; cat /tmp/y.txt`
+Run: `cd /Users/you/Work/gaia && python -c "import yaml,sys; yaml.safe_load(open('.github/workflows/build_tui.yml'))" > /tmp/y.txt 2>&1; echo "exit=$?"; cat /tmp/y.txt`
 Expected: exit=0, no output.
 
 - [ ] **Step 4: Dry-run the job logic locally**
@@ -385,7 +385,7 @@ def test_manifest_is_deterministic(tmp_path):
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /Users/kovtcharov/Work/gaia && python -m pytest tests/unit/test_gen_binary_manifest.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
+Run: `cd /Users/you/Work/gaia && python -m pytest tests/unit/test_gen_binary_manifest.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
 Expected: FAIL — `ModuleNotFoundError: No module named 'util.gen_binary_manifest'`
 
 - [ ] **Step 3: Write the implementation**
@@ -512,7 +512,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `cd /Users/kovtcharov/Work/gaia && python -m pytest tests/unit/test_gen_binary_manifest.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
+Run: `cd /Users/you/Work/gaia && python -m pytest tests/unit/test_gen_binary_manifest.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
 Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Wire it into the release job**
@@ -544,7 +544,7 @@ Note the ordering constraint: the asset-count gate in Task 2 runs *before* this 
 
 - [ ] **Step 6: Run lint**
 
-Run: `cd /Users/kovtcharov/Work/gaia && python util/lint.py --black --isort > /tmp/l.txt 2>&1; echo "exit=$?"; tail -5 /tmp/l.txt`
+Run: `cd /Users/you/Work/gaia && python util/lint.py --black --isort > /tmp/l.txt 2>&1; echo "exit=$?"; tail -5 /tmp/l.txt`
 Expected: exit=0.
 
 - [ ] **Step 7: Commit**
@@ -634,7 +634,7 @@ This is the step that catches a publish that half-succeeded. Without it, the man
 
 - [ ] **Step 4: Validate the workflow parses**
 
-Run: `cd /Users/kovtcharov/Work/gaia && python -c "import yaml; yaml.safe_load(open('.github/workflows/build_tui.yml'))" > /tmp/y.txt 2>&1; echo "exit=$?"; cat /tmp/y.txt`
+Run: `cd /Users/you/Work/gaia && python -c "import yaml; yaml.safe_load(open('.github/workflows/build_tui.yml'))" > /tmp/y.txt 2>&1; echo "exit=$?"; cat /tmp/y.txt`
 Expected: exit=0.
 
 - [ ] **Step 5: Commit**
@@ -776,7 +776,7 @@ def test_reports_the_size_before_downloading(tmp_path, fake_release):
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /Users/kovtcharov/Work/gaia && python -m pytest tests/unit/test_get_gaia_script.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
+Run: `cd /Users/you/Work/gaia && python -m pytest tests/unit/test_get_gaia_script.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
 Expected: FAIL — the script does not exist.
 
 - [ ] **Step 3: Write the installer**
@@ -914,12 +914,12 @@ esac
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `cd /Users/kovtcharov/Work/gaia && python -m pytest tests/unit/test_get_gaia_script.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -30 /tmp/t.txt`
+Run: `cd /Users/you/Work/gaia && python -m pytest tests/unit/test_get_gaia_script.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -30 /tmp/t.txt`
 Expected: PASS, 4 tests.
 
 - [ ] **Step 5: Shellcheck it**
 
-Run: `cd /Users/kovtcharov/Work/gaia && shellcheck -s sh installer/scripts/get-gaia.sh > /tmp/sc.txt 2>&1; echo "exit=$?"; cat /tmp/sc.txt`
+Run: `cd /Users/you/Work/gaia && shellcheck -s sh installer/scripts/get-gaia.sh > /tmp/sc.txt 2>&1; echo "exit=$?"; cat /tmp/sc.txt`
 Expected: exit=0. If `shellcheck` is not installed, install it or note the skip explicitly — do not silently pass.
 
 - [ ] **Step 6: Write the PowerShell twin**
@@ -1081,7 +1081,7 @@ def test_advertised_install_urls_match_what_is_published():
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cd /Users/kovtcharov/Work/gaia && python -m pytest tests/unit/test_get_gaia_script.py -k install -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
+Run: `cd /Users/you/Work/gaia && python -m pytest tests/unit/test_get_gaia_script.py -k install -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
 Expected: FAIL on the first test — `get-gaia.sh` is not in the deploy workflow.
 
 - [ ] **Step 3: Add the copy step**
@@ -1111,7 +1111,7 @@ Copying at deploy time rather than committing duplicates keeps one source of tru
 Verify the new advice parses before committing:
 
 ```bash
-cd /Users/kovtcharov/Work/gaia && gaia-dev init --help > /tmp/i.txt 2>&1; echo "exit=$?"; head -3 /tmp/i.txt
+cd /Users/you/Work/gaia && gaia-dev init --help > /tmp/i.txt 2>&1; echo "exit=$?"; head -3 /tmp/i.txt
 ```
 Expected: exit=0.
 
@@ -1119,7 +1119,7 @@ Do **not** repoint `installer/scripts/install.sh` at the Go binary in this task.
 
 - [ ] **Step 4: Run to verify both tests pass**
 
-Run: `cd /Users/kovtcharov/Work/gaia && python -m pytest tests/unit/test_get_gaia_script.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
+Run: `cd /Users/you/Work/gaia && python -m pytest tests/unit/test_get_gaia_script.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
 Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Commit**
@@ -1431,7 +1431,7 @@ def test_gaia_mcp_is_unchanged():
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cd /Users/kovtcharov/Work/gaia && python -m pytest tests/unit/test_console_scripts.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
+Run: `cd /Users/you/Work/gaia && python -m pytest tests/unit/test_console_scripts.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
 Expected: FAIL on the first two — `gaia` is present and `gaia-dev` is absent.
 
 - [ ] **Step 3: Edit setup.py**
@@ -1452,13 +1452,13 @@ Replace `setup.py:333-338`:
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cd /Users/kovtcharov/Work/gaia && python -m pytest tests/unit/test_console_scripts.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
+Run: `cd /Users/you/Work/gaia && python -m pytest tests/unit/test_console_scripts.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
 Expected: PASS, 4 tests.
 
 - [ ] **Step 5: Verify a real install produces the right commands**
 
 ```bash
-cd /Users/kovtcharov/Work/gaia
+cd /Users/you/Work/gaia
 python -m pip install -e . --no-deps -q > /tmp/pi.txt 2>&1; echo "exit=$?"; tail -5 /tmp/pi.txt
 command -v gaia-dev > /tmp/w.txt 2>&1; echo "gaia-dev-exit=$?"; cat /tmp/w.txt
 ```
@@ -1569,7 +1569,7 @@ Expected: PASS.
 `gaia doctor` does not exist until Phase 3. Until it does, the remedy must name something that works today. Change the message to `Run \`gaia-dev daemon start\`` and add a `TODO`-free note in the spec's §9.6 list instead. Then re-run:
 
 ```bash
-cd /Users/kovtcharov/Work/gaia && gaia-dev daemon --help > /tmp/d.txt 2>&1; echo "exit=$?"; head -5 /tmp/d.txt
+cd /Users/you/Work/gaia && gaia-dev daemon --help > /tmp/d.txt 2>&1; echo "exit=$?"; head -5 /tmp/d.txt
 ```
 Expected: exit=0. **If it does not parse, the remedy is wrong and must be changed before commit** — this is the exact failure class CLAUDE.md names.
 
@@ -1596,7 +1596,7 @@ The highest-severity item in the rename audit, because it fails **silently**.
 - [ ] **Step 1: Read the current implementation**
 
 ```bash
-cd /Users/kovtcharov/Work/gaia && grep -n "findGaiaBin" -A 30 src/gaia/apps/webui/services/backend-installer.cjs > /tmp/f.txt 2>&1; echo "exit=$?"; cat /tmp/f.txt
+cd /Users/you/Work/gaia && grep -n "findGaiaBin" -A 30 src/gaia/apps/webui/services/backend-installer.cjs > /tmp/f.txt 2>&1; echo "exit=$?"; cat /tmp/f.txt
 ```
 
 - [ ] **Step 2: Write the failing test**
@@ -1657,7 +1657,7 @@ If `findGaiaBin` is not currently exported from `backend-installer.cjs`, add it 
 
 - [ ] **Step 3: Run to verify it fails**
 
-Run: `cd /Users/kovtcharov/Work/gaia && npx jest tests/electron --testPathPattern backend-installer > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
+Run: `cd /Users/you/Work/gaia && npx jest tests/electron --testPathPattern backend-installer > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
 
 - [ ] **Step 4: Fix the resolver**
 
@@ -1665,14 +1665,14 @@ Change `findGaiaBin()` to look only at the absolute venv path and the `gaia-dev`
 
 - [ ] **Step 5: Run to verify it passes**
 
-Run: `cd /Users/kovtcharov/Work/gaia && npx jest tests/electron --testPathPattern backend-installer > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
+Run: `cd /Users/you/Work/gaia && npx jest tests/electron --testPathPattern backend-installer > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
 
 - [ ] **Step 6: Update the `gaia init` call site**
 
 `backend-installer.cjs` invokes `["init", "--profile", "minimal", "--yes"]` on the resolved binary. With `gaia-dev` that still parses. Verify:
 
 ```bash
-cd /Users/kovtcharov/Work/gaia && gaia-dev init --help > /tmp/i.txt 2>&1; echo "exit=$?"; head -5 /tmp/i.txt
+cd /Users/you/Work/gaia && gaia-dev init --help > /tmp/i.txt 2>&1; echo "exit=$?"; head -5 /tmp/i.txt
 ```
 Expected: exit=0.
 
@@ -1698,7 +1698,7 @@ git commit -m "fix(ui): resolve gaia-dev in the backend installer, never a PATH 
 - [ ] **Step 1: Read it and find the inversion**
 
 ```bash
-cd /Users/kovtcharov/Work/gaia && cat tests/unit/test_remedy_commands_are_runnable.py > /tmp/g.txt 2>&1; echo "exit=$?"; cat /tmp/g.txt
+cd /Users/you/Work/gaia && cat tests/unit/test_remedy_commands_are_runnable.py > /tmp/g.txt 2>&1; echo "exit=$?"; cat /tmp/g.txt
 ```
 
 Identify why a stale remedy does not fail it — typically an over-broad skip, a `pytest.xfail`, or an allowlist that swallowed the failing cases.
@@ -1720,7 +1720,7 @@ Adjust the imported symbol to whatever the file actually exposes; if it exposes 
 
 - [ ] **Step 3: Run to verify the negative case fails today**
 
-Run: `cd /Users/kovtcharov/Work/gaia && python -m pytest tests/unit/test_remedy_commands_are_runnable.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -30 /tmp/t.txt`
+Run: `cd /Users/you/Work/gaia && python -m pytest tests/unit/test_remedy_commands_are_runnable.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -30 /tmp/t.txt`
 
 - [ ] **Step 4: Fix the checker so it rejects unknown commands**
 
@@ -1728,19 +1728,19 @@ Remove the inversion. The checker must parse each remedy string against the real
 
 - [ ] **Step 5: Run and fix every remedy it now catches**
 
-Run: `cd /Users/kovtcharov/Work/gaia && python -m pytest tests/unit/test_remedy_commands_are_runnable.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -40 /tmp/t.txt`
+Run: `cd /Users/you/Work/gaia && python -m pytest tests/unit/test_remedy_commands_are_runnable.py -v > /tmp/t.txt 2>&1; echo "exit=$?"; tail -40 /tmp/t.txt`
 
 Expect a batch of failures naming stale remedies. Fix each by changing the string to a command that parses. **Do not add to an allowlist.** Known-wrong remedies to expect, from the freeze study: `src/gaia/hub/installer.py:401-441` and `src/gaia/installer/init_command.py:435-470`.
 
 - [ ] **Step 6: Run the full unit suite**
 
-Run: `cd /Users/kovtcharov/Work/gaia && python -m pytest tests/unit/ -q > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
+Run: `cd /Users/you/Work/gaia && python -m pytest tests/unit/ -q > /tmp/t.txt 2>&1; echo "exit=$?"; tail -20 /tmp/t.txt`
 Expected: exit=0.
 
 - [ ] **Step 7: Lint and commit**
 
 ```bash
-cd /Users/kovtcharov/Work/gaia
+cd /Users/you/Work/gaia
 python util/lint.py --all > /tmp/l.txt 2>&1; echo "exit=$?"; tail -5 /tmp/l.txt
 git add tests/unit/test_remedy_commands_are_runnable.py src/gaia/
 git commit -m "fix(tests): make the remedy guardrail fail on stale commands instead of certifying them"
@@ -1755,9 +1755,9 @@ git commit -m "fix(tests): make the remedy guardrail fail on stale commands inst
 - [ ] **Step 1: Build and install from the real script against a local manifest**
 
 ```bash
-cd /Users/kovtcharov/Work/gaia/tui
+cd /Users/you/Work/gaia/tui
 go build -ldflags="-s -w" -o /tmp/store/gaia-$(go env GOOS)-$(go env GOARCH) ./cmd/gaia > /tmp/b.txt 2>&1; echo "exit=$?"
-cd /Users/kovtcharov/Work/gaia
+cd /Users/you/Work/gaia
 python util/gen_binary_manifest.py /tmp/store --version 0.0.0-local \
   --hub-base "file:///tmp/store" --gh-base "file:///tmp/store" \
   --out /tmp/store/manifest.json > /tmp/m.txt 2>&1; echo "exit=$?"; cat /tmp/m.txt
@@ -1803,7 +1803,7 @@ Expected: both fail with a sentence naming the replacement — never "unknown co
 - [ ] **Step 5: Full test suite + lint**
 
 ```bash
-cd /Users/kovtcharov/Work/gaia
+cd /Users/you/Work/gaia
 python -m pytest tests/unit/ -q > /tmp/py.txt 2>&1; echo "pytest-exit=$?"; tail -10 /tmp/py.txt
 python util/lint.py --all      > /tmp/l.txt  2>&1; echo "lint-exit=$?";   tail -5  /tmp/l.txt
 cd tui && go test ./... -count=1 > /tmp/go.txt 2>&1; echo "go-exit=$?"; tail -10 /tmp/go.txt

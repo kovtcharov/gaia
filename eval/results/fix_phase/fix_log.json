@@ -2,9 +2,9 @@
   {
     "fix_id": 1,
     "file": "src/gaia/agents/chat/tools/rag_tools.py",
-    "change_summary": "Added fuzzy basename fallback in query_specific_file. After the initial path match fails, the tool now extracts the basename from the provided path (e.g., 'employee_handbook.md' from 'C:\\Users\\14255\\employee_handbook.md') and searches indexed files whose Path.name matches. Exactly 1 match proceeds normally; 0 matches returns an error; 2+ matches returns an ambiguity error.",
+    "change_summary": "Added fuzzy basename fallback in query_specific_file. After the initial path match fails, the tool now extracts the basename from the provided path (e.g., 'employee_handbook.md' from 'C:\\Users\\you\\employee_handbook.md') and searches indexed files whose Path.name matches. Exactly 1 match proceeds normally; 0 matches returns an error; 2+ matches returns an ambiguity error.",
     "targets_scenario": ["negation_handling", "cross_section_rag"],
-    "rationale": "Agent was constructing guessed absolute paths (e.g., C:\\Users\\14255\\employee_handbook.md) for subsequent turns after Turn 1 succeeded with just the bare filename. The tool failed with 'not found' because the guessed path never matched any indexed document entry. The basename fallback recovers this case without requiring a full path match.",
+    "rationale": "Agent was constructing guessed absolute paths (e.g., C:\\Users\\you\\employee_handbook.md) for subsequent turns after Turn 1 succeeded with just the bare filename. The tool failed with 'not found' because the guessed path never matched any indexed document entry. The basename fallback recovers this case without requiring a full path match.",
     "lines_changed": "550-574 (added 20 lines after initial matching_files check)"
   },
   {

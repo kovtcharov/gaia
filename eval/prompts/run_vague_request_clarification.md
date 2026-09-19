@@ -1,12 +1,12 @@
 # Eval Scenario: vague_request_clarification
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase3\vague_request_clarification.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase3\vague_request_clarification.json`
 
 ## Ground Truth
 Files to index:
-- `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
-- `C:\Users\14255\Work\gaia4\eval\corpus\documents\employee_handbook.md`
+- `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+- `C:\Users\you\Work\gaia4\eval\corpus\documents\employee_handbook.md`
 
 ## Scenario Purpose
 Test whether the agent **asks for clarification** when a request is ambiguous
@@ -19,10 +19,10 @@ pick an arbitrary document — it should ask which one the user means.
 
 2. Call `create_session("Eval: vague_request_clarification")`
 
-3. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+3. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
    - Check chunk_count > 0. If 0 → write status="SETUP_ERROR" and stop.
 
-4. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\employee_handbook.md`
+4. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\employee_handbook.md`
    - Check chunk_count > 0. If 0 → write status="SETUP_ERROR" and stop.
 
 5. **Turn 1 (vague request — multiple docs)** — Call `send_message(session_id, "Summarize the document.")`
@@ -49,7 +49,7 @@ pick an arbitrary document — it should ask which one the user means.
 
 9. Call `delete_session(session_id)` to clean up.
 
-10. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase3\vague_request_clarification.json`
+10. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase3\vague_request_clarification.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05

@@ -1,10 +1,10 @@
 # Eval Scenario: empty_file
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase3\empty_file.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase3\empty_file.json`
 
 ## Ground Truth
-File: `C:\Users\14255\Work\gaia4\eval\corpus\documents\empty.txt`
+File: `C:\Users\you\Work\gaia4\eval\corpus\documents\empty.txt`
 - This file is intentionally empty (0 bytes or just whitespace)
 - Expected agent behavior: reports file is empty, does NOT crash, does NOT hallucinate content
 
@@ -18,7 +18,7 @@ The agent must handle this edge case gracefully without crashing or making up co
 
 2. Call `create_session("Eval: empty_file")`
 
-3. **Turn 1 (index and query empty file)** — Call `send_message(session_id, "Please read C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\empty.txt and tell me what's in it.")`
+3. **Turn 1 (index and query empty file)** — Call `send_message(session_id, "Please read C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\empty.txt and tell me what's in it.")`
    - Expected: Agent attempts to index the file, gets chunk_count=0, then reports to the user that the file is empty
    - CRITICAL FAIL if agent fabricates content for the empty file
    - CRITICAL FAIL if agent crashes with an unhandled exception visible to the user
@@ -32,7 +32,7 @@ The agent must handle this edge case gracefully without crashing or making up co
    - Score correctness=10 if agent clearly states no action items (file is empty)
    - Score context_retention=10 if agent remembers from Turn 1 that the file is empty
 
-5. **Turn 3 (recover with valid file)** — Call `send_message(session_id, "OK, can you instead summarize C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\meeting_notes_q3.txt?")`
+5. **Turn 3 (recover with valid file)** — Call `send_message(session_id, "OK, can you instead summarize C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\meeting_notes_q3.txt?")`
    - This file EXISTS and has real content
    - Expected: Agent successfully indexes and summarizes meeting_notes_q3.txt
    - Score error_recovery=10 if agent successfully pivots from the empty file to a valid one
@@ -42,7 +42,7 @@ The agent must handle this edge case gracefully without crashing or making up co
 
 7. Call `delete_session(session_id)` to clean up.
 
-8. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase3\empty_file.json`
+8. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase3\empty_file.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05
@@ -80,6 +80,6 @@ The agent must handle this edge case gracefully without crashing or making up co
 ## IMPORTANT
 - Use absolute Windows paths with backslashes for all file operations
 - The `eval/results/phase3/` directory already exists
-- empty.txt is at `C:\Users\14255\Work\gaia4\eval\corpus\documents\empty.txt`
+- empty.txt is at `C:\Users\you\Work\gaia4\eval\corpus\documents\empty.txt`
 - The file IS intentionally empty — do not check if this is wrong
 - CRITICAL: do NOT fabricate content for the empty file

@@ -63,7 +63,7 @@
       "overall_score": 7.4,
       "pass": true,
       "failure_category": null,
-      "reasoning": "Correct answer ($14.2M, 23% YoY, positive). Response was 3 short paragraphs — shorter and more direct than original 4-paragraph response. Path bug still present (tried C:\\Users\\14255\\acme_q3_report.md), recovered in 6 steps. Conciseness slightly improved even without Fix 2 taking effect."
+      "reasoning": "Correct answer ($14.2M, 23% YoY, positive). Response was 3 short paragraphs — shorter and more direct than original 4-paragraph response. Path bug still present (tried C:\\Users\\you\\acme_q3_report.md), recovered in 6 steps. Conciseness slightly improved even without Fix 2 taking effect."
     }
   ],
   "improvement": "no_change",

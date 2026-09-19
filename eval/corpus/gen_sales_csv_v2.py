@@ -132,7 +132,7 @@ for sp, total in sorted(sp_totals.items(), key=lambda x: -x[1]):
     print(f"  {sp}: ${total:,}")
 
 # ── WRITE CSV ─────────────────────────────────────────────────────────────────
-out = r"C:\Users\14255\Work\gaia4\eval\corpus\documents\sales_data_2025.csv"
+out = r"C:\Users\you\Work\gaia4\eval\corpus\documents\sales_data_2025.csv"
 with open(out, "w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=["date", "product", "units", "unit_price", "revenue", "region", "salesperson"])
     writer.writeheader()

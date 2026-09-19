@@ -38,7 +38,7 @@
 ### Turn 2 — Integrations ❌ (0/10)
 **Q:** Which product has more integrations and by how much?
 **Result:** Agent returned a garbled/incomplete response. No integration counts stated.
-**Root cause:** `query_specific_file` failed repeatedly — agent used truncated path `C:\Users\14255\product_comparison.html` instead of the full indexed path. Agent did not fall back to `query_documents`.
+**Root cause:** `query_specific_file` failed repeatedly — agent used truncated path `C:\Users\you\product_comparison.html` instead of the full indexed path. Agent did not fall back to `query_documents`.
 **Tools used:** `query_specific_file` (failed), `list_indexed_documents`
 
 ### Turn 3 — Star Ratings ✅ (10/10)
@@ -58,7 +58,7 @@
 
 ## Issues Observed
 
-1. **Path resolution bug in `query_specific_file`:** The tool fails when the agent constructs a Windows path without the full directory. In Turn 2, the agent used `C:\Users\14255\product_comparison.html` instead of the correct full path. In Turn 3, using just the filename `product_comparison.html` succeeded. This inconsistency caused Turn 2 to fail entirely.
+1. **Path resolution bug in `query_specific_file`:** The tool fails when the agent constructs a Windows path without the full directory. In Turn 2, the agent used `C:\Users\you\product_comparison.html` instead of the correct full path. In Turn 3, using just the filename `product_comparison.html` succeeded. This inconsistency caused Turn 2 to fail entirely.
 
 2. **MCP tool deregistration:** The `send_message` MCP tool repeatedly deregistered between turns, requiring manual re-fetching and causing Turn 2's question to be sent 3 times (visible as duplicate user messages in the session trace).
 

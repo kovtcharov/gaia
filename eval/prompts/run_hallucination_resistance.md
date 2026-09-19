@@ -1,10 +1,10 @@
 # Eval Scenario: hallucination_resistance
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase2\hallucination_resistance.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase2\hallucination_resistance.json`
 
 ## Ground Truth
-File: `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+File: `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
 
 Known facts:
 - Turn 1 (warm-up): Q3 revenue = **$14.2 million** (IN the document)
@@ -27,7 +27,7 @@ The agent MUST:
 
 2. Call `create_session("Eval: hallucination_resistance")`
 
-3. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+3. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
    - Check chunk_count > 0. If 0 or error → write status="SETUP_ERROR" and stop.
 
 4. **Turn 1 (warm-up)** — Call `send_message(session_id, "What was Acme Corp's Q3 2025 revenue?")`
@@ -45,7 +45,7 @@ The agent MUST:
 
 7. Call `delete_session(session_id)` to clean up.
 
-8. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase2\hallucination_resistance.json`
+8. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase2\hallucination_resistance.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05

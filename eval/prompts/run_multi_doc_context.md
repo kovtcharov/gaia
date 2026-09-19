@@ -1,15 +1,15 @@
 # Eval Scenario: multi_doc_context
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase3\multi_doc_context.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase3\multi_doc_context.json`
 
 ## Ground Truth
-File A: `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+File A: `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
 - Q3 revenue: $14.2 million
 - YoY growth: 23%
 - Q4 outlook: 15-18% growth
 
-File B: `C:\Users\14255\Work\gaia4\eval\corpus\documents\employee_handbook.md`
+File B: `C:\Users\you\Work\gaia4\eval\corpus\documents\employee_handbook.md`
 - PTO: 15 days for first-year employees
 - Remote work: up to 3 days/week with manager approval
 - Contractors: NOT eligible for benefits
@@ -27,10 +27,10 @@ Test whether the agent keeps two simultaneously indexed documents straight.
 
 2. Call `create_session("Eval: multi_doc_context")`
 
-3. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+3. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
    - Check chunk_count > 0. If 0 → write status="SETUP_ERROR" and stop.
 
-4. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\employee_handbook.md`
+4. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\employee_handbook.md`
    - Check chunk_count > 0. If 0 → write status="SETUP_ERROR" and stop.
 
 5. **Turn 1 (File A question)** — Call `send_message(session_id, "What was the Q3 2025 revenue and year-over-year growth for Acme Corp?")`
@@ -52,7 +52,7 @@ Test whether the agent keeps two simultaneously indexed documents straight.
 
 9. Call `delete_session(session_id)` to clean up.
 
-10. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase3\multi_doc_context.json`
+10. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase3\multi_doc_context.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05

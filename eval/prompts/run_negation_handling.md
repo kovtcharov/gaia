@@ -1,10 +1,10 @@
 # Eval Scenario: negation_handling
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase3\negation_handling.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase3\negation_handling.json`
 
 ## Ground Truth
-File: `C:\Users\14255\Work\gaia4\eval\corpus\documents\employee_handbook.md`
+File: `C:\Users\you\Work\gaia4\eval\corpus\documents\employee_handbook.md`
 
 Known facts:
 - Health benefits: Full-time employees only (Section 5: Benefits)
@@ -22,7 +22,7 @@ The agent must give a definitive negative answer, not hedge with "it depends" or
 
 2. Call `create_session("Eval: negation_handling")`
 
-3. Call `index_document` with path: `C:\Users\14255\Work\gaia4\eval\corpus\documents\employee_handbook.md`
+3. Call `index_document` with path: `C:\Users\you\Work\gaia4\eval\corpus\documents\employee_handbook.md`
    - Check chunk_count > 0. If 0 → write status="SETUP_ERROR" and stop.
 
 4. **Turn 1 (negation test)** — Call `send_message(session_id, "Are contractors eligible for health benefits?")`
@@ -48,7 +48,7 @@ The agent must give a definitive negative answer, not hedge with "it depends" or
 
 8. Call `delete_session(session_id)` to clean up.
 
-9. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase3\negation_handling.json`
+9. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase3\negation_handling.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05

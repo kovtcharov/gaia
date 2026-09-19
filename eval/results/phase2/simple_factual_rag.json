@@ -6,7 +6,7 @@
     {
       "turn": 1,
       "user_message": "What was Acme Corp's Q3 2025 revenue?",
-      "agent_response": "According to C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\acme_q3_report.md:\n\nAcme Corp's Q3 2025 revenue reached $14.2 million, representing a 23% increase from Q3 2024's $11.5 million.",
+      "agent_response": "According to C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\acme_q3_report.md:\n\nAcme Corp's Q3 2025 revenue reached $14.2 million, representing a 23% increase from Q3 2024's $11.5 million.",
       "agent_tools": ["query_documents"],
       "scores": {
         "correctness": 10,
@@ -25,7 +25,7 @@
     {
       "turn": 2,
       "user_message": "What was the year-over-year revenue growth?",
-      "agent_response": "According to C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\acme_q3_report.md:\n\nAcme Corp's Q3 2025 revenue was $14.2 million, representing a 23% increase from Q3 2024's $11.5 million.",
+      "agent_response": "According to C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\acme_q3_report.md:\n\nAcme Corp's Q3 2025 revenue was $14.2 million, representing a 23% increase from Q3 2024's $11.5 million.",
       "agent_tools": ["query_documents", "query_specific_file"],
       "scores": {
         "correctness": 10,

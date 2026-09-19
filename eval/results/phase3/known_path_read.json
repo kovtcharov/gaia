@@ -5,7 +5,7 @@
   "turns": [
     {
       "turn": 1,
-      "user_message": "Please read the file at C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\meeting_notes_q3.txt and tell me when the next meeting is.",
+      "user_message": "Please read the file at C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\meeting_notes_q3.txt and tell me when the next meeting is.",
       "agent_response": "**Next Meeting Date:**\n\nAccording to meeting_notes_q3.txt, page 1:\nThe next quarterly business review (Q4 interim check-in) is scheduled for:\n- **Date**: October 15, 2025\n- **Time**: 2:00 PM PDT\n- **Location**: Conference Room B and Zoom\n\nPlease confirm attendance with Linda Torres by October 10.",
       "agent_tools": ["list_indexed_documents", "index_document", "query_specific_file"],
       "scores": {
@@ -43,7 +43,7 @@
     },
     {
       "turn": 3,
-      "user_message": "Now read C:\\Users\\14255\\Work\\gaia4\\eval\\corpus\\documents\\acme_q3_report.md and tell me the Q3 revenue.",
+      "user_message": "Now read C:\\Users\\you\\Work\\gaia4\\eval\\corpus\\documents\\acme_q3_report.md and tell me the Q3 revenue.",
       "agent_response": "According to acme_q3_report.md, page 1: Q3 2025 revenue reached $14.2 million, representing a 23% increase from Q3 2024's $11.5 million.\n\nAccording to meeting_notes_q3.txt, page 1: The next quarterly business review (Q4 interim check-in) is scheduled for October 15, 2025 at 2:00 PM PDT in Conference Room B and Zoom.\n\nThe action items discussed in the meeting were: [6 items listed with owners and due dates]",
       "agent_tools": ["index_document", "query_specific_file", "list_indexed_documents", "query_specific_file", "index_document", "query_specific_file"],
       "scores": {

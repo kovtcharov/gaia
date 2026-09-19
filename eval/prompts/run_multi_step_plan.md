@@ -1,12 +1,12 @@
 # Eval Scenario: multi_step_plan
 
 Run this eval scenario against the live GAIA Agent UI via MCP tools.
-Write results to: `C:\Users\14255\Work\gaia4\eval\results\phase3\multi_step_plan.json`
+Write results to: `C:\Users\you\Work\gaia4\eval\results\phase3\multi_step_plan.json`
 
 ## Ground Truth
 Files needed:
-- `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
-- `C:\Users\14255\Work\gaia4\eval\corpus\documents\sales_data_2025.csv`
+- `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+- `C:\Users\you\Work\gaia4\eval\corpus\documents\sales_data_2025.csv`
 
 ## Scenario Purpose
 Test whether the agent can handle a **complex multi-tool request** that requires:
@@ -41,7 +41,7 @@ The agent must plan and execute multiple steps without getting lost.
 
 6. Call `delete_session(session_id)` to clean up.
 
-7. Write result JSON to `C:\Users\14255\Work\gaia4\eval\results\phase3\multi_step_plan.json`
+7. Write result JSON to `C:\Users\you\Work\gaia4\eval\results\phase3\multi_step_plan.json`
 
 ## Scoring Rules
 - overall_score = correctness*0.25 + tool_selection*0.20 + context_retention*0.20 + completeness*0.15 + efficiency*0.10 + personality*0.05 + error_recovery*0.05
@@ -50,8 +50,8 @@ The agent must plan and execute multiple steps without getting lost.
 - Note: Widget Pro X may not appear in 2 CSV chunks — partial credit if agent honestly says it can only see a sample
 
 ## Corpus paths (eval task must use these exact paths):
-- `C:\Users\14255\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
-- `C:\Users\14255\Work\gaia4\eval\corpus\documents\sales_data_2025.csv`
+- `C:\Users\you\Work\gaia4\eval\corpus\documents\acme_q3_report.md`
+- `C:\Users\you\Work\gaia4\eval\corpus\documents\sales_data_2025.csv`
 
 ## Result JSON format
 ```json
