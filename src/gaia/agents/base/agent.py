@@ -46,6 +46,7 @@ from gaia.agents.base.verification import (
     NOT_EXECUTED,
     build_verification_scope,
     check_was_executed,
+    strip_verification_scope,
     verification_check_label,
 )
 
@@ -1689,11 +1690,24 @@ Do NOT wrap conversational replies in JSON.
         Reuses ChatAgent's tool-selection query when the agent has one, so a
         follow-up ("and the one before that?") still carries the prior turn's
         subject instead of matching on four pronouns.
+
+        ``user_input`` may already carry ``MemoryMixin``'s per-turn dynamic
+        context (current time, upcoming/overdue items) prepended to it —
+        ``process_query`` augments the message before this ever runs. That
+        preamble is real content to the LLM but pure noise to a lexical BM25
+        matcher: "Current time: 2026-09-18T00:14 (Friday)" dilutes a genuine
+        match enough to drop it below the auto-load floor on turn 1 of every
+        session (measured: a workout-video request scored 0.61 clean, 0.27
+        augmented — the difference between auto-loading and merely being
+        shortlisted). ``self._original_user_input`` is the clean text
+        ``MemoryMixin.process_query`` saved before augmenting; prefer it here
+        so discovery scores what the user actually said.
         """
+        clean = getattr(self, "_original_user_input", None) or user_input
         builder = getattr(self, "_build_tool_selection_query", None)
         if callable(builder):
-            return builder(user_input)
-        return user_input
+            return builder(clean)
+        return clean
 
     def get_skill_discovery_system_prompt(self) -> str:
         """Sourcing rule + this turn's discovery note.
@@ -5181,14 +5195,25 @@ Do NOT wrap conversational replies in JSON.
         )
 
     def _with_verification_scope(self, answer: Optional[str]) -> Optional[str]:
-        """Append the scope statement to a non-empty answer (#3376).
+        """Give a non-empty answer exactly one scope statement (#3376, #3675).
+
+        Any statement the model wrote itself comes out first. The line rides in
+        the answer and the answer comes back as conversation history, so a model
+        can and does echo a previous turn's — and the user then read the same
+        verification paragraph twice, once from the model and once from here.
+        Only the one derived from this turn's tool log is authoritative.
 
         Empty stays empty — a blank answer is a signal downstream (cancelled
         turns skip persistence), and a scope line would make it non-blank.
         """
         if not answer or not answer.strip():
             return answer
-        return f"{answer.rstrip()}\n\n{self.verification_scope_statement()}"
+        body = strip_verification_scope(answer)
+        statement = self.verification_scope_statement()
+        if not body.strip():
+            # The whole "answer" was an echoed scope line; one is still one.
+            return statement
+        return f"{body.rstrip()}\n\n{statement}"
 
     def process_query(
         self,
