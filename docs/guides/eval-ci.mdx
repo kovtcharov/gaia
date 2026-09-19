@@ -68,13 +68,20 @@ jobs:
             --budget 1.00 \
             --timeout 300
 
+      - name: Make public scorecard copies
+        if: always()
+        run: |
+          for f in eval/results/*/scorecard.json; do
+            python -m gaia.eval.scorecard "$f" "${f%.json}.public.json"
+          done
+
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: eval-results
           path: |
-            eval/results/*/scorecard.json
+            eval/results/*/scorecard.public.json
             eval/results/*/summary.md
           retention-days: 14
 ```
@@ -192,13 +199,20 @@ jobs:
           gaia eval agent \
             --compare eval/results/latest/scorecard.json
 
+      - name: Make public scorecard copies
+        if: always()
+        run: |
+          for f in eval/results/*/scorecard.json; do
+            python -m gaia.eval.scorecard "$f" "${f%.json}.public.json"
+          done
+
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: eval-scorecard
           path: |
-            eval/results/*/scorecard.json
+            eval/results/*/scorecard.public.json
             eval/results/*/summary.md
           retention-days: 14
 ```
@@ -303,13 +317,20 @@ jobs:
             --category context_retention \
             --budget 1.00 \
             --timeout 300
+      - name: Make public scorecard copies
+        if: always()
+        run: |
+          for f in eval/results/*/scorecard.json; do
+            python -m gaia.eval.scorecard "$f" "${f%.json}.public.json"
+          done
+
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: core-eval-results
           path: |
-            eval/results/*/scorecard.json
+            eval/results/*/scorecard.public.json
             eval/results/*/summary.md
           retention-days: 14
 
@@ -340,13 +361,20 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           gaia eval agent --save-baseline --budget 2.00
+      - name: Make public scorecard copies
+        if: always()
+        run: |
+          for f in eval/results/*/scorecard.json; do
+            python -m gaia.eval.scorecard "$f" "${f%.json}.public.json"
+          done
+
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: full-eval-results
           path: |
-            eval/results/*/scorecard.json
+            eval/results/*/scorecard.public.json
             eval/results/*/summary.md
           retention-days: 14
 ```
@@ -366,7 +394,7 @@ When you run `--compare`, the output shows per-scenario deltas:
    Delta:  -5.1 points
 ```
 
-Regressions are highlighted and should block the PR. The trace file (`traces/simple_factual_rag.json`) contains the full conversation, dimension scores, and reasoning to help diagnose the issue.
+Regressions are highlighted and should block the PR. The trace file (`traces/simple_factual_rag.json`) contains the full conversation, dimension scores, and reasoning to help diagnose the issue. It stays on the machine that ran the eval, so re-run the same `gaia eval agent --category` command locally to produce it.
 
 ### Improvements (FAIL to PASS)
 
@@ -476,7 +504,7 @@ gaia eval agent --corpus-dir ~/my-project/eval-corpus
     - Run `--audit-only` on every push (free)
     - Use `--category` to limit CI costs on PRs
     - Save baselines after each release
-    - Upload only `scorecard.json` and `summary.md` as artifacts
+    - Upload only `summary.md` and the public scorecard copy (`python -m gaia.eval.scorecard`) as artifacts
     - Set `timeout-minutes` on the job
     - Use `--budget` to cap per-scenario costs
     - Trigger full benchmarks via `workflow_dispatch`
@@ -494,7 +522,7 @@ gaia eval agent --corpus-dir ~/my-project/eval-corpus
 </CardGroup>
 
 <Warning>
-  The agent under test can run shell commands, so its backend must never inherit `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`; only the `gaia eval agent` step needs them. On a public repository anyone can download workflow artifacts, and GitHub masks secrets only in job logs. Keep uploads to scorecards and reproduce a regression locally for its traces.
+  The agent under test can run shell commands, so its backend must never inherit `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`; only the `gaia eval agent` step needs them. On a public repository anyone can download workflow artifacts, and GitHub masks secrets only in job logs. `scorecard.json` carries every turn of the conversation, so upload the copy `python -m gaia.eval.scorecard` writes, which keeps the scores and drops the text, and reproduce a regression locally for its traces.
 </Warning>
 
 <Warning>

@@ -1192,9 +1192,11 @@ jobs:
             }
             New-Item -ItemType Directory -Force -Path "eval-out\$category" | Out-Null
             Copy-Item $scorecard "eval-out\$category\scorecard.json"
-            # Traces and logs are not collected: the artifact is public and GitHub
-            # masks secrets only in logs. Reproduce a regression locally with the
-            # same `gaia eval agent --category` command to get the traces.
+            # The full scorecard stays on the runner for the compare step. The
+            # public artifact gets a copy without conversation text; reproduce a
+            # regression locally with the same `gaia eval agent --category` run.
+            python -m gaia.eval.scorecard "eval-out\$category\scorecard.json" "eval-out\$category\scorecard.public.json"
+            if ($LASTEXITCODE -ne 0) { Write-Host "::${level}::${category}: could not write the public scorecard copy, so it will not be uploaded." }
             $summary = Join-Path $runDir "summary.md"
             if (Test-Path $summary) { Copy-Item $summary "eval-out\$category\summary.md" }
             Write-Host "${category}: $runDir"
@@ -1341,7 +1343,8 @@ jobs:
           # category regressed. Same guard as install-lemonade/action.yml.
           $global:LASTEXITCODE = 0
 
-      # The artifact is public and, unlike the job log, not secret-masked.
+      # The artifact is public and, unlike the job log, not secret-masked. The
+      # file list here must match the upload step's `path:` below.
       - name: Refuse to upload a credential
         if: always()
         env:
@@ -1350,7 +1353,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HUGGINGFACE_ACCESS_TOKEN }}
         run: |
           $ErrorActionPreference = "Stop"
-          $files = @(Get-ChildItem eval-out -Recurse -File -Include scorecard.json, summary.md -ErrorAction SilentlyContinue)
+          $files = @(Get-ChildItem eval-out -Recurse -File -Include scorecard.public.json, summary.md -ErrorAction SilentlyContinue)
           $leaked = @()
           foreach ($name in @("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "HF_TOKEN")) {
             $value = [Environment]::GetEnvironmentVariable($name)
@@ -1366,15 +1369,20 @@ jobs:
             Write-Host "::error::A credential appeared in $($leaked.Count) file(s) bound for the public artifact. They were deleted, not uploaded: $($leaked -join ', ')"
             exit 1
           }
-          Write-Host "Scanned $($files.Count) file(s): no credential found."
+          if ($files.Count -eq 0) {
+            Write-Host "::warning::No scorecard.public.json or summary.md under eval-out - nothing was scanned, and nothing will upload."
+          } else {
+            Write-Host "Scanned $($files.Count) file(s): no credential found."
+          }
 
+      # Must match the scan step's -Include list above.
       - name: Upload scorecards
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: agent-eval-gemma-consolidation
           path: |
-            eval-out/*/scorecard.json
+            eval-out/*/scorecard.public.json
             eval-out/*/summary.md
           if-no-files-found: warn
           retention-days: 14
