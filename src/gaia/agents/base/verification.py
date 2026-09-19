@@ -121,6 +121,17 @@ def _python_run_output(result: Dict[str, Any]) -> str:
     )
 
 
+def _last_pytest_summary(output: str) -> Optional[str]:
+    """The final pytest summary line in *output*, or ``None``.
+
+    The last one wins because a snippet may run the suite more than once, and
+    every reader must agree on which summary it is judging — otherwise a run
+    can be called failed and "no test ran" at the same time.
+    """
+    summaries = list(_PYTEST_SUMMARY_RE.finditer(output))
+    return summaries[-1].group(0) if summaries else None
+
+
 def summary_reports_failure(tool_name: str, result: Any) -> bool:
     """True when a Python run's own test summary says something failed.
 
@@ -133,10 +144,8 @@ def summary_reports_failure(tool_name: str, result: Any) -> bool:
     if not isinstance(result, dict):
         return False
     output = _python_run_output(result)
-    summaries = list(_PYTEST_SUMMARY_RE.finditer(output))
-    if summaries and re.search(
-        r"\b[1-9]\d* (?:failed|errors?)\b", summaries[-1].group(0)
-    ):
+    summary = _last_pytest_summary(output)
+    if summary and re.search(r"\b[1-9]\d* (?:failed|errors?)\b", summary):
         return True
     unittest = list(_UNITTEST_SUMMARY_RE.finditer(output))
     return bool(unittest) and unittest[-1].group(1).startswith("FAILED")
@@ -159,10 +168,10 @@ def verification_check_label(
         ):
             return None
         output = _python_run_output(result)
-        summary = _PYTEST_SUMMARY_RE.search(output)
+        summary = _last_pytest_summary(output)
         if summary and re.search(
             r"\b[1-9]\d* (?:passed|failed|error|errors|xfailed|xpassed)\b",
-            summary.group(0),
+            summary,
         ):
             return "pytest"
         if _UNITTEST_SUMMARY_RE.search(output):

@@ -1455,3 +1455,28 @@ def test_a_passing_summary_from_a_snippet_stays_passed(agent):
         {"status": "success", "stdout": "4 passed in 0.02s", "return_code": 0},
     )
     assert agent._turn_tool_executions[-1]["failed"] is False
+
+
+def test_two_summaries_are_judged_by_the_same_one():
+    """A run cannot be "failed" and "nothing was checked" at once.
+
+    A snippet that runs a skips-only suite first and a failing one second used
+    to have its verdict read from the last summary and its label from the
+    first — so the turn reported a failure while also saying no check ran.
+    """
+    from gaia.agents.base.verification import (
+        summary_reports_failure,
+        verification_check_label,
+    )
+
+    result = {
+        "status": "success",
+        "return_code": 0,
+        "stdout": (
+            "===== 3 skipped in 0.01s =====\n"
+            "===== 1 failed, 2 passed in 0.20s =====\n"
+        ),
+    }
+
+    assert summary_reports_failure("run_python", result) is True
+    assert verification_check_label("run_python", {}, result) == "pytest"
