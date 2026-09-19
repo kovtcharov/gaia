@@ -8,6 +8,8 @@ command itself: `python -m pytest`, right after bare `pytest` failed to import
 the project. Pacing keeps the rate exactly as capped and loses no step.
 """
 
+import time as real_time
+
 import pytest
 
 from gaia.agents.tools import shell_tools
@@ -19,6 +21,15 @@ class _Host(ShellToolsMixin):
 
 
 class _Clock:
+    """Stands in for the ``time`` module inside ``shell_tools`` only.
+
+    Patching attributes on the real module would also catch ``subprocess``'s
+    poll backoff, whose sleeps would land in ``slept`` alongside the pacing wait.
+    """
+
+    # Real: only used to time how long the command itself took.
+    monotonic = staticmethod(real_time.monotonic)
+
     def __init__(self):
         self.now = 1_000_000.0
         self.slept = []
@@ -34,8 +45,7 @@ class _Clock:
 @pytest.fixture
 def clock(monkeypatch):
     clock = _Clock()
-    monkeypatch.setattr(shell_tools.time, "time", clock.time)
-    monkeypatch.setattr(shell_tools.time, "sleep", clock.sleep)
+    monkeypatch.setattr(shell_tools, "time", clock)
     return clock
 
 
