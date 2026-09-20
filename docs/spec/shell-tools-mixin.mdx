@@ -28,6 +28,7 @@ ShellToolsMixin provides secure shell command execution with comprehensive rate 
 - `run_shell_command` is confirmation-gated, so interactively every call is shown to the user
 - Read-only list (`ALLOWED_COMMANDS`): what a blanket pre-approval (`GAIA_AUTO_APPROVE_TOOLS`, `auto_approve_gated_tools`) may run
 - Anything else is `TIER_CONFIRM`: it runs once the user approves it (`git commit`, `npm test`, `rm notes.txt`), and is refused under a blanket pre-approval unless the console's `full_access` is on
+- A `TIER_CONFIRM` command runs only on **positive evidence** of approval — the console's `full_access`, or an approval ticket issued by `Agent._execute_tool`'s confirmation gate for that exact command. Reached any other way (a script, a test, an embedding application) there is nobody to ask, so it is refused
 - `TIER_REFUSE` for what a yes/no can't describe honestly (`gh auth token`, encoded PowerShell, `git -c`), however the program is spelled, and for shapes the runner can't execute (operators, broken quoting)
 - Path validation for all file-like arguments
 - Git subcommand filtering (write subcommands are `TIER_CONFIRM`)
@@ -319,8 +320,8 @@ def test_run_shell_command_rate_limit_sustained(agent):
 def test_a_write_is_confirmable_not_refused():
     """Writes reach the confirmation prompt instead of dying in front of it.
 
-    Checked on the validator, never by running the command: a direct tool call
-    is what an approved call looks like, so it would execute.
+    Checked on the validator, not by running the command: a direct tool call
+    carries no approval, so it is refused rather than run.
     """
     for cmd in ["rm notes.txt", "chmod 644 a.txt", "git commit -m test"]:
         parts = cmd.split()

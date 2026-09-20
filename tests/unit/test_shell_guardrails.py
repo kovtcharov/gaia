@@ -650,7 +650,7 @@ def refusal(command, full_access=False, auto_approve=False):
 
 
 def run_tool(host, command, cwd):
-    """Call run_shell_command directly, the way a pre-approved call reaches it."""
+    """Call run_shell_command with no confirmation gate in front of it."""
     from gaia.agents.base.tools import get_tool_metadata
 
     host.register_shell_tools()

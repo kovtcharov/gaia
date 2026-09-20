@@ -16,6 +16,7 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from gaia.agents.base.approval import call_has_user_approval
 from gaia.agents.base.verification import NOT_EXECUTED
 
 logger = logging.getLogger(__name__)
@@ -708,6 +709,19 @@ class ShellToolsMixin:
 
         return console_mod.auto_approve_env_enabled()
 
+    def _confirm_tier_is_approved(self, command: str) -> bool:
+        """Whether someone actually approved running *command* as written.
+
+        Two things count, and only these two. The console's ``full_access`` is a
+        person's session-long choice, on screen the whole time. A ticket from
+        ``Agent._execute_tool``'s confirmation gate is a person's answer to this
+        exact command. Anything else — including a bare mixin with no console at
+        all — is nobody, and nobody approves nothing.
+        """
+        if getattr(getattr(self, "console", None), "full_access", False) is True:
+            return True
+        return call_has_user_approval(_POLICY_GATED_SHELL_TOOL, command=command)
+
     @staticmethod
     def _blanket_approval_refusal(error: Dict[str, Any]) -> Dict[str, Any]:
         """A confirmable command's block, re-explained for an unattended run."""
@@ -719,6 +733,22 @@ class ShellToolsMixin:
                 "or auto_approve_gated_tools), which does not extend to commands "
                 "outside the no-prompt list. Run it interactively to approve it, "
                 "or turn on full access in the TUI."
+            ),
+        }
+
+    @staticmethod
+    def _unapproved_refusal(error: Dict[str, Any]) -> Dict[str, Any]:
+        """A confirmable command's block, for a call nothing could approve."""
+        return {
+            **error,
+            "tier": TIER_REFUSE,
+            "hint": (
+                "This command is outside the no-prompt list, so it runs only "
+                "after the user approves it — and nothing here approved it. "
+                "Reached directly rather than through an agent's confirmation "
+                "gate (a script, a test, or an embedding application), so there "
+                "was nobody to ask. Run it through an agent with an interactive "
+                "console, or turn on full access in the TUI."
             ),
         }
 
@@ -1296,16 +1326,20 @@ class ShellToolsMixin:
                 # implementation with the pre-flight that runs before the
                 # confirmation prompt, so the two can never disagree.
                 #
-                # A CONFIRM-tier command has already been through
-                # ``Agent._execute_tool``'s gate (the same single funnel that has
-                # always gated ``write_file``), so it runs here unless the only
-                # approval was a blanket pre-approval.
+                # A CONFIRM-tier command runs only on positive evidence that
+                # someone approved it: full access, or a ticket from
+                # ``Agent._execute_tool``'s gate naming this exact command.
+                # Absence of a blanket-approval flag is not consent.
                 blanket_only = self._approval_is_blanket_only()
+                approved = self._confirm_tier_is_approved(command)
                 error, segments = self._validate_shell_command(command)
-                if error and not _reaches_the_prompt(error):
+                if error and _reaches_the_prompt(error):
+                    if blanket_only:
+                        return self._blanket_approval_refusal(error)
+                    if not approved:
+                        return self._unapproved_refusal(error)
+                elif error:
                     return error
-                if error and blanket_only:
-                    return self._blanket_approval_refusal(error)
 
                 granted = skill_granted_binaries(self)
                 cmd_parts = [part for segment in segments for part in segment]
@@ -1383,8 +1417,14 @@ class ShellToolsMixin:
                         command if len(segments) == 1 else " ".join(seg),
                         granted_binaries=granted,
                     )
-                    if error and (not _reaches_the_prompt(error) or blanket_only):
+                    if not error:
+                        continue
+                    if not _reaches_the_prompt(error):
                         return error
+                    if blanket_only:
+                        return self._blanket_approval_refusal(error)
+                    if not approved:
+                        return self._unapproved_refusal(error)
 
                 # Log command execution (debug mode)
                 if hasattr(self, "debug") and self.debug:
