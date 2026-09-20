@@ -39,6 +39,7 @@ from typing import (
     Union,
 )
 
+from gaia.agents.base.approval import _tool_call_approval
 from gaia.agents.base.console import AgentConsole, SilentConsole
 from gaia.agents.base.errors import format_execution_trace
 from gaia.agents.base.tools import _TOOL_REGISTRY
@@ -4033,6 +4034,8 @@ Do NOT wrap conversational replies in JSON.
         # Consoles that cannot reach a human deny rather than answer for them
         # (#2210): AgentConsole prompts on a TTY, SSEOutputHandler blocks on the
         # frontend modal, everything else denies with an actionable message.
+        # Handed down to the tool body: only a yes here counts as approval.
+        gate_approved = False
         if self._tool_requires_confirmation(tool_name, tool_args):
             # Blocking on a human is not tool cost. Timed separately so a turn
             # where approval took five minutes does not report the tool as
@@ -4051,6 +4054,7 @@ Do NOT wrap conversational replies in JSON.
                     "status": "denied",
                     "error": self._confirmation_denied_error(tool_name),
                 }
+            gate_approved = True
 
         # Dynamic tool loader (#1449): record use for LRU recency. The name is
         # fully resolved and confirmed in the registry here. Execution stays on
@@ -4143,7 +4147,9 @@ Do NOT wrap conversational replies in JSON.
             self._turn_saw_external_content = True
 
         try:
-            result = self._call_tool_bounded(tool, tool_args, tool_name)
+            # Scoped to this dispatch: a nested call starts from no approval.
+            with _tool_call_approval(tool_name, tool_args, granted=gate_approved):
+                result = self._call_tool_bounded(tool, tool_args, tool_name)
             logger.debug(f"Tool execution result: {result}")
             self._fold_tool_usage(tool_name, result)
             return result
