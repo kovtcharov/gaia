@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — durable service beta
+
+- Add a separate durable API/controller and CLI with transactional idempotency,
+  replay, interaction receipts, guardian fencing and restart reconciliation.
+- Add periodic content retention, logical deletion, and coherent offline
+  database/workspace backup with clone-safe restore.
+
+
 ## Unreleased supervision preview
 
 - Add independent authenticated guardian, owned executor leases and recovery.

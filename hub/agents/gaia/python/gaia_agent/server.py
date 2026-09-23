@@ -1155,6 +1155,12 @@ _HTTP_SELECTORS = ("--serve", "--host", "--port")
 _TRANSPORT_HELP = """\
 gaia-agent serves two transports from one binary, chosen by argv:
 
+  gaia-agent --controller --state DIR --guardian-socket FILE --guardian-token-file FILE --allowed-host HOST
+      Durable single-tenant API (see durable-service guide).
+
+  gaia-agent --durable-client [--url URL] capabilities|create-session|run|status|tail|cancel|interaction|answer
+      Client for durable runs and reconnect.
+
   gaia-agent --guardian --config FILE --state DIR --token-file FILE
       Own supervised executor containers on a trusted Unix host.
 
@@ -1219,6 +1225,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     quiet switch to the other one.
     """
     args = list(sys.argv[1:] if argv is None else argv)
+    if args and args[0] == "--durable-client":
+        from gaia_agent.durable.client import main as durable_client_main
+
+        return durable_client_main(args[1:])
+
+    if args and args[0] == "--controller":
+        if os.name == "nt":
+            raise SystemExit("Durable controller requires a Unix host")
+        from gaia_agent.durable.api import main as controller_main
+
+        controller_main(args[1:])
+        return 0
     if args and args[0] == "--guardian":
         if os.name == "nt":
             raise SystemExit("Guardian requires a Unix host; use Linux or macOS")

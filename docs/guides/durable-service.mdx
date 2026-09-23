@@ -1,0 +1,145 @@
+---
+title: Durable container service
+description: Single-tenant durable runs, reconnect and recovery
+---
+
+The durable beta adds a single-writer controller in front of the independently
+supervised [container workers](/deployment/container-service). Linux and macOS hosts
+use local SQLite and Docker named volumes. One deployment is one trusted tenant;
+the bearer credential grants access to every session. This is not a public
+multi-user service or a sandbox for mutually untrusted users.
+
+## Start
+
+First configure and run the [guardian](/spec/service-supervision). Use an immutable
+worker image, a dedicated workspace mapping, a local Docker endpoint and private
+state/token files. The controller runs on the same host as the guardian: published
+executor ports are host loopback addresses. Never mount the Docker socket into a
+worker. SQLite state must be on a local filesystem, not NFS or a shared network disk.
+
+```bash
+export GAIA_GAIA_SIDECAR_TOKEN_FILE=/private/caller-token
+gaia-agent --controller --state /private/controller \
+  --guardian-socket /private/guardian/guardian.sock \
+  --guardian-token-file /private/guardian-token \
+  --allowed-host 127.0.0.1 --port 8081
+```
+
+The source entry point is `python -m gaia_agent.durable.api`. The frozen Linux
+binary includes `--controller`, `--guardian` and `--durable-client`. The controller
+and guardian remain independent processes. Expose the controller through an
+operator-managed TLS endpoint for remote access; exact allowed hosts are required.
+The default bind is loopback. Run exactly one controller per state directory.
+
+## Test the API
+
+```bash
+gaia-agent --durable-client --token-file /private/caller-token capabilities
+gaia-agent --durable-client --token-file /private/caller-token create-session WORKSPACE_UUID
+gaia-agent --durable-client --token-file /private/caller-token run SESSION_UUID \
+  'Describe this workspace' --idempotency-key NEW_REQUEST_UUID
+gaia-agent --durable-client --token-file /private/caller-token tail RUN_UUID --after 0
+gaia-agent --durable-client --token-file /private/caller-token status RUN_UUID
+gaia-agent --durable-client --token-file /private/caller-token cancel RUN_UUID
+```
+
+Reuse the same idempotency key and identical request after a lost response. A new
+key means a new intended execution. Capacity and workspace locks are transactional;
+there is no hidden queue. Closing the CLI or SSE connection does not cancel a run.
+`tail` uses bounded event pages; SSE uses the same persisted sequence cursor.
+
+The authenticated prefix is `/v1/gaia/service`, API version 1:
+
+| Method | Route | Result |
+| --- | --- | --- |
+| GET | `/capabilities` | Version, limits, configured workspace handles |
+| POST | `/sessions` | Create with `workspace_id` and optional `title` |
+| GET | `/sessions/{id}` | Bounded messages, `after` and `limit` |
+| POST | `/sessions/{id}/runs` | `prompt`, optional `max_steps`; required `Idempotency-Key` |
+| GET | `/runs/{id}` | Durable state and separate execution status |
+| GET | `/runs/{id}/events` | Bounded pages after sequence cursor |
+| GET | `/runs/{id}/stream` | Replay SSE; `Last-Event-ID` or `after` |
+| POST | `/runs/{id}/cancel` | Stop owned executor before terminal commit |
+| GET | `/runs/{id}/interaction` | Complete pending interaction; `no-store` |
+| POST | `/runs/{id}/interactions/{interaction}/answer` | Generation-scoped receipt |
+| DELETE | `/sessions/{id}` | Logical history cleanup with status URL |
+| GET | `/cleanup/{id}` | Durable cleanup outcome |
+| GET | `/diagnostics` | Authenticated, content-free status |
+
+New submissions return 202, exact retries 200, conflicting keys 409, deleted or
+pruned history 410, overload/storage unavailable 503. Future cursors return 409;
+sequence numbers never reset. `max_steps` is a strict integer from 1 to 20. Prompts
+are limited to 64 KiB; events to 256 KiB, retained events to 16 MiB per run and
+pages to 100 records/1 MiB. Terminal events reserve space. Reconstructed context
+is limited to 512 KiB and fails explicitly if it cannot fit.
+
+## Questions and approvals
+
+Fetch `interaction` to inspect the complete request. Approvals accept only
+`approve` once or `deny`, bound to its UUID and run generation. The CLI prints the
+complete arguments and requires typing `approve` before sending. It never offers
+an always-approve scope. Questions require a stable `--submission-id` and read the
+answer without terminal echo, never through a command-line argument.
+
+```bash
+gaia-agent --durable-client --token-file /private/caller-token interaction RUN_UUID
+gaia-agent --durable-client --token-file /private/caller-token answer \
+  RUN_UUID INTERACTION_UUID GENERATION_UUID approve
+gaia-agent --durable-client --token-file /private/caller-token answer \
+  RUN_UUID INTERACTION_UUID GENERATION_UUID answered --submission-id ANSWER_UUID
+```
+
+Receipt and worker delivery are different states. An accepted receipt with unknown
+delivery is never automatically replayed to the worker. A lost delivery acknowledgement
+stops execution and exposes uncertainty. Sensitive answers and raw pending arguments
+remain in process memory, outside SQLite/events/logs. Known credential and sensitive
+answer literals are redacted from terminal worker output. After sensitive input,
+intermediate event content is omitted to prevent reconstruction across chunks. This is not a general
+classifier for every possible secret or transformed/encoded value; prompts and ordinary
+tool output may contain private data and are stored as content.
+
+## Restart, retention and deletion
+
+Restart fences the previous controller epoch, reconciles and stops owned workers,
+then marks unfinished runs interrupted. It never redispatches recorded work. A
+result can have uncertain external effects even when its process is confirmed
+stopped. Run/session/workspace reservations release only after confirmed termination.
+If storage becomes unavailable, admission closes and the guardian is instructed to
+stop execution independently of saving the cancellation.
+
+Completed content expires after seven days, checked in bounded batches every minute.
+Deletion keeps content-free idempotency tombstones for thirty days after deletion.
+Expired tombstones are periodically removed. Expired conversation history requires
+`acknowledge_history_loss=true` on the next run. Operator-owned workspace files are
+retained: deleting a session is not workspace erasure or removal from backups/SSD
+blocks. The beta does not create a separate service-owned artifact store.
+
+## Full backup and clone restore
+
+Send SIGTERM to the controller, wait for its finite drain, then stop the guardian.
+Resolve any unconfirmed executor termination first. Hold exclusive operator control
+of the workspace volumes throughout backup. The command locks both state owners,
+requires no deployment containers or running volume users, uses SQLite's backup
+API, and copies both data/workspace volumes with SHA-256 manifests.
+
+```bash
+python deploy/service/durable_backup.py backup --directory /private/backup-1 \
+  --state /private/controller --guardian-state /private/guardian --config guardian.json
+python deploy/service/durable_backup.py verify --directory /private/backup-1
+python deploy/service/durable_backup.py restore --directory /private/backup-1 \
+  --state /private/restored-controller --config clone-guardian.json
+```
+
+Prepare the clone configuration with the same image digest and workspace UUIDs,
+a **new deployment UUID**, and **new distinct named-volume names**. Use new caller
+and guardian tokens and a fresh guardian state directory. No credential file or
+guardian journal is included in the backup. Clone restore rotates run generations
+and never starts old executors. A partial restore retains an `RESTORE_INCOMPLETE`
+marker and cannot start; discard its newly allocated state/volumes before retrying.
+Checksums detect corruption, not malicious archive replacement; protect backups as
+credentials. The database-only `Store.backup` helper is not a full workspace backup.
+
+There is no automatic in-place schema downgrade. This beta has schema version 1;
+older binaries refuse unknown newer schemas. Restore the compatible image and full
+backup before attempting a separate upgrade. Release promotion, long-run saturation
+qualification and additional tool/hardware profiles are separate release gates.

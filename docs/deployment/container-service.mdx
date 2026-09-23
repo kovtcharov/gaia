@@ -222,11 +222,15 @@ handles are process-local; run one Uvicorn worker. A disconnected query stream
 cancels the run. A supervising client must retain the stream if its own callers
 disconnect. Restart preserves files but does not resume an in-flight tool call.
 
-Confirmation-gated tools still receive the existing terminal refusal on HTTP.
-Do not enable permission bypass to work around it. Workspace paths restrict the
+Confirmation-gated tools require an interaction-capable caller using approve-once
+or deny. Do not enable permission bypass to work around missing client support. Workspace paths restrict the
 file tools; shell execution still requires container isolation and host-enforced
 network/resource controls. The service does not supply an inference spending
 limit, public authentication system, durable event database or tenant scheduler.
+
+For idempotent durable runs, reconnect, questions/approvals and coherent backup,
+add the separate [durable controller](/guides/durable-service) and guardian.
+The worker lifecycle above describes the legacy query endpoint.
 
 Validate the image without downloading models:
 

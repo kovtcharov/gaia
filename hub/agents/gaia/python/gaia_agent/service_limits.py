@@ -37,6 +37,14 @@ class RequestBodyLimitMiddleware:
         control = path in {"/health", "/ready"} or re.fullmatch(
             r"/v1/gaia/query/[0-9a-f-]{36}/(?:cancel|respond|confirm)", path
         )
+        control = (
+            control
+            or path in {"/v1/gaia/service/diagnostics", "/v1/gaia/service/capabilities"}
+            or re.fullmatch(
+                r"/v1/gaia/service/runs/[0-9a-f-]{36}(?:/(?:cancel|interaction|interactions/[0-9a-f-]{36}/answer))?",
+                path,
+            )
+        )
         lane = "control" if control else "bulk"
         if not self.readers[lane].acquire(blocking=False):
             await JSONResponse(

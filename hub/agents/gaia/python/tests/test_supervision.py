@@ -178,7 +178,7 @@ def test_authenticated_protocol(guardian):
         with pytest.raises(GuardianError, match="unauthorized"):
             Client(path, "wrong", control_path=path).call("health")
         client = Client(path, "a" * 32, control_path=path)
-        assert client.call("health") == {"healthy": True, "protocol": 1}
+        assert client.call("health") == {"healthy": True, "protocol": 2}
         with pytest.raises(GuardianError, match="invalid_command"):
             client.call("shell", command="unexpected")
         run, generation = str(uuid4()), str(uuid4())
@@ -369,3 +369,26 @@ def test_clock_discontinuity_stops_before_new_admission(guardian, monkeypatch, j
         assert time.monotonic() < expires
         time.sleep(0.02)
     assert guardian.runtime.containers == {}
+
+
+def test_controller_fencing_rejects_delayed_old_dispatch(guardian):
+    old_epoch, new_epoch = str(uuid4()), str(uuid4())
+    guardian.fence(old_epoch)
+    guardian.fence(new_epoch)
+    with pytest.raises(GuardianError, match="stale_controller"):
+        guardian.start(
+            str(uuid4()),
+            str(uuid4()),
+            next(iter(guardian.policy["workspaces"])),
+            old_epoch,
+        )
+    assert not guardian.runtime.containers
+    assert json.loads(guardian.journal.read_text())["controller_epoch"] == new_epoch
+
+
+def test_pre_dispatch_cancellation_fences_delayed_start(guardian):
+    run, generation = str(uuid4()), str(uuid4())
+    assert guardian.cancel(run, generation)["state"] == "stopped"
+    with pytest.raises(GuardianError, match="already_dispatched"):
+        guardian.start(run, generation, next(iter(guardian.policy["workspaces"])))
+    assert not guardian.runtime.containers
