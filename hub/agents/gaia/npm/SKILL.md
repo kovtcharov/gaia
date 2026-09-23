@@ -634,3 +634,17 @@ never both. Files must contain a nonempty UTF-8 token of at most 8 KiB. The valu
 is resolved at startup and inherited by inference processes; rotate by draining
 and restarting the worker. Mounted secrets do not isolate credentials from tools
 running in the same worker trust boundary.
+
+### Supervised service preview
+
+The frozen Unix executable accepts `--guardian --config FILE --state DIR
+--token-file FILE`. The independent guardian owns an explicitly configured Docker
+endpoint, leases one pinned container per execution and verifies termination.
+Its controller runs on the same trusted Docker host; this is not a durable-session
+API or unrelated-user tenancy. See `docs/spec/service-supervision.mdx` for the
+configuration, two authenticated local sockets and qualification limits.
+
+Service mode limits emitted output to 256 KiB/event and 4 MiB/run; overflow emits
+a terminal 413 error and cancels the run. Bulk uploads share a 16 MiB buffer budget
+and 32-reader limit, with separately reserved control capacity. Persistent volume
+disk quotas and host suspend/resume qualification are not claimed by this preview.

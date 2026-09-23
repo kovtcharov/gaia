@@ -744,24 +744,41 @@ async def query(request: QueryRequest, raw_request: Request):
         finally:
             if deadline_timer is not None:
                 deadline_timer.cancel()
-            handler.signal_done()
-            # Release only after the agent is done touching the instance, so the
-            # next turn on this session cannot start mid-run.
-            if session is not None:
-                session.run_lock.release()
-            # This thread is the last thing to touch a one-shot agent — the
-            # stream reads only run.result and the handler — so its RAG index,
-            # scratchpad DB and HTTP session go now rather than accumulating one
-            # leaked agent per request for the life of the process. Covers the
-            # client-disconnect path too: the stream sets the cancel flag, which
-            # ends the loop, which lands here.
+            from gaia_agent.supervision.output import OutputLimitError
+
             try:
-                if one_shot_agent is not None:
-                    close_agent(one_shot_agent)
+                handler.signal_done()
+            except OutputLimitError:
+                logger.warning("Service output limit exceeded during final flush")
             finally:
-                # A closed/cancelled stream is not proof that blocking tool or
-                # provider work stopped. Only the worker releases admission.
-                _release_slot()
+                # Release only after the agent is done touching the instance, so the
+                # next turn on this session cannot start mid-run.
+                if session is not None:
+                    session.run_lock.release()
+                # This thread is the last thing to touch a one-shot agent — the
+                # stream reads only run.result and the handler — so its RAG index,
+                # scratchpad DB and HTTP session go now rather than accumulating one
+                # leaked agent per request for the life of the process. Covers the
+                # client-disconnect path too: the stream sets the cancel flag, which
+                # ends the loop, which lands here.
+                try:
+                    if one_shot_agent is not None:
+                        close_agent(one_shot_agent)
+                finally:
+                    # A closed/cancelled stream is not proof that blocking tool or
+                    # provider work stopped. Only the worker releases admission.
+                    _release_slot()
+
+    bounded_output = None
+    if slots is not None:
+        from gaia_agent.supervision.output import BoundedOutput
+
+        def _cancel_output():
+            handler.cancelled.set()
+            run.cancel_event.set()
+
+        bounded_output = BoundedOutput(_cancel_output)
+        handler.event_queue = bounded_output
 
     thread = threading.Thread(target=_run_agent, daemon=True)
     try:
@@ -786,13 +803,49 @@ async def query(request: QueryRequest, raw_request: Request):
         ) from exc
 
     async def _stream():
+        wire_bytes = 0
+        wire_exceeded = False
+
+        def _bounded_sse(event):
+            nonlocal wire_bytes, wire_exceeded
+            if wire_exceeded:
+                return ""
+            encoded = _sse(event)
+            if bounded_output is not None:
+                size = len(encoded.encode("utf-8"))
+                if size > 256 * 1024 or wire_bytes + size > 4 * 1024 * 1024:
+                    wire_exceeded = True
+                    _cancel_output()
+                    return _sse(
+                        {
+                            "type": "error",
+                            "detail": "Service output limit exceeded.",
+                            "status": 413,
+                        }
+                    )
+                wire_bytes += size
+            return encoded
+
         translator = CanonicalTranslator(request.run_id, agent_id=AGENT_ID)
         terminated = False
         last_write = time.monotonic()
         try:
             while True:
+                if wire_exceeded:
+                    terminated = True
+                    return
+                if bounded_output is not None and bounded_output.exceeded.is_set():
+                    yield _bounded_sse(
+                        {
+                            "type": "error",
+                            "detail": "Service output limit exceeded.",
+                            "status": 413,
+                        }
+                    )
+                    terminated = True
+                    return
                 if deadline_expired.is_set():
-                    yield _sse(
+                    yield _bounded_sse(
                         {
                             "type": "error",
                             "detail": "Service run deadline exceeded.",
@@ -802,7 +855,7 @@ async def query(request: QueryRequest, raw_request: Request):
                     terminated = True
                     return
                 if run.cancel_event.is_set():
-                    yield _sse(
+                    yield _bounded_sse(
                         {"type": "error", "detail": "Run cancelled.", "status": 499}
                     )
                     terminated = True
@@ -828,7 +881,7 @@ async def query(request: QueryRequest, raw_request: Request):
                     if ctype == "needs_confirmation" and request.can_confirm_tools:
                         canonical["arguments"] = event.get("args", {})
                         canonical.pop("always_scope", None)
-                    yield _sse(canonical)
+                    yield _bounded_sse(canonical)
                     last_write = time.monotonic()
                     if ctype == "needs_input":
                         # Answerable, so the run stays alive: keep draining while
@@ -837,7 +890,9 @@ async def query(request: QueryRequest, raw_request: Request):
                     if ctype == "needs_confirmation":
                         if request.can_confirm_tools:
                             continue
-                        yield _sse(_confirmation_refusal(canonical.get("action", "")))
+                        yield _bounded_sse(
+                            _confirmation_refusal(canonical.get("action", ""))
+                        )
                         handler.cancelled.set()
                         run.cancel_event.set()
                         terminated = True
@@ -849,11 +904,11 @@ async def query(request: QueryRequest, raw_request: Request):
             # Queue closed. Flush any buffered tool_call, then guarantee the one
             # terminal event the contract mandates.
             for canonical in translator.flush():
-                yield _sse(canonical)
+                yield _bounded_sse(canonical)
                 if canonical.get("type") in TERMINAL_TYPES:
                     terminated = True
             if not terminated:
-                yield _sse(_terminal_from_run_result(run.result))
+                yield _bounded_sse(_terminal_from_run_result(run.result))
         finally:
             # A client that disconnected mid-run should not leave the loop running.
             handler.cancelled.set()
@@ -1100,6 +1155,9 @@ _HTTP_SELECTORS = ("--serve", "--host", "--port")
 _TRANSPORT_HELP = """\
 gaia-agent serves two transports from one binary, chosen by argv:
 
+  gaia-agent --guardian --config FILE --state DIR --token-file FILE
+      Own supervised executor containers on a trusted Unix host.
+
   gaia-agent --service
       The authenticated, environment-configured HTTP service with owned
       embedded Lemonade lifecycle. See docs/deployment/container-service.mdx.
@@ -1161,6 +1219,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     quiet switch to the other one.
     """
     args = list(sys.argv[1:] if argv is None else argv)
+    if args and args[0] == "--guardian":
+        if os.name == "nt":
+            raise SystemExit("Guardian requires a Unix host; use Linux or macOS")
+        from gaia_agent.supervision.protocol import main as guardian_main
+
+        guardian_main(args[1:])
+        return 0
     if args and args[0] == "--client":
         from gaia_agent.service_client import main as client_main
 

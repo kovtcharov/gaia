@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased supervision preview
+
+- Add independent authenticated guardian, owned executor leases and recovery.
+- Bound service output and aggregate uploads while reserving cancellation capacity.
+
 ## Unreleased service distribution
 
 - Support mounted inference credentials with bounded validation and explicit conflict errors.

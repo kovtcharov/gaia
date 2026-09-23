@@ -535,3 +535,59 @@ def test_cancel_pending_approval_never_executes(built, monkeypatch):
         assert result.status_code in {404, 409}
         assert "499" in pending.result(timeout=5).text
     assert not executed
+
+
+def test_service_output_overflow_cancels_and_releases_capacity(built, monkeypatch):
+    client, agents = built
+    slots = threading.BoundedSemaphore(1)
+    client.app.state.query_slots = slots
+
+    class OversizedAgent(_ScriptedAgent):
+        def process_query(self, query, max_steps=None):
+            self.console.event_queue.put(
+                {"type": "chunk", "content": "x" * (300 * 1024)}
+            )
+
+    def build(**kwargs):
+        agent = OversizedAgent(**kwargs)
+        agents.append(agent)
+        return agent
+
+    monkeypatch.setattr(server_mod, "build_query_agent", build)
+    response = client.post("/v1/gaia/query", json=_body())
+    terminals = _terminals(response)
+    assert len(terminals) == 1 and terminals[0]["status"] == 413
+    assert _wait_until(lambda: agents[0].closed == 1)
+    assert agents[0].console.cancelled.is_set()
+    assert slots.acquire(blocking=False)
+    slots.release()
+
+
+def test_service_oversized_final_result_is_bounded(built, monkeypatch):
+    client, _agents = built
+    client.app.state.query_slots = threading.BoundedSemaphore(1)
+    monkeypatch.setattr(
+        _ScriptedAgent,
+        "process_query",
+        lambda *_args, **_kwargs: {"answer": "x" * (300 * 1024)},
+    )
+    response = client.post("/v1/gaia/query", json=_body())
+    assert len(response.content) < 1024
+    assert _terminals(response)[0]["status"] == 413
+
+
+def test_final_buffer_overflow_still_releases_worker_resources(built, monkeypatch):
+    client, agents = built
+    slots = threading.BoundedSemaphore(1)
+    client.app.state.query_slots = slots
+
+    def query(agent, *_args, **_kwargs):
+        agent.console._stream_buffer = "x" * (300 * 1024)
+        return {"answer": "done"}
+
+    monkeypatch.setattr(_ScriptedAgent, "process_query", query)
+    response = client.post("/v1/gaia/query", json=_body())
+    assert _terminals(response)[0]["status"] == 413
+    assert _wait_until(lambda: agents[0].closed == 1)
+    assert slots.acquire(blocking=False)
+    slots.release()
