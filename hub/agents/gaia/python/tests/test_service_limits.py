@@ -96,3 +96,94 @@ async def test_invalid_length_rejected_before_read(value):
         {"type": "http", "headers": [(b"content-length", value)]}, unexpected, send
     )
     assert sent[0]["status"] == 400
+
+
+@pytest.mark.asyncio
+async def test_bulk_upload_saturation_reserves_control_capacity():
+    hold = asyncio.Event()
+    entered = asyncio.Event()
+    calls = 0
+
+    async def app(_scope, _receive, send):
+        await send({"type": "http.response.start", "status": 200})
+
+    async def blocked_receive():
+        nonlocal calls
+        calls += 1
+        if calls == 32:
+            entered.set()
+        await hold.wait()
+        return {"type": "http.request", "body": b"{}"}
+
+    async def discard(_message):
+        return
+
+    middleware = RequestBodyLimitMiddleware(app, 100)
+    scope = {"type": "http", "headers": [], "path": "/v1/gaia/query"}
+    tasks = [
+        asyncio.create_task(middleware(scope, blocked_receive, discard))
+        for _ in range(32)
+    ]
+    await asyncio.wait_for(entered.wait(), 2)
+    received = []
+
+    async def capture(message):
+        received.append(message)
+
+    async def empty():
+        return {"type": "http.request", "body": b""}
+
+    try:
+        await middleware(scope, empty, capture)
+        assert received[-1]["body"]
+        assert received[0]["status"] == 503
+        received.clear()
+        await middleware(
+            {
+                **scope,
+                "path": "/v1/gaia/query/00000000-0000-0000-0000-000000000001/cancel",
+            },
+            empty,
+            capture,
+        )
+        assert received[0]["status"] == 200
+    finally:
+        hold.set()
+        await asyncio.gather(*tasks)
+    assert middleware.buffered == {"bulk": 0, "control": 0}
+
+
+@pytest.mark.asyncio
+async def test_aggregate_budget_held_until_application_finishes():
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def app(_scope, receive, _send):
+        await receive()
+        entered.set()
+        await release.wait()
+
+    async def receive():
+        return {"type": "http.request", "body": b"12345"}
+
+    async def discard(_message):
+        return
+
+    middleware = RequestBodyLimitMiddleware(app, 10)
+    middleware.aggregate_limit = 6
+    scope = {"type": "http", "headers": []}
+    first = asyncio.create_task(middleware(scope, receive, discard))
+    await asyncio.wait_for(entered.wait(), 1)
+    sent = []
+
+    async def capture(message):
+        sent.append(message)
+
+    try:
+        await middleware(scope, receive, capture)
+        assert sent[0]["status"] == 503
+        assert middleware.buffered["bulk"] == 5
+    finally:
+        release.set()
+        await first
+    assert middleware.buffered["bulk"] == 0

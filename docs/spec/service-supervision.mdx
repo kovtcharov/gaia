@@ -113,3 +113,87 @@ vulnerability exceptions and promotion approval. M1 may add the build and
 verification machinery; publishing or calling a digest supported still requires
 that release decision. A local image is not a promoted artifact. Capability
 claims must identify their tested image revision and profile.
+
+
+## M2 supervised preview
+
+The guardian is now available as `gaia-agent-guardian` from the Python package,
+`python -m gaia_agent.supervision.protocol`, or `gaia-agent --guardian` from a
+frozen Unix binary. Run it on the trusted Linux or macOS Docker host, outside
+executor containers, under a restart supervisor. This preview does not include
+durable conversations or reconnectable runs; those belong to the controller.
+
+Pass `--config FILE --state PRIVATE_DIRECTORY --token-file SECRET_FILE`. The state
+directory must be mode 0700. The guardian takes an exclusive process lock and
+creates two mode-0600 Unix sockets: `guardian.sock` admits work, while
+`guardian-control.sock` has independent connection capacity for health, renewal,
+status and stop. Use a random 32-character-or-longer credential. The controller
+uses `gaia_agent.supervision.protocol.Client` and never receives the Docker socket.
+
+Configuration is JSON. Replace all example identifiers and supply an actual
+image digest from the tested build. Each workspace requires distinct writable
+named volumes; never share these with the legacy worker or another deployment.
+
+```json
+{
+  "deployment": "00000000-0000-0000-0000-000000000001",
+  "endpoint": "unix:///var/run/docker.sock",
+  "image": "sha256:REPLACE_WITH_TESTED_LOCAL_IMAGE_ID",
+  "model": "fireworks.kimi-k2p6",
+  "inference_url": "http://inference:8000/api/v1",
+  "inference_secret_file": "/private/inference-key",
+  "slots": 1,
+  "lease": 10,
+  "lifetime": 300,
+  "workspaces": {
+    "00000000-0000-0000-0000-000000000002": {
+      "data": "gaia-state",
+      "workspace": "gaia-workspace"
+    }
+  }
+}
+```
+
+An optional `network` selects an operator-created Docker network; inference must
+be reachable from that network. The returned executor URL is loopback-only on
+the Docker host, so this preview's controller also runs on that host. Remote
+controllers and container-to-host forwarding are not supported profiles yet.
+
+The authenticated version-1 commands are `start(run,generation,workspace)`,
+`renew(run,generation)`, `status(run,generation)`, `stop(run,generation)` and
+`health()`. All identities are canonical UUIDs. A successful start returns a
+short-lived worker credential and endpoint; keep them in controller memory.
+Generation mismatch rejects the command. Start is never retried automatically.
+
+Before invoking Docker start, the guardian durably commits `dispatching`; this
+is the dispatch authorization point. Cancellation before that point prevents
+start. Cancellation after it may observe a briefly started executor but retains
+ownership until verified termination. Runtime acknowledgement loss initiates
+observation and ownership reconciliation, never a second dispatch. Missing or
+ambiguous identity keeps admission closed and requires operator resolution.
+
+The guardian checks both monotonic and wall time. Expiry cannot be renewed;
+backward wall-clock discontinuities close the run conservatively. Real Mac sleep
+and Linux suspend qualification remain required before claiming a tested host
+resume profile. Simultaneous host/runtime failure still precludes a wall-clock
+termination guarantee.
+
+Executors have a read-only root, 512 MiB temporary scratch, bounded runtime logs,
+4 GiB memory, 256 PIDs, two CPUs, dropped capabilities and no runtime socket.
+Persistent workspace volumes have no hard disk quota in this profile. Confirmed
+stopped containers are removed, while at most 10,000 journal entries are retained;
+the preview refuses further admission at that bound. Automated archival and
+retention are controller/operations milestones, not silent journal eviction.
+
+Worker HTTP admission also reserves eight control requests independently of 32
+bulk uploads. Buffered bulk request bodies are capped at 16 MiB collectively;
+control bodies have a separate 256 KiB aggregate reservation. Service output is
+limited to 256 KiB per serialized event and 4 MiB per run, with an explicit terminal
+error and cancellation on overflow. These policies apply only to service mode.
+
+Run `deploy/service/guardian_smoke_test.py --endpoint unix:///var/run/docker.sock`
+with the GAIA Python package installed and `gaia-service:test` built. It drives a
+real frozen worker through authenticated inference, kills a controller while a
+second workspace remains active, restarts the guardian, and verifies no executor
+containers remain. Unit fault tests cover lost acknowledgements, unknown stops,
+stale generations, dispatch cancellation, output limits and upload saturation.

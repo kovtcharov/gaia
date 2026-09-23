@@ -83,6 +83,7 @@ jobs:
           mkdir -p test-results
           python -m pytest \
             hub/agents/gaia/python/tests/test_service.py \
+            hub/agents/gaia/python/tests/test_supervision.py \
             hub/agents/gaia/python/tests/test_service_limits.py \
             hub/agents/gaia/python/tests/test_service_client.py \
             hub/agents/gaia/python/tests/test_server_query.py \
@@ -137,6 +138,17 @@ jobs:
         run: |
           set -euo pipefail
           python3 deploy/service/query_smoke_test.py 2>&1 | tee test-results/query.log
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install guardian host dependencies
+        run: |
+          python -m pip install --no-deps --index-url https://download.pytorch.org/whl/cpu torch==2.14.0+cpu
+          python -m pip install -r deploy/service/requirements.txt
+      - name: Verify independent guardian with real executor containers
+        env:
+          PYTHONPATH: hub/agents/gaia/python:src
+        run: python3 deploy/service/guardian_smoke_test.py --endpoint unix:///var/run/docker.sock
       - name: Verify stopped worker backup and restore
         run: python3 deploy/service/backup_smoke_test.py
       - name: Verify Compose configuration and volume persistence after recreation

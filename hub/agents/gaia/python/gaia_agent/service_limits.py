@@ -3,6 +3,8 @@
 """Finite inbound HTTP bodies for the opt-in container service."""
 
 import asyncio
+import re
+import threading
 
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -19,11 +21,39 @@ class RequestBodyLimitMiddleware:
         self.app = app
         self.max_bytes = max_bytes
         self.read_timeout = read_timeout
+        self.readers = {
+            "bulk": threading.BoundedSemaphore(32),
+            "control": threading.BoundedSemaphore(8),
+        }
+        self.accounting = threading.Lock()
+        self.buffered = {"bulk": 0, "control": 0}
+        self.aggregate_limit = 16 * 1024 * 1024
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        path = scope.get("path", "")
+        control = path in {"/health", "/ready"} or re.fullmatch(
+            r"/v1/gaia/query/[0-9a-f-]{36}/(?:cancel|respond|confirm)", path
+        )
+        lane = "control" if control else "bulk"
+        if not self.readers[lane].acquire(blocking=False):
+            await JSONResponse(
+                {"detail": "Too many active uploads."},
+                status_code=503,
+                headers={"Retry-After": "1"},
+            )(scope, receive, send)
+            return
+        reservation = {"bytes": 0}
+        try:
+            await self._handle(scope, receive, send, lane, reservation)
+        finally:
+            with self.accounting:
+                self.buffered[lane] -= reservation["bytes"]
+            self.readers[lane].release()
+
+    async def _handle(self, scope, receive, send, lane, reservation):
         lengths = [v for k, v in scope["headers"] if k.lower() == b"content-length"]
         if lengths:
             try:
@@ -48,6 +78,12 @@ class RequestBodyLimitMiddleware:
                 chunk = message.get("body", b"")
                 if len(body) + len(chunk) > self.max_bytes:
                     raise OverflowError
+                with self.accounting:
+                    limit = self.aggregate_limit if lane == "bulk" else 256 * 1024
+                    if self.buffered[lane] + len(chunk) > limit:
+                        raise BufferError
+                    self.buffered[lane] += len(chunk)
+                    reservation["bytes"] += len(chunk)
                 body.extend(chunk)
                 if not message.get("more_body", False):
                     return bytes(body)
@@ -56,6 +92,13 @@ class RequestBodyLimitMiddleware:
             body = await asyncio.wait_for(read_body(), timeout=self.read_timeout)
         except OverflowError:
             await self._too_large(scope, receive, send)
+            return
+        except BufferError:
+            await JSONResponse(
+                {"detail": "Aggregate upload budget occupied."},
+                status_code=503,
+                headers={"Retry-After": "1"},
+            )(scope, receive, send)
             return
         except asyncio.TimeoutError:
             await JSONResponse({"detail": "Request body timed out."}, status_code=408)(
