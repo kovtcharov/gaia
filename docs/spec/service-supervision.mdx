@@ -1,0 +1,115 @@
+---
+title: 'Service supervision contract'
+description: 'Execution ownership and recovery decisions for supervised GAIA services.'
+---
+
+## Status and boundaries
+
+This is the M0 feasibility contract, not a supported durable service release.
+The existing container worker remains unchanged. The prototype under
+`deploy/service/supervision` deliberately runs a shell fixture rather than a
+second agent implementation. Production integration must reuse GAIA's agent loop.
+
+One deployment serves one tenant or mutually trusted group. A deployment token
+is not an end-user identity. Legacy connection-bound queries and future durable
+runs use different state roots and writable workspaces.
+
+## Ownership decision
+
+A separate guardian owns the explicitly configured Docker endpoint. Neither the
+controller nor any executor receives that endpoint or its credentials. Runtime
+access is host-administrative privilege; containers are not a hostile-code
+security boundary. The production guardian must use a supervised process,
+exclusive journal lock, authenticated local command channel, and bounded control
+capacity independent of bulk output or admission.
+
+Each execution uses a dedicated Linux container without automatic restart.
+Before creation, persist and fsync deployment, run, generation and random creation
+nonce. Label the container with all four identifiers. Create it stopped, record
+and fsync its exact runtime ID, then start it. Never blindly retry an ambiguous
+create or start request.
+
+If creation acknowledgement is lost, exactly one container matching the entire
+precommitted identity may be inspected and its exact runtime ID durably bound
+before termination. Missing, duplicate or contradictory matches block admission.
+Never delete or stop by container name prefix or deployment label alone. Restart
+reconciliation terminates old owned work before accepting new commands; it does
+not replay external side effects.
+
+## Termination and leases
+
+The guardian owns an absolute run deadline and a shorter controller liveness
+lease. Renewal cannot extend the absolute deadline or revive an expired lease.
+Once stopping, execution cannot return to running. Previous-generation commands
+must be rejected. Capacity remains occupied until termination is confirmed.
+Runtime unavailability means unknown execution status, not successful cancellation.
+
+The M0 probe uses a two-second lease and four-second smoke-test lifetime. Its
+filesystem heartbeat is only a local feasibility fixture, not the production
+authentication protocol. Its monotonic timer does not establish suspend/resume
+support. Production must use suspend-inclusive time or reconcile conservatively
+on a detected discontinuity, and test that behavior on the target host.
+
+The prototype allows one guardian per fresh private test directory. Production
+must enforce that exclusion with a process lock. Its bounded ten-second Docker
+operations demonstrate failure surfacing, but do not satisfy the production
+aggregate stop deadline or concurrent watchdog requirements.
+
+No wall-clock termination guarantee holds while the host is suspended or both
+guardian and runtime are unresponsive. Recovery must reconcile before admission.
+
+## Admission and durable API decisions
+
+The future controller reserves a session, workspace and capacity in one SQLite
+transaction. Different sessions sharing writable storage still serialize. More
+slots require distinct writable workspaces and HOME/state volumes. There is no
+implicit waiting queue. One writer and local storage are required.
+
+Idempotency lookup precedes capacity checks. Version 1 canonicalization hashes
+UTF-8 JSON with sorted keys, compact separators and explicit defaults. Unicode
+is preserved without normalization; booleans are not integers. The prototype
+contract covers prompt, session and step limit. New fields require a deliberate
+schema revision. Operator policy is snapshotted separately at initial admission.
+
+Durable events receive a monotonically increasing per-run sequence and are
+committed before exposure. Reconnect is at-least-once; clients deduplicate by
+sequence. Pruned cursors return 410, future cursors 409. A terminal event and
+terminal state commit together only after confirmed executor termination.
+Disconnecting a durable stream does not cancel the run; legacy streams retain
+their existing disconnect behavior. Approval receipt is not execution
+acknowledgement, and uncertain delivery must never be blindly repeated.
+
+## Run the feasibility probe
+
+Pull a fixture image explicitly. Supply the Docker endpoint; the probe never
+selects a socket automatically. For Docker Desktop on a Mac, use the endpoint
+reported by `docker context inspect` after reviewing that it is the intended
+local engine.
+
+```bash
+docker pull alpine:3.21
+python deploy/service/supervision/smoke_test.py \
+  --endpoint unix:///var/run/docker.sock
+python -m pytest deploy/service/supervision/test_contracts.py -q
+```
+
+The real-runtime probe verifies controller death, absolute expiry despite live
+heartbeats, descendant termination, creation without start, and orphan identity
+recovery. It removes only its own fixture containers. Unit fault injection checks
+ambiguous ownership, journal/runtime disagreement and finite lease inputs.
+A failing cleanup is an error, not a suppressed test result.
+
+## Qualification and release ownership
+
+| Profile | M0 evidence | Remaining qualification |
+| --- | --- | --- |
+| Apple Silicon + Docker Desktop Linux VM | Local Docker probe | Real sleep/resume, production guardian |
+| Native Linux ARM64 | CI probe | Production guardian and durable API |
+| Native Linux AMD64 | CI probe | Production guardian and durable API |
+| GPU/NPU, constrained network/storage | Not claimed | Exact hardware and enforcement tests |
+
+The repository's release maintainers own registry namespace, signature identity,
+vulnerability exceptions and promotion approval. M1 may add the build and
+verification machinery; publishing or calling a digest supported still requires
+that release decision. A local image is not a promoted artifact. Capability
+claims must identify their tested image revision and profile.
