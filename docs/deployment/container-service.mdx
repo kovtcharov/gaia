@@ -328,3 +328,64 @@ API and check `gaia-agent --client status` before sending queries.
 The remote CLI omits `max_steps` unless `--max-steps` is supplied, so ordinary
 queries use the service's configured default even when its ceiling is below ten.
 Explicit values must be positive and within the server ceiling.
+
+
+## Mounted inference secrets
+
+Use `LEMONADE_API_KEY_FILE=/run/secrets/inference` for external inference, or
+`LEMONADE_FIREWORKS_API_KEY_FILE=/run/secrets/fireworks` for embedded Fireworks.
+Bind-mount the corresponding file read-only, readable by UID 10001. Do not set
+the corresponding plain environment value at the same time. Tokens are bounded
+to 8 KiB UTF-8 and resolved only during startup. Rotation requires a drained
+restart. The worker and its tools remain one trust boundary.
+
+## Stopped worker backup and restore
+
+Keep exclusive control of both volumes throughout the operation: stop the worker
+and prevent any supervisor or other service from starting or mounting it. The
+backup includes private conversations, workspace files and runtime state. Store
+it encrypted using your site's backup system. Integrity hashes detect accidental
+changes, not a malicious replacement of both data and manifest.
+
+```bash
+docker stop --time 50 gaia-worker
+python deploy/service/worker_backup.py backup --container gaia-worker   --directory /private/backups/gaia-before-upgrade
+python deploy/service/worker_backup.py verify   --directory /private/backups/gaia-before-upgrade
+```
+
+Restore to a newly created, never-started worker using the same image ID and two
+empty named volumes mounted with `volume-nocopy`. The script rejects existing
+contents and repairs ownership to UID/GID 10001. Keep the source backup until the
+restored worker has passed readiness and a real query. If restore fails midway,
+discard the new target volumes and retry with fresh volumes; never start a partial
+restore. Upgrade separately after verifying the old image and data together.
+This does not restore live agent processes or resume interrupted external actions.
+
+```bash
+python deploy/service/worker_backup.py restore --container gaia-restored   --directory /private/backups/gaia-before-upgrade
+```
+
+## Preparing a distributable image
+
+The manual **Prepare container service release** workflow builds native ARM64 and
+AMD64 candidates with BuildKit SBOM and provenance, runs the worker probes against
+each exact digest, and assembles those digests without rebuilding. Configure
+required reviewers on the `container-release` environment before enabling it.
+The workflow records a versioned preview tag and signed provenance; it does not
+label the preview a supported production release.
+
+Registry ownership, vulnerability scan review/exception ownership, Mac
+clean-install verification and release approval remain operator gates. No release
+has been promoted merely because this workflow exists. Pin the recorded digest
+and verify its GitHub attestation before deployment:
+
+```bash
+gh attestation verify oci://ghcr.io/OWNER/REPO/service@sha256:DIGEST -R OWNER/REPO
+```
+
+Record cold readiness time, image bytes and steady/peak RSS with the exact model,
+architecture and image digest. Never reuse measurements from another build or
+claim acceleration based only on libraries present in the image.
+
+The workflow follows [Docker's native build guidance](https://docs.docker.com/build/ci/github-actions/multi-platform/)
+and [GitHub's attestation verification](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations).

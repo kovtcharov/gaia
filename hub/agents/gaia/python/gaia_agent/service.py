@@ -26,6 +26,26 @@ def _required(name: str) -> str:
     return value
 
 
+def _load_secret_file(name: str) -> None:
+    """Read a bounded mounted credential without exposing it in diagnostics."""
+    filename = os.environ.get(f"{name}_FILE", "").strip()
+    if not filename:
+        return
+    if os.environ.get(name, "").strip():
+        raise ValueError(f"Set only one of {name} and {name}_FILE.")
+    try:
+        with Path(filename).open("rb") as handle:
+            raw = handle.read(8193)
+        value = raw.decode("utf-8").strip()
+    except (OSError, UnicodeError):
+        raise ValueError(f"Cannot read {name}_FILE credential.") from None
+    if len(raw) > 8192 or not value or any(c.isspace() for c in value):
+        raise ValueError(f"Invalid {name}_FILE credential.")
+    os.environ[name] = value
+    # Consumers inherit the resolved value; repeated configuration stays valid.
+    os.environ.pop(f"{name}_FILE", None)
+
+
 def _directory(name: str) -> Path:
     path = Path(_required(name))
     if not path.is_absolute() or not path.is_dir():
@@ -65,6 +85,7 @@ class ServiceConfig:
 
     @classmethod
     def from_environment(cls) -> "ServiceConfig":
+        _load_secret_file("LEMONADE_API_KEY")
         auth = caller_auth.config_from_environment()
         if not auth.token or not auth.token.strip():
             raise ValueError(
@@ -141,6 +162,7 @@ class ServiceConfig:
                 raise ValueError(
                     "GAIA_SERVICE_CLOUD_URL must be HTTPS without embedded credentials, query or fragment."
                 )
+            _load_secret_file(f"LEMONADE_{provider.upper()}_API_KEY")
             _required(f"LEMONADE_{provider.upper()}_API_KEY")
         return cls(
             host=os.environ.get("GAIA_SERVICE_HOST", "0.0.0.0"),

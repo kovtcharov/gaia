@@ -7,7 +7,7 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
-from tempfile import TemporaryFile
+from tempfile import TemporaryDirectory, TemporaryFile
 
 
 def docker(*args, **kwargs):
@@ -21,7 +21,7 @@ def checked(*args):
     return result.stdout.strip()
 
 
-def main():
+def exercise(secret_path):
     suffix = uuid.uuid4().hex[:8]
     network, inference, worker = [
         f"gaia-{name}-{suffix}" for name in ("net", "inference", "worker")
@@ -49,6 +49,7 @@ def main():
             volume = f"gaia-{label}-{suffix}"
             checked("volume", "create", volume)
             volumes.append(volume)
+        startup_at = time.monotonic()
         checked(
             "run",
             "-d",
@@ -65,7 +66,9 @@ def main():
             "-e",
             f"LEMONADE_BASE_URL=http://{inference}:8099/api/v1",
             "-e",
-            "LEMONADE_API_KEY=fixture-inference-key",
+            "LEMONADE_API_KEY_FILE=/run/inference-secret",
+            "--mount",
+            f"type=bind,src={secret_path},dst=/run/inference-secret,readonly",
             "-e",
             "GAIA_MEMORY_DISABLED=1",
             "--mount",
@@ -84,6 +87,28 @@ def main():
             if time.monotonic() > deadline:
                 raise RuntimeError("CLI status did not become ready: " + result.stderr)
             time.sleep(0.5)
+        print(
+            json.dumps(
+                {
+                    "profile": "external-authenticated-fixture",
+                    "cold_ready_seconds": round(time.monotonic() - startup_at, 3),
+                    "image_bytes": int(
+                        checked(
+                            "image",
+                            "inspect",
+                            "gaia-service:test",
+                            "--format",
+                            "{{.Size}}",
+                        )
+                    ),
+                    "idle_memory_sample": json.loads(
+                        checked(
+                            "stats", "--no-stream", "--format", "{{json .}}", worker
+                        )
+                    ),
+                }
+            )
+        )
         result = checked(*client, "query", "Reply with the fixture answer", "--json")
         events = [json.loads(line) for line in result.splitlines()]
         assert events[-1]["type"] == "final", events
@@ -157,13 +182,25 @@ def main():
             "Frozen CLI status, real GAIA query/SSE, live cancellation and restart passed."
         )
     finally:
+        leaked = False
         for name in reversed(created):
             logs = docker("logs", name, timeout=10)
-            print(logs.stdout + logs.stderr)
+            combined = logs.stdout + logs.stderr
+            leaked = leaked or "fixture-inference-key" in combined
+            print(combined.replace("fixture-inference-key", "[redacted]"))
             checked("rm", "-f", name)
         checked("network", "rm", network)
         for volume in volumes:
             checked("volume", "rm", volume)
+        assert not leaked, "Mounted inference credential leaked into container logs"
+
+
+def main():
+    with TemporaryDirectory(prefix="gaia-inference-secret-") as temporary:
+        path = Path(temporary) / "credential"
+        path.write_text("fixture-inference-key")
+        path.chmod(0o444)
+        exercise(path)
 
 
 if __name__ == "__main__":

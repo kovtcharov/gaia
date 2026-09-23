@@ -1,0 +1,138 @@
+name: Prepare container service release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    # Configure required reviewers on this environment before enabling release.
+    environment: container-release
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set repository-owned candidate name
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=ghcr.io/${REPOSITORY,,}/service" >> "$GITHUB_OUTPUT"
+      - name: Build native candidate with dependency inventory
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/service/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          tags: ${{ steps.image.outputs.name }}:candidate-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
+          provenance: mode=max
+          sbom: true
+      - name: Exercise exact candidate digest
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker pull "$IMAGE"
+          docker tag "$IMAGE" gaia-service:test
+          mkdir -p evidence
+          python3 deploy/service/backup_smoke_test.py | tee evidence/backup.log
+          python3 deploy/service/smoke_test.py | tee evidence/lifecycle.log
+          python3 deploy/service/query_smoke_test.py | tee evidence/query.log
+          python3 deploy/service/limits_smoke_test.py | tee evidence/limits.log
+          python3 deploy/service/compose_smoke_test.py | tee evidence/compose.log
+          docker image inspect gaia-service:test --format '{{json .Size}}' > evidence/image-bytes.json
+      - uses: actions/attest@v4
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Record tested digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p digests
+          printf '%s\n' "$DIGEST" > "digests/$ARCH"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: service-digest-${{ matrix.arch }}
+          path: digests/
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: service-release-evidence-${{ matrix.arch }}
+          path: evidence/
+
+  manifest:
+    needs: candidate
+    environment: container-release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: service-digest-*
+          merge-multiple: true
+          path: digests
+      - name: Assemble tested native digests without rebuilding
+        id: manifest
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${REPOSITORY,,}/service"
+          tag="$image:preview-$RUN_ID-$ATTEMPT"
+          amd64=$(cat digests/amd64)
+          arm64=$(cat digests/arm64)
+          [[ "$amd64" =~ ^sha256:[a-f0-9]{64}$ ]]
+          [[ "$arm64" =~ ^sha256:[a-f0-9]{64}$ ]]
+          docker buildx imagetools create -t "$tag" "$image@$amd64" "$image@$arm64"
+          digest=$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          echo "name=$image" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Tested preview: $image@$digest" >> "$GITHUB_STEP_SUMMARY"
+          echo "Mac clean-install and vulnerability review remain release gates." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/attest@v4
+        with:
+          subject-name: ${{ steps.manifest.outputs.name }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true

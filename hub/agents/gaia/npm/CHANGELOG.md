@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased service distribution
+
+- Support mounted inference credentials with bounded validation and explicit conflict errors.
+- Add stopped-volume backup/restore verification and manually gated native image release preparation.
+
 ## Unreleased
 
 - Let the remote CLI honor the server step default unless explicitly overridden, fixing queries against workers configured below ten steps.

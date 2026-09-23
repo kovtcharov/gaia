@@ -751,3 +751,33 @@ def test_configured_parallel_capacity_admits_two_and_rejects_third(
         assert app.state.query_slots.acquire(timeout=2)
         app.state.query_slots.release()
         app.state.query_slots.release()
+
+
+@pytest.mark.parametrize("name", ["LEMONADE_API_KEY", "LEMONADE_FIREWORKS_API_KEY"])
+def test_mounted_inference_secret(monkeypatch, tmp_path, name):
+    secret = tmp_path / "credential"
+    secret.write_text("test-mounted-secret\n")
+    monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(name + "_FILE", str(secret))
+    service._load_secret_file(name)
+    assert os.environ[name] == "test-mounted-secret"
+    service._load_secret_file(name)
+    monkeypatch.delenv(name)
+
+
+@pytest.mark.parametrize("content", [b"", b"a b", b"x" * 8193, b"\xff"])
+def test_invalid_mounted_secret_fails_without_value(monkeypatch, tmp_path, content):
+    secret = tmp_path / "credential"
+    secret.write_bytes(content)
+    monkeypatch.delenv("LEMONADE_API_KEY", raising=False)
+    monkeypatch.setenv("LEMONADE_API_KEY_FILE", str(secret))
+    with pytest.raises(ValueError, match="credential"):
+        service._load_secret_file("LEMONADE_API_KEY")
+    assert "LEMONADE_API_KEY" not in os.environ
+
+
+def test_conflicting_secret_sources_fail(monkeypatch):
+    monkeypatch.setenv("LEMONADE_API_KEY", "existing-secret")
+    monkeypatch.setenv("LEMONADE_API_KEY_FILE", "/unread")
+    with pytest.raises(ValueError, match="only one"):
+        service._load_secret_file("LEMONADE_API_KEY")
