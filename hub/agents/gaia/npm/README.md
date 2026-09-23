@@ -268,3 +268,13 @@ stops. Desktop `--serve` behavior is unchanged. See
 The remote CLI omits `max_steps` unless `--max-steps` is supplied, so ordinary
 queries use the service's configured default even when its ceiling is below ten.
 Explicit values must be positive and within the server ceiling.
+
+### Mounted service inference credentials
+
+Container service mode accepts `LEMONADE_API_KEY_FILE` for an external inference
+server and `LEMONADE_<PROVIDER>_API_KEY_FILE` for embedded cloud inference (for
+example, `LEMONADE_FIREWORKS_API_KEY_FILE`). Supply either the value or its file,
+never both. Files must contain a nonempty UTF-8 token of at most 8 KiB. The value
+is resolved at startup and inherited by inference processes; rotate by draining
+and restarting the worker. Mounted secrets do not isolate credentials from tools
+running in the same worker trust boundary.
