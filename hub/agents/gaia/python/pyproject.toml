@@ -37,6 +37,8 @@ dependencies = [
 # The collapsed transport: the TUI spawns this once and trades newline-delimited
 # JSON over the pipe. No daemon, no HTTP port, no bearer token, no model lease.
 gaia-agent = "gaia_agent.stdio:main"
+gaia-agent-controller = "gaia_agent.durable.api:main"
+gaia-agent-durable-client = "gaia_agent.durable.client:main"
 gaia-agent-guardian = "gaia_agent.supervision.protocol:main"
 gaia-agent-service = "gaia_agent.service:main"
 gaia-agent-client = "gaia_agent.service_client:main"

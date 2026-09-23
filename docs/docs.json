@@ -378,6 +378,7 @@
             "pages": [
               "deployment/shareable-build",
               "deployment/container-service",
+              "guides/durable-service",
               "spec/service-supervision",
               "deployment/ui",
               "deployment/testing-electron",

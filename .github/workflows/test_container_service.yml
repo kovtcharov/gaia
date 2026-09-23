@@ -84,6 +84,9 @@ jobs:
           python -m pytest \
             hub/agents/gaia/python/tests/test_service.py \
             hub/agents/gaia/python/tests/test_supervision.py \
+            hub/agents/gaia/python/tests/test_durable_store.py \
+            hub/agents/gaia/python/tests/test_durable_api.py \
+            hub/agents/gaia/python/tests/test_durable_client.py \
             hub/agents/gaia/python/tests/test_service_limits.py \
             hub/agents/gaia/python/tests/test_service_client.py \
             hub/agents/gaia/python/tests/test_server_query.py \
@@ -149,6 +152,10 @@ jobs:
         env:
           PYTHONPATH: hub/agents/gaia/python:src
         run: python3 deploy/service/guardian_smoke_test.py --endpoint unix:///var/run/docker.sock
+      - name: Verify durable HTTP recovery and full clone restore
+        env:
+          PYTHONPATH: hub/agents/gaia/python:src
+        run: python3 deploy/service/durable_smoke_test.py --endpoint unix:///var/run/docker.sock
       - name: Verify stopped worker backup and restore
         run: python3 deploy/service/backup_smoke_test.py
       - name: Verify Compose configuration and volume persistence after recreation

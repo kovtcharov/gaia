@@ -50,15 +50,22 @@ class Client:
             body = json.dumps(payload).encode()
             if len(body) > MAX_BODY:
                 raise ValueError("Guardian request too large")
-            connection.request(
-                "POST",
-                "/v1/" + operation,
-                body=body,
-                headers={
-                    "Authorization": "Bearer " + self.token,
-                    "Content-Type": "application/json",
-                },
-            )
+            try:
+                connection.request(
+                    "POST",
+                    "/v1/" + operation,
+                    body=body,
+                    headers={
+                        "Authorization": "Bearer " + self.token,
+                        "Content-Type": "application/json",
+                    },
+                )
+            except BrokenPipeError:
+                # A header-level rejection can arrive before the small body is
+                # written. Read that response; never retry a lifecycle request.
+                LOGGER.debug(
+                    "Guardian rejected request before body transmission completed"
+                )
             response = connection.getresponse()
             raw = response.read(MAX_BODY + 1)
             if len(raw) > MAX_BODY:
@@ -117,16 +124,22 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(400, {"error": "admission_socket_required"})
                 return
             if self.path == "/v1/health" and not payload:
-                result = {"healthy": guardian.healthy, "protocol": 1}
-            elif self.path == "/v1/start" and set(payload) == {
-                "run",
-                "generation",
-                "workspace",
-            }:
+                result = {"healthy": guardian.healthy, "protocol": 2}
+            elif self.path == "/v1/capabilities" and not payload:
+                result = guardian.capabilities()
+            elif self.path == "/v1/fence" and set(payload) == {"controller_epoch"}:
+                result = guardian.fence(**payload)
+            elif self.path == "/v1/start" and set(payload) in (
+                {"run", "generation", "workspace"},
+                {"run", "generation", "workspace", "controller_epoch"},
+            ):
                 result = guardian.start(**payload)
-            elif self.path in {"/v1/renew", "/v1/status", "/v1/stop"} and set(
-                payload
-            ) == {"run", "generation"}:
+            elif self.path in {
+                "/v1/renew",
+                "/v1/status",
+                "/v1/stop",
+                "/v1/cancel",
+            } and set(payload) == {"run", "generation"}:
                 result = getattr(guardian, self.path.rsplit("/", 1)[1])(**payload)
             else:
                 self.reply(400, {"error": "invalid_command"})

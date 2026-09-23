@@ -98,6 +98,7 @@ class Guardian:
         self.closing = threading.Event()
         self.journal = self.root / "journal.json"
         self.writer = None
+        self.controller_epoch = None
         if self.journal.exists():
             stored = json.loads(self.journal.read_text())
             if (
@@ -106,6 +107,7 @@ class Guardian:
             ):
                 raise GuardianError("journal_identity_mismatch")
             self.records = stored["runs"]
+            self.controller_epoch = stored.get("controller_epoch")
         self._reconcile()
         self.healthy = True
         self.watchdog = threading.Thread(target=self._watch, daemon=True)
@@ -132,7 +134,12 @@ class Guardian:
             self.healthy = False
             raise GuardianError("journal_unavailable")
         snapshot = json.dumps(
-            {"schema": 1, "deployment": self.policy["deployment"], "runs": self.records}
+            {
+                "schema": 1,
+                "deployment": self.policy["deployment"],
+                "runs": self.records,
+                "controller_epoch": self.controller_epoch,
+            }
         ).encode()
         failed = []
 
@@ -155,6 +162,12 @@ class Guardian:
         for run, record in self.records.items():
             self.operations[run] = threading.Lock()
             container_id = record.get("container_id")
+            if (
+                not container_id
+                and record["state"] == "stopped"
+                and record.get("removed")
+            ):
+                continue
             if not container_id:
                 candidates = []
                 for candidate in inventory:
@@ -194,10 +207,48 @@ class Guardian:
             raise GuardianError("stale_generation")
         return record
 
-    def start(self, run, generation, workspace):
+    def capabilities(self):
+        return {
+            "protocol": 2,
+            "deployment": self.policy["deployment"],
+            "workspaces": list(self.policy["workspaces"]),
+            "slots": self.policy["slots"],
+            "model": self.policy["model"],
+            "lifetime": self.policy["lifetime"],
+            "lease": self.policy["lease"],
+            "image": self.policy["image"],
+        }
+
+    def fence(self, controller_epoch):
+        uuid_value(controller_epoch)
+        with self.lock:
+            self.controller_epoch = controller_epoch
+            self._persist()
+            pending = [
+                (run, record["identity"]["generation"])
+                for run, record in self.records.items()
+                if record["state"] != "stopped"
+            ]
+        failed = []
+        for run, generation in pending:
+            try:
+                self.stop(run, generation, "controller_replaced")
+            except Exception:
+                failed.append(run)
+        if failed:
+            self.healthy = False
+            raise GuardianError("fencing_incomplete")
+        return {
+            "controller_epoch": controller_epoch,
+            "capabilities": self.capabilities(),
+        }
+
+    def start(self, run, generation, workspace, controller_epoch=None):
         uuid_value(run)
         uuid_value(generation)
         with self.lock:
+            if controller_epoch != self.controller_epoch:
+                raise GuardianError("stale_controller")
             if not self.healthy or self.closing.is_set():
                 raise GuardianError("admission_closed")
             if len(self.records) >= 10000:
@@ -311,6 +362,32 @@ class Guardian:
                 key: record.get(key)
                 for key in ("state", "reason", "expires", "workspace")
             }
+
+    def cancel(self, run, generation):
+        """Persist a pre-dispatch tombstone so delayed admission cannot revive it."""
+        uuid_value(run)
+        uuid_value(generation)
+        with self.lock:
+            if run not in self.records:
+                if len(self.records) >= 10000:
+                    raise GuardianError("guardian_history_full")
+                self.records[run] = {
+                    "identity": {
+                        "deployment": self.policy["deployment"],
+                        "run": run,
+                        "generation": generation,
+                        "nonce": str(uuid4()),
+                    },
+                    "state": "stopped",
+                    "container_id": None,
+                    "workspace": None,
+                    "removed": True,
+                    "reason": "cancel_before_start",
+                }
+                self.operations[run] = threading.Lock()
+                self._persist()
+                return {"state": "stopped"}
+        return self.stop(run, generation)
 
     def stop(self, run, generation, reason="cancelled"):
         with self.lock:

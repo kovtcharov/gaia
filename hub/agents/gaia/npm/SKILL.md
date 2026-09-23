@@ -648,3 +648,14 @@ Service mode limits emitted output to 256 KiB/event and 4 MiB/run; overflow emit
 a terminal 413 error and cancels the run. Bulk uploads share a 16 MiB buffer budget
 and 32-reader limit, with separately reserved control capacity. Persistent volume
 disk quotas and host suspend/resume qualification are not claimed by this preview.
+
+## Durable service beta
+
+An optional single-tenant controller uses the separate `/v1/gaia/service` API
+(version 1), local SQLite and the independent Docker guardian. Frozen entry points
+are `gaia-agent --controller`, `--guardian` and `--durable-client`. Durable runs
+survive client disconnects; legacy `/v1/gaia/query` disconnect cancellation is unchanged.
+Idempotent submission, bounded replay, generation-scoped interaction receipts,
+restart interruption without redispatch, seven-day content retention and offline
+full backup/clone restore are described in the [durable service guide](https://amd-gaia.ai/docs/guides/durable-service).
+This beta is one trusted deployment, not unrelated-user tenancy or high availability.
