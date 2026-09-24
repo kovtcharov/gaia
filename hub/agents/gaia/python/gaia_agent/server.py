@@ -1225,6 +1225,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     quiet switch to the other one.
     """
     args = list(sys.argv[1:] if argv is None else argv)
+    if args and args[0] == "--validate-profile":
+        from gaia_agent.profiles import main as profile_main
+
+        return profile_main(args[1:])
+
     if args and args[0] == "--durable-client":
         from gaia_agent.durable.client import main as durable_client_main
 

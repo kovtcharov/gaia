@@ -89,4 +89,5 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-ThreadingHTTPServer(("0.0.0.0", 8099), Handler).serve_forever()
+if __name__ == "__main__":
+    ThreadingHTTPServer(("0.0.0.0", 8099), Handler).serve_forever()

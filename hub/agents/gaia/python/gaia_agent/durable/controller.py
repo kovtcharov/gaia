@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Durable orchestration over the existing GAIA worker and guardian contracts."""
 
+import ipaddress
 import json
 import sqlite3
 import threading
@@ -204,14 +205,24 @@ class Controller:
         if live.endpoint is None:
             raise StoreError("executor_not_ready", 409)
         parsed = urlsplit(live.endpoint["url"])
-        if parsed.scheme != "http" or parsed.hostname != "127.0.0.1" or parsed.username:
+        internal = live.endpoint.get("network_internal", False)
+        allowed = parsed.hostname == "127.0.0.1"
+        if internal:
+            address = ipaddress.ip_address(parsed.hostname)
+            allowed = (
+                address.version == 4 and address.is_private and not address.is_loopback
+            )
+        if parsed.scheme != "http" or not allowed or parsed.username:
             raise StoreError("invalid_executor_endpoint", 503)
         session = self._session()
         try:
             response = session.request(
                 method,
                 live.endpoint["url"] + path,
-                headers={"Authorization": "Bearer " + live.endpoint["token"]},
+                headers={
+                    "Authorization": "Bearer " + live.endpoint["token"],
+                    "Host": "127.0.0.1",
+                },
                 allow_redirects=False,
                 timeout=(3, 15),
                 **kwargs,
@@ -327,6 +338,7 @@ class Controller:
             context = self.store.context(run["session_id"], run["id"])
             payload = {
                 "run_id": run["id"],
+                "session_id": run["session_id"],
                 "query": run["request"]["prompt"],
                 "context": context,
                 "max_steps": run["request"]["max_steps"],

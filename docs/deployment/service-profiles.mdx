@@ -1,0 +1,96 @@
+---
+title: Explicit service capability profiles
+description: Prepared embeddings, external tools and native Linux network isolation
+---
+
+Capability qualification applies to the exact image, inference model, backend and
+host tested. These profiles extend the [durable service](/guides/durable-service)
+and its [operations contract](/deployment/service-operations). They do not imply
+GPU/NPU qualification, persistent storage quotas or unrelated-user isolation.
+
+## Prepared embeddings and retrieval
+
+Declare `embedding_model` and `embedding_revision` together in guardian policy.
+For a standalone worker, use `GAIA_SERVICE_EMBEDDING_MODEL` and
+`GAIA_SERVICE_EMBEDDING_REVISION`. The worker checks the declared embedding model
+in inference discovery alongside the chat model. The revision separates cached
+query vectors; it is operator metadata, not remote cryptographic attestation.
+Prepare the model offline first and use the exact catalog ID/checkpoint. An ID
+prefixed with `user.` may appear without that prefix in Lemonade discovery.
+
+The configured Lemonade endpoint is used for embeddings as well as chat. A worker
+receives the durable session ID so the existing session manager can preserve the
+selection of indexed documents across worker replacement. Worker session metadata,
+RAG caches and approved tool files live on the operator-owned data/workspace volumes;
+controller history retention or session deletion does not erase those volumes.
+Changed document content
+must be explicitly reindexed. Changing an embedding revision requires rebuilding
+the index; cached document text may be reused, but vectors are generated again.
+
+Run the qualification harness against an already prepared embedding server:
+
+```bash
+PYTHONPATH=hub/agents/gaia/python:src python deploy/service/rag_profile_smoke.py \
+  --endpoint unix:///var/run/docker.sock --image gaia-service:test \
+  --embedding-url http://YOUR_PREPARED_SERVER:8000/api/v1 \
+  --model YOUR_EXACT_MODEL_ID --revision YOUR_MODEL_REVISION \
+  --checkpoint YOUR_EXACT_CHECKPOINT --report rag-profile.json
+```
+
+Five separate frozen processes index planted facts, retrieve them after restart,
+delete a document, prove its absence after another restart, and reindex replacement
+content. The harness refuses an absent or mismatched model and never provisions one.
+It creates and removes only its own disposable named volumes. It tests retrieval,
+not generated-answer quality or controller-mediated RAG session restoration.
+The latter remains a separate live qualification gate; the controller forwarding
+contract is covered by regression tests. The underlying frozen CLI is
+`gaia-agent --validate-profile rag --help`.
+
+The local qualification uses the cached EmbeddingGemma 300M Q8_0 checkpoint with
+Lemonade's Metal backend on Apple Silicon and a Linux ARM64 frozen client. That is
+not evidence for AMD GPU/NPU, CUDA, other embedding models, or offline installation
+on a clean machine. Run this harness on each intended host and retain its report.
+
+## External Python tools
+
+The image includes the system Python used by the existing `run_python` tool.
+Operators must package additional dependencies in a derived image and pin the
+resulting digest. Nothing installs arbitrary packages during service startup.
+Each tool execution requires the existing explicit approval flow. Mounted inference
+credentials are inside the worker's trust boundary; approved code can read them.
+Use scoped credentials and a dedicated trusted workspace.
+
+The deterministic HTTP fixture executes real approved Python tool calls covering
+an authenticated response, rejected credentials, a bounded request timeout, and
+cancellation of a process with a SIGTERM-ignoring descendant. Tests require observed
+fixture requests, terminal outcomes and zero owned executor containers afterward.
+The fixture is test infrastructure, not a bundled production connector.
+
+```bash
+PYTHONPATH=hub/agents/gaia/python:src python deploy/service/durable_smoke_test.py \
+  --endpoint unix:///var/run/docker.sock --image gaia-service:test --tool-profiles
+```
+
+## Native Linux internal network
+
+Set `network` to an operator-created Docker `--internal` bridge and set
+`network_internal: true` in guardian policy. The guardian verifies Docker marks
+the network internal before creating a worker. It verifies the worker has one
+network and a private address before returning that address to the controller.
+The controller must run on the native Linux Docker host and reach that bridge.
+Publish the controller through the normal authenticated service boundary; no
+worker bearer or Docker socket is forwarded to clients.
+
+A reachable inference service can join this internal bridge. A dual-homed inference
+service is trusted infrastructure; it must not act as a general forwarding proxy.
+Internal bridge isolation blocks ordinary worker Internet routing. It is not a
+per-domain allowlist, application-layer firewall, or isolation from services on
+the same bridge or the host. Host administrators remain trusted.
+
+The native ARM64/AMD64 container workflow additionally runs
+`--tool-profiles --internal-network`, verifying same-network authenticated tools
+and denied direct external TCP connectivity. An ordinary-network container must
+first reach the same destination; an unreachable test destination fails qualification. macOS Docker Desktop cannot use this
+controller-to-private-bridge path and rejects this policy at startup. Use the
+ordinary network profile there; it does not enforce outbound restrictions.
+Persistent named-volume quotas remain unsupported on both profiles.

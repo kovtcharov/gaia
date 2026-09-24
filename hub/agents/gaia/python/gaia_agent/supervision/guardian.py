@@ -7,6 +7,7 @@ import json
 import os
 import re
 import secrets
+import sys
 import threading
 import time
 from pathlib import Path
@@ -62,6 +63,25 @@ def validate_policy(policy):
         or not Path(secret_file).is_file()
     ):
         raise ValueError("Inference secret must be an existing absolute file")
+    if type(policy.get("network_internal", False)) is not bool:
+        raise ValueError("network_internal must be a boolean")
+    if policy.get("network_internal") and sys.platform != "linux":
+        raise ValueError(
+            "Internal network profile requires a native Linux controller host"
+        )
+    if policy.get("network_internal") and not policy.get("network"):
+        raise ValueError("Internal network profile requires an explicit network")
+    if bool(policy.get("embedding_model")) != bool(policy.get("embedding_revision")):
+        raise ValueError("Declare both embedding model and revision")
+    for key in ("embedding_model", "embedding_revision"):
+        value = policy.get(key)
+        if value is not None and (
+            not isinstance(value, str)
+            or not value.strip()
+            or len(value) > 512
+            or any(ord(char) < 32 for char in value)
+        ):
+            raise ValueError("Embedding declarations must be bounded nonempty strings")
     volumes = []
     for workspace, mapping in policy["workspaces"].items():
         uuid_value(workspace)
@@ -214,6 +234,9 @@ class Guardian:
             "workspaces": list(self.policy["workspaces"]),
             "slots": self.policy["slots"],
             "model": self.policy["model"],
+            "embedding_model": self.policy.get("embedding_model"),
+            "embedding_revision": self.policy.get("embedding_revision"),
+            "network_internal": self.policy.get("network_internal", False),
             "lifetime": self.policy["lifetime"],
             "lease": self.policy["lease"],
             "image": self.policy["image"],
@@ -321,6 +344,7 @@ class Guardian:
                 "run": run,
                 "generation": generation,
                 "url": url,
+                "network_internal": self.policy.get("network_internal", False),
                 "token": self.tokens[run],
                 "deadline": record["expires"],
             }

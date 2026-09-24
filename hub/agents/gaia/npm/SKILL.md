@@ -665,3 +665,14 @@ managed artifacts with retryable cleanup, authenticated metrics/drain, bounded
 optional content-free traces and explicit incomplete usage. Readiness requires a
 configured host-reachable model probe. See [operations](https://amd-gaia.ai/docs/deployment/service-operations)
 for qualification and unfulfilled promotion/hardware gates.
+
+### Explicit capability profiles
+
+Declare both `GAIA_SERVICE_EMBEDDING_MODEL` and `GAIA_SERVICE_EMBEDDING_REVISION`
+(or guardian `embedding_model`/`embedding_revision`) for prepared embeddings.
+`gaia-agent --validate-profile rag --help` exposes the frozen retrieval qualification
+CLI. Revision is operator metadata, not verification of remote weights.
+Native Linux alone supports the opt-in verified Docker internal-network policy;
+Docker Desktop and default networking do not enforce outbound restrictions.
+See [capability profiles](https://amd-gaia.ai/deployment/service-profiles) for
+qualification commands and unsupported hardware/storage configurations.

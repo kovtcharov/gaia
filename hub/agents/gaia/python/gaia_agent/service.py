@@ -82,6 +82,8 @@ class ServiceConfig:
     max_concurrent_runs: int = 1
     max_steps: int = 20
     run_timeout_seconds: int = 300
+    embedding_model: str | None = None
+    embedding_revision: str | None = None
 
     @classmethod
     def from_environment(cls) -> "ServiceConfig":
@@ -164,11 +166,23 @@ class ServiceConfig:
                 )
             _load_secret_file(f"LEMONADE_{provider.upper()}_API_KEY")
             _required(f"LEMONADE_{provider.upper()}_API_KEY")
+        embedding_model = (
+            os.environ.get("GAIA_SERVICE_EMBEDDING_MODEL", "").strip() or None
+        )
+        embedding_revision = (
+            os.environ.get("GAIA_SERVICE_EMBEDDING_REVISION", "").strip() or None
+        )
+        if bool(embedding_model) != bool(embedding_revision):
+            raise ValueError(
+                "Declare both embedding model and immutable revision for the service profile"
+            )
         return cls(
             host=os.environ.get("GAIA_SERVICE_HOST", "0.0.0.0"),
             port=port,
             workspace=workspace,
             model=_required("GAIA_SERVICE_MODEL"),
+            embedding_model=embedding_model,
+            embedding_revision=embedding_revision,
             base_url=base_url,
             auth=replace(auth, allowed_hosts=hosts, allowed_origin_hosts=frozenset()),
             cloud_provider=provider,
@@ -214,6 +228,8 @@ def create_app(config: ServiceConfig):
         auth_config=config.auth,
         agent_config={
             "model_id": config.model,
+            "embedding_model": config.embedding_model,
+            "embedding_revision": config.embedding_revision,
             "base_url": config.base_url,
             "allowed_paths": [str(config.workspace)],
             "project_root": str(config.workspace),
@@ -284,6 +300,13 @@ def create_app(config: ServiceConfig):
             probe["version"], server.MIN_LEMONADE_VERSION
         )
         available = probe["reachable"] and probe["present"] and compatible is not False
+        if config.embedding_model:
+            embedding = await asyncio.to_thread(
+                server._probe_lemonade,
+                model_id=config.embedding_model.removeprefix("user."),
+                base_url=app.state.agent_config["base_url"],
+            )
+            available = available and embedding["reachable"] and embedding["present"]
         return JSONResponse(
             {"ready": bool(available)}, status_code=200 if available else 503
         )

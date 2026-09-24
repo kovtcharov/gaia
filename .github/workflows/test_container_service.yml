@@ -83,6 +83,7 @@ jobs:
           mkdir -p test-results
           python -m pytest \
             hub/agents/gaia/python/tests/test_service.py \
+            hub/agents/gaia/python/tests/test_service_profiles.py \
             hub/agents/gaia/python/tests/test_supervision.py \
             hub/agents/gaia/python/tests/test_durable_store.py \
             hub/agents/gaia/python/tests/test_durable_api.py \
@@ -98,8 +99,13 @@ jobs:
             tests/unit/test_sidecar_caller_auth.py \
             tests/unit/test_lemonade_embedded.py \
             tests/unit/test_run_python_tool.py \
+            tests/unit/rag/test_embedding_alignment.py \
+            tests/unit/rag/test_index_transactions.py \
+            tests/unit/test_embedding_cache.py \
+            hub/agents/chat/python/tests/test_chat_agent.py \
             deploy/service/test_worker_backup.py \
             deploy/service/test_durable_backup.py \
+            deploy/service/test_rag_profile_smoke.py \
             --junitxml=test-results/service.xml -q -ra
           python - <<'PY'
           import xml.etree.ElementTree as ET
@@ -157,7 +163,10 @@ jobs:
       - name: Verify durable HTTP recovery and full clone restore
         env:
           PYTHONPATH: hub/agents/gaia/python:src
-        run: python3 deploy/service/durable_smoke_test.py --endpoint unix:///var/run/docker.sock
+        run: |
+          set -euo pipefail
+          python3 deploy/service/durable_smoke_test.py --endpoint unix:///var/run/docker.sock \
+            --tool-profiles --internal-network --report test-results/profiles.json 2>&1 | tee test-results/profiles.log
       - name: Verify stopped worker backup and restore
         run: python3 deploy/service/backup_smoke_test.py
       - name: Verify Compose configuration and volume persistence after recreation

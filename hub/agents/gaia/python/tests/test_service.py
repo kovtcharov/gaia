@@ -781,3 +781,42 @@ def test_conflicting_secret_sources_fail(monkeypatch):
     monkeypatch.setenv("LEMONADE_API_KEY_FILE", "/unread")
     with pytest.raises(ValueError, match="only one"):
         service._load_secret_file("LEMONADE_API_KEY")
+
+
+def test_embedding_profile_requires_revision_and_reaches_agent(configured, monkeypatch):
+    monkeypatch.setenv("GAIA_SERVICE_EMBEDDING_MODEL", "user.prepared-embedding")
+    with pytest.raises(ValueError, match="both embedding"):
+        service.ServiceConfig.from_environment()
+    monkeypatch.setenv("GAIA_SERVICE_EMBEDDING_REVISION", "immutable-revision")
+    config = service.ServiceConfig.from_environment()
+    app = service.create_app(config)
+    assert app.state.agent_config["embedding_model"] == "user.prepared-embedding"
+    assert app.state.agent_config["embedding_revision"] == "immutable-revision"
+
+
+@pytest.mark.parametrize("embedding_present", [True, False])
+def test_embedding_readiness_requires_declared_model(
+    configured, monkeypatch, embedding_present
+):
+    monkeypatch.setenv("GAIA_SERVICE_EMBEDDING_MODEL", "user.prepared-embedding")
+    monkeypatch.setenv("GAIA_SERVICE_EMBEDDING_REVISION", "revision")
+    config = service.ServiceConfig.from_environment()
+    observed = []
+
+    def probe(**kwargs):
+        observed.append(kwargs["model_id"])
+        return {
+            "version": "11.8.1",
+            "reachable": True,
+            "present": (
+                embedding_present if kwargs["model_id"] != config.model else True
+            ),
+        }
+
+    monkeypatch.setattr(server, "_probe_lemonade", probe)
+    with TestClient(
+        service.create_app(config), base_url="http://worker.internal"
+    ) as client:
+        response = client.get("/ready")
+    assert response.status_code == (200 if embedding_present else 503)
+    assert "prepared-embedding" in observed

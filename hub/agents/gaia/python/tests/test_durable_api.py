@@ -379,6 +379,30 @@ def test_close_deadline_covers_unrelated_storage_lock(controller):
         controller.store_close_thread.join(1)
 
 
+def test_successive_workers_receive_same_session_and_committed_history(
+    controller, monkeypatch
+):
+    payloads = []
+
+    def worker(_live, method, path, **kwargs):
+        if method == "POST" and path == "/v1/gaia/query":
+            payloads.append(kwargs["json"])
+        return Reply(), Reply(events=[{"type": "final", "answer": "remembered"}])
+
+    monkeypatch.setattr(controller, "_worker", worker)
+    session = controller.store.create_session(controller.guardian.workspace, "")
+    for key, prompt in (
+        ("first", "index my document"),
+        ("second", "retrieve my document"),
+    ):
+        run, _ = controller.submit(session["id"], key, prompt)
+        assert wait_done(controller, run["id"])["state"] == "succeeded"
+    assert len(controller.guardian.starts) == 2
+    assert all(payload["session_id"] == session["id"] for payload in payloads)
+    assert "remembered" in json.dumps(payloads[1])
+    assert payloads[0]["run_id"] != payloads[1]["run_id"]
+
+
 @pytest.mark.parametrize(
     "body",
     [

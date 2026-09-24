@@ -16,7 +16,7 @@ import secrets
 import threading
 import time
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -43,7 +43,11 @@ except Exception:  # pylint: disable=broad-except
     faiss = None
 
 from gaia.chat.sdk import AgentConfig, AgentSDK
-from gaia.llm.lemonade_client import DEFAULT_EMBEDDING_MODEL, DEFAULT_MODEL_NAME
+from gaia.llm.lemonade_client import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_MODEL_NAME,
+    resolve_lemonade_base_url,
+)
 from gaia.logger import get_logger
 from gaia.security import PathValidator
 
@@ -93,10 +97,11 @@ class RAGConfig:
     chunk_overlap: int = 100  # Increased to 20% overlap for better context preservation
     max_chunks: int = 5  # Increased to retrieve more context
     embedding_model: str = DEFAULT_EMBEDDING_MODEL  # Lemonade GGUF embedding model
+    embedding_revision: Optional[str] = None
     cache_dir: str = ".gaia"
     show_stats: bool = False
     use_local_llm: bool = True
-    base_url: str = "http://localhost:13305/api/v1"  # Lemonade server API URL
+    base_url: str = field(default_factory=resolve_lemonade_base_url)
     # Memory management settings
     max_indexed_files: int = 100  # Maximum number of files to keep indexed
     max_total_chunks: int = 10000  # Maximum total chunks across all files
@@ -474,7 +479,7 @@ class RAGSDK:
             from gaia.llm.lemonade_client import MODELS, LemonadeClient
 
             if not hasattr(self, "llm_client") or self.llm_client is None:
-                self.llm_client = LemonadeClient()
+                self.llm_client = LemonadeClient(base_url=self.config.base_url)
 
             # Register + download the embedder before loading. Custom
             # (``user.``) embedders aren't Lemonade built-ins — they need
@@ -488,7 +493,19 @@ class RAGSDK:
                 ),
                 None,
             )
-            if mr and self.config.embedding_model.startswith("user."):
+            if self.config.embedding_revision:
+                # Explicit service profiles use operator-prepared models. Never
+                # invoke registration/download helpers in this mode.
+                canonical = self.config.embedding_model.removeprefix("user.")
+                entries = self.llm_client.list_models().get("data", [])
+                prepared = [
+                    row
+                    for row in entries
+                    if row.get("id") in {canonical, self.config.embedding_model}
+                ]
+                if len(prepared) != 1 or prepared[0].get("downloaded") is not True:
+                    raise RuntimeError("Declared embedding model is not prepared")
+            elif mr and self.config.embedding_model.startswith("user."):
                 if not self.llm_client.ensure_model_downloaded(
                     self.config.embedding_model,
                     checkpoint=mr.checkpoint,
@@ -680,13 +697,13 @@ class RAGSDK:
         """
         cache = self._get_embedding_cache()
         model_id = self.config.embedding_model
-        cached = cache.get(model_id, None, query)
+        cached = cache.get(model_id, self.config.embedding_revision, query)
         if cached is not None:
             return np.array([cached], dtype=np.float32)
 
         embedding = self._encode_texts([query], show_progress=False)
         if embedding.shape[0] > 0:
-            cache.put(model_id, None, query, embedding[0])
+            cache.put(model_id, self.config.embedding_revision, query, embedding[0])
         return embedding
 
     def _get_file_type(self, file_path: str) -> str:
@@ -2038,7 +2055,7 @@ These positions indicate where to split the text."""
                 try:
                     from gaia.llm.lemonade_client import LemonadeClient
 
-                    self.llm_client = LemonadeClient()
+                    self.llm_client = LemonadeClient(base_url=self.config.base_url)
                     self.log.info("✅ Initialized LLM client for intelligent chunking")
                 except Exception as e:
                     self.log.warning(

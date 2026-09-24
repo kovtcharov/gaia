@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — capability profiles
+
+- Add explicit embedding model/revision, frozen RAG qualification, external Python tool failure fixtures, and native Linux internal-network profile validation.
+
 ## Unreleased — service operations candidate
 
 - Add bounded telemetry, model readiness, explicit usage/cost estimates and finite drain.
