@@ -22,7 +22,9 @@ export GAIA_GAIA_SIDECAR_TOKEN_FILE=/private/caller-token
 gaia-agent --controller --state /private/controller \
   --guardian-socket /private/guardian/guardian.sock \
   --guardian-token-file /private/guardian-token \
-  --allowed-host 127.0.0.1 --port 8081
+  --allowed-host 127.0.0.1 --port 8081 \
+  --inference-probe-url http://127.0.0.1:8000/api/v1 \
+  --inference-probe-token-file /private/inference-token
 ```
 
 The source entry point is `python -m gaia_agent.durable.api`. The frozen Linux
@@ -112,7 +114,8 @@ Deletion keeps content-free idempotency tombstones for thirty days after deletio
 Expired tombstones are periodically removed. Expired conversation history requires
 `acknowledge_history_loss=true` on the next run. Operator-owned workspace files are
 retained: deleting a session is not workspace erasure or removal from backups/SSD
-blocks. The beta does not create a separate service-owned artifact store.
+blocks. The optional service-owned artifact store has explicit ownership and retryable
+cleanup; see [operations](/deployment/service-operations).
 
 ## Full backup and clone restore
 
@@ -139,7 +142,10 @@ marker and cannot start; discard its newly allocated state/volumes before retryi
 Checksums detect corruption, not malicious archive replacement; protect backups as
 credentials. The database-only `Store.backup` helper is not a full workspace backup.
 
-There is no automatic in-place schema downgrade. This beta has schema version 1;
+There is no automatic in-place schema downgrade. The release candidate uses schema version 2 with a pre-migration schema 1 backup;
 older binaries refuse unknown newer schemas. Restore the compatible image and full
 backup before attempting a separate upgrade. Release promotion, long-run saturation
 qualification and additional tool/hardware profiles are separate release gates.
+
+For readiness probes, metrics, trace export, usage, drain, migration and stress
+qualification, see [service operations](/deployment/service-operations).

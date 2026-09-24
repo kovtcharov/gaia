@@ -28,7 +28,7 @@ jobs:
           - runner: ubuntu-24.04-arm
             arch: arm64
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -67,6 +67,20 @@ jobs:
           python3 deploy/service/limits_smoke_test.py | tee evidence/limits.log
           python3 deploy/service/compose_smoke_test.py | tee evidence/compose.log
           docker image inspect gaia-service:test --format '{{json .Size}}' > evidence/image-bytes.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install qualification host dependencies
+        run: |
+          python -m pip install --no-deps --index-url https://download.pytorch.org/whl/cpu torch==2.14.0+cpu
+          python -m pip install -r deploy/service/requirements.txt
+      - name: Qualify exact digest under endurance and saturation
+        env:
+          PYTHONPATH: hub/agents/gaia/python:src
+        run: |
+          set -euo pipefail
+          python deploy/service/guardian_smoke_test.py --endpoint unix:///var/run/docker.sock
+          python deploy/service/durable_smoke_test.py --endpoint unix:///var/run/docker.sock --tasks 1000 --saturation-seconds 600 --report evidence/reliability.json 2>&1 | tee evidence/reliability.log
       - uses: actions/attest@v4
         with:
           subject-name: ${{ steps.image.outputs.name }}

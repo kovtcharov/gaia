@@ -13,7 +13,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
 
-SCHEMA_VERSION = 1
+from .operations import normalize_usage
+
+SCHEMA_VERSION = 2
 TERMINAL = {"succeeded", "failed", "cancelled", "timed_out", "interrupted"}
 
 
@@ -49,6 +51,7 @@ class Store:
             raise StoreError("restore_incomplete", 503)
         self.root, self.slots = root, slots
         self.lock = threading.RLock()
+        self.artifact_scan = None
         self.owner = (root / "controller.lock").open("a+")
         fcntl.flock(self.owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
         try:
@@ -70,7 +73,7 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, SCHEMA_VERSION):
+        if version not in (0, 1, SCHEMA_VERSION):
             raise StoreError("unsupported_schema", 503)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=FULL")
@@ -108,7 +111,16 @@ class Store:
         CREATE TABLE IF NOT EXISTS cleanup_jobs(
           id TEXT PRIMARY KEY, session_id TEXT NOT NULL, state TEXT NOT NULL, error TEXT);
         """)
+        if version == 1:
+            self.backup(root / "before-schema-2.sqlite3")
         with self.transaction():
+            if version < 2:
+                self.db.execute(
+                    "ALTER TABLE runs ADD COLUMN usage TEXT NOT NULL DEFAULT '{}'"
+                )
+            self.db.execute(
+                "CREATE TABLE IF NOT EXISTS artifacts(id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id), size INTEGER NOT NULL)"
+            )
             row = self.db.execute("SELECT id FROM deployment").fetchone()
             if row and row[0] != deployment:
                 raise StoreError("deployment_mismatch", 503)
@@ -136,6 +148,8 @@ class Store:
 
     def close(self):
         with self.lock:
+            if self.artifact_scan is not None:
+                self.artifact_scan.close()
             self.db.close()
             self.owner.close()
 
@@ -172,6 +186,9 @@ class Store:
             result = dict(row)
             result["request"] = json.loads(result["request"])
             result["policy"] = json.loads(result["policy"])
+            result["usage"] = json.loads(result["usage"]) or normalize_usage(
+                {}, result["policy"].get("model"), result["state"]
+            )
             return result
 
     def admit(
@@ -314,6 +331,7 @@ class Store:
         confirmed_stopped,
         uncertain=False,
         rotate_generation=False,
+        rates=None,
     ):
         if not confirmed_stopped or state not in TERMINAL:
             raise StoreError("termination_unconfirmed", 503)
@@ -336,6 +354,10 @@ class Store:
             self.db.execute(
                 "UPDATE runs SET state=?,execution_status='stopped',ended_at=?,terminal_seq=?,outcome_uncertain=? WHERE id=?",
                 (state, time.time(), seq, int(uncertain), run_id),
+            )
+            usage = normalize_usage(event, row["policy"].get("model"), state, rates)
+            self.db.execute(
+                "UPDATE runs SET usage=? WHERE id=?", (encode(usage), run_id)
             )
             self.db.execute(
                 "UPDATE interactions SET state='invalidated' WHERE run_id=? AND state='pending'",
@@ -552,15 +574,23 @@ class Store:
                 (time.time(), session_id),
             )
             job = str(uuid4())
-            # All files in this preview belong to operator-managed workspaces.
-            # Delete logical history only; never remove operator-owned files.
             self.db.execute(
-                "INSERT INTO cleanup_jobs VALUES (?,?,'succeeded',NULL)",
-                (job, session_id),
+                "INSERT INTO cleanup_jobs VALUES (?,?,?,NULL)",
+                (
+                    job,
+                    session_id,
+                    (
+                        "pending"
+                        if self.db.execute(
+                            "SELECT 1 FROM artifacts WHERE session_id=?", (session_id,)
+                        ).fetchone()
+                        else "succeeded"
+                    ),
+                ),
             )
             return {
                 "id": job,
-                "state": "succeeded",
+                "state": self.cleanup(job)["state"],
                 "operator_workspace_retained": True,
             }
 
@@ -592,11 +622,163 @@ class Store:
                 )
             return len(old)
 
-    def maintain(self, now=None):
-        now = time.time() if now is None else now
-        expired = self.expire_history(now - 7 * 86400)
+    @staticmethod
+    def _fsync_directory(path):
+        descriptor = os.open(path, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def put_artifact(self, session_id, content):
+        raw = content.encode("utf-8")
+        if len(raw) > 524288:
+            raise StoreError("artifact_too_large", 413)
         with self.transaction():
+            self.session(session_id)
+            count, size = self.db.execute(
+                "SELECT count(*),COALESCE(sum(size),0) FROM artifacts WHERE session_id=?",
+                (session_id,),
+            ).fetchone()
+            if count >= 64 or size + len(raw) > 16 * 1024 * 1024:
+                raise StoreError("artifact_capacity", 413)
+            root = self.root / "artifacts"
+            root.mkdir(mode=0o700, exist_ok=True)
+            if root.is_symlink():
+                raise StoreError("invalid_artifact_root", 503)
+            self._fsync_directory(self.root)
+            artifact = str(uuid4())
+            path = root / artifact
+            with path.open("xb") as handle:
+                handle.write(raw)
+                handle.flush()
+                os.fsync(handle.fileno())
+            self._fsync_directory(root)
+            self.db.execute(
+                "INSERT INTO artifacts VALUES (?,?,?)", (artifact, session_id, len(raw))
+            )
+            return {"id": artifact, "size": len(raw), "ownership": "service"}
+
+    def read_artifact(self, session_id, artifact_id):
+        with self.lock:
+            self.session(session_id)
+            if not self.db.execute(
+                "SELECT 1 FROM artifacts WHERE id=? AND session_id=?",
+                (artifact_id, session_id),
+            ).fetchone():
+                raise StoreError("artifact_not_found", 404)
+            path = self.root / "artifacts" / artifact_id
+            if path.is_symlink() or path.parent.is_symlink():
+                raise StoreError("invalid_artifact_path", 503)
+            try:
+                with path.open("rb") as handle:
+                    raw = handle.read(524289)
+                if len(raw) > 524288:
+                    raise StoreError("artifact_too_large", 413)
+                return {"id": artifact_id, "content": raw.decode("utf-8")}
+            except OSError:
+                raise StoreError("artifact_unavailable", 503) from None
+
+    def cleanup_artifacts(self):
+        with self.lock:
+            root = self.root / "artifacts"
+            if root.is_symlink():
+                raise StoreError("invalid_artifact_root", 503)
+            jobs = self.db.execute(
+                "SELECT id,session_id FROM cleanup_jobs WHERE state IN ('pending','failed') LIMIT 100"
+            ).fetchall()
+            for job in jobs:
+                try:
+                    for row in self.db.execute(
+                        "SELECT id FROM artifacts WHERE session_id=?",
+                        (job["session_id"],),
+                    ).fetchall():
+                        (root / row["id"]).unlink(missing_ok=True)
+                        with self.transaction():
+                            self.db.execute(
+                                "DELETE FROM artifacts WHERE id=?", (row["id"],)
+                            )
+                    with self.transaction():
+                        self.db.execute(
+                            "UPDATE cleanup_jobs SET state='succeeded',error=NULL WHERE id=?",
+                            (job["id"],),
+                        )
+                except OSError:
+                    with self.transaction():
+                        self.db.execute(
+                            "UPDATE cleanup_jobs SET state='failed',error='artifact_delete_failed' WHERE id=?",
+                            (job["id"],),
+                        )
+            # Only the dedicated service-owned UUID namespace is eligible for orphan cleanup.
+            if root.exists():
+                from uuid import UUID
+
+                if self.artifact_scan is None:
+                    self.artifact_scan = os.scandir(root)
+                for _ in range(100):
+                    entry = next(self.artifact_scan, None)
+                    if entry is None:
+                        self.artifact_scan.close()
+                        self.artifact_scan = None
+                        break
+                    path = Path(entry.path)
+                    try:
+                        valid = str(UUID(path.name)) == path.name
+                    except ValueError:
+                        valid = False
+                    if (
+                        valid
+                        and not self.db.execute(
+                            "SELECT 1 FROM artifacts WHERE id=?", (path.name,)
+                        ).fetchone()
+                    ):
+                        path.unlink(missing_ok=True)
+
+    def statistics(self):
+        with self.lock:
+            counts = dict(
+                self.db.execute("SELECT state,count(*) FROM runs GROUP BY state")
+            )
+            return {
+                "active_runs": sum(
+                    counts.get(state, 0)
+                    for state in ("accepted", "running", "stopping")
+                ),
+                "runs_by_state": counts,
+                "capacity": self.slots,
+                "database_bytes": sum(
+                    path.stat().st_size for path in self.root.glob("service.sqlite3*")
+                ),
+                "retained_event_bytes": self.db.execute(
+                    "SELECT COALESCE(sum(encoded_bytes),0) FROM events"
+                ).fetchone()[0],
+                "pending_cleanup": self.db.execute(
+                    "SELECT count(*) FROM cleanup_jobs WHERE state!='succeeded'"
+                ).fetchone()[0],
+                "workspace_quota": "not_enforced",
+            }
+
+    def maintain(self, now=None, content_days=7, metadata_days=30):
+        now = time.time() if now is None else now
+        expired = self.expire_history(now - content_days * 86400)
+        with self.transaction():
+            old = self.db.execute(
+                "SELECT id,key,request_hash,ended_at FROM runs WHERE ended_at < ? LIMIT 100",
+                (now - metadata_days * 86400,),
+            ).fetchall()
+            for row in old:
+                self.db.execute(
+                    "INSERT OR REPLACE INTO tombstones VALUES (?,?,?,?)",
+                    (
+                        row["key"],
+                        row["request_hash"],
+                        row["id"],
+                        row["ended_at"] + 30 * 86400,
+                    ),
+                )
+                self.db.execute("DELETE FROM runs WHERE id=?", (row["id"],))
             self.db.execute("DELETE FROM tombstones WHERE expires_at < ?", (now,))
+        self.cleanup_artifacts()
         return expired
 
     def backup(self, destination):

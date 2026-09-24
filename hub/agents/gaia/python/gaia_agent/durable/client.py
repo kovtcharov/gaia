@@ -88,6 +88,8 @@ def main(argv=None):
     parser.add_argument("--token-file", type=Path)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("capabilities")
+    for command in ("metrics", "diagnostics", "drain"):
+        sub.add_parser(command)
     create = sub.add_parser("create-session")
     create.add_argument("workspace_id")
     create.add_argument("--title", default="")
@@ -127,6 +129,10 @@ def main(argv=None):
             raise RuntimeError("Unsupported durable service contract")
         if args.command == "capabilities":
             result = caps
+        elif args.command in {"metrics", "diagnostics", "drain"}:
+            result = client.call(
+                "POST" if args.command == "drain" else "GET", "/" + args.command
+            )
         elif args.command == "create-session":
             result = client.call(
                 "POST",

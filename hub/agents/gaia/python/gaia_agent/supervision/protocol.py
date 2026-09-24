@@ -17,6 +17,7 @@ from pathlib import Path
 from gaia.logger import get_logger
 
 from .guardian import Guardian, GuardianError
+from .runtime import DockerOperationError
 
 LOGGER = get_logger(__name__)
 MAX_BODY = 16384
@@ -147,6 +148,13 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, result)
         except GuardianError as exc:
             self.reply(409, {"error": str(exc)})
+        except DockerOperationError as exc:
+            LOGGER.error(
+                "Guardian runtime failure: operation=%s reason=%s",
+                exc.operation,
+                exc.reason,
+            )
+            self.reply(503, {"error": "guardian_unavailable"})
         except (ValueError, TypeError, KeyError):
             self.reply(400, {"error": "invalid_request"})
         except Exception:

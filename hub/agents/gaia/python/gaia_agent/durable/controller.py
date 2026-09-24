@@ -14,6 +14,7 @@ import requests
 
 from gaia.logger import get_logger
 
+from .operations import REJECTIONS, InferenceProbe, Telemetry, validate_rates
 from .store import Store, StoreError
 
 LOGGER = get_logger(__name__)
@@ -33,7 +34,28 @@ class LiveRun:
 
 
 class Controller:
-    def __init__(self, directory, guardian, secrets_to_redact=()):
+    def __init__(
+        self,
+        directory,
+        guardian,
+        secrets_to_redact=(),
+        trace_directory=None,
+        rates=None,
+        content_days=7,
+        metadata_days=30,
+        inference_probe_url=None,
+        inference_probe_token_file=None,
+    ):
+        if (
+            type(content_days) is not int
+            or not 0 <= content_days <= 365
+            or type(metadata_days) is not int
+            or not max(1, content_days) <= metadata_days <= 365
+        ):
+            raise ValueError("Invalid retention policy")
+        self.content_days, self.metadata_days = content_days, metadata_days
+        self.rates = validate_rates(rates)
+        self.telemetry = Telemetry(trace_directory)
         self.guardian = guardian
         self.capabilities = guardian.call("capabilities")
         if self.capabilities["protocol"] < 2:
@@ -44,9 +66,19 @@ class Controller:
             self.capabilities["workspaces"],
             self.capabilities["slots"],
         )
+        self.probe = InferenceProbe(
+            inference_probe_url, self.capabilities["model"], inference_probe_token_file
+        )
+        self.probe.check()
+        self.guardian_ready = True
         self.epoch = str(uuid4())
         self.healthy = False
         self.draining = False
+        self.drain_lock = threading.Lock()
+        self.drain_thread = None
+        self.drain_errors = []
+        self.store_close_thread = None
+        self.store_close_error = False
         self.lock = threading.RLock()
         self.live = {}
         self.global_secrets = tuple(secrets_to_redact)
@@ -54,6 +86,7 @@ class Controller:
         try:
             self._recover()
         except BaseException:
+            self.telemetry.close()
             self.store.close()
             raise
         self.maintenance_done = threading.Event()
@@ -78,24 +111,38 @@ class Controller:
                 uncertain=row["execution_status"] != "not_started",
                 rotate_generation=True,
             )
-        self.store.expire_history(time.time() - 7 * 86400)
+        self.store.maintain(
+            content_days=self.content_days, metadata_days=self.metadata_days
+        )
         self.healthy = True
 
     def _maintain(self):
-        while not self.maintenance_done.wait(60):
+        next_retention = time.monotonic() + 60
+        while not self.maintenance_done.wait(5):
+            self.probe.check()
             try:
-                self.store.maintain()
+                self.guardian_ready = self.guardian.call("health")["healthy"]
             except Exception:
-                self.storage_failed()
-                LOGGER.error("Retention failed; admission is closed")
+                self.guardian_ready = False
+                self.telemetry.increment("reconciliation_failures")
+            if self.maintenance_done.is_set():
                 return
+            if time.monotonic() >= next_retention:
+                try:
+                    self.store.maintain(
+                        content_days=self.content_days, metadata_days=self.metadata_days
+                    )
+                except Exception:
+                    self.storage_failed()
+                    LOGGER.error("Retention failed; admission is closed")
+                    return
+                next_retention = time.monotonic() + 60
 
     def storage_failed(self):
         # A fresh epoch also rejects delayed start requests from this controller.
-        with self.lock:
-            self.healthy = False
-            for live in self.live.values():
-                live.done.set()
+        self.healthy = False
+        for live in self.live.copy().values():
+            live.done.set()
         try:
             self.guardian.call("fence", controller_epoch=str(uuid4()))
         except Exception:
@@ -106,21 +153,33 @@ class Controller:
     ):
         # Replay must remain available even while the service is busy or draining.
         with self.lock:
-            if not self.healthy or self.draining:
+            if (
+                not self.healthy
+                or self.draining
+                or not self.guardian_ready
+                or (self.probe.url and not self.probe.state["ready"])
+            ):
                 with self.store.lock:
                     existing = self.store.db.execute(
-                        "SELECT id FROM runs WHERE key=?", (key,)
+                        "SELECT id FROM runs WHERE key=? UNION ALL SELECT run_id AS id FROM tombstones WHERE key=?",
+                        (key, key),
                     ).fetchone()
                 if not existing:
                     raise StoreError("admission_closed", 503)
-            run, created = self.store.admit(
-                session_id,
-                key,
-                prompt,
-                max_steps,
-                self.capabilities,
-                acknowledge_history_loss,
-            )
+            try:
+                run, created = self.store.admit(
+                    session_id,
+                    key,
+                    prompt,
+                    max_steps,
+                    self.capabilities,
+                    acknowledge_history_loss,
+                )
+            except StoreError as exc:
+                self.telemetry.increment(
+                    "rejection", exc.code if exc.code in REJECTIONS else "other"
+                )
+                raise
             if created:
                 live = LiveRun(run, epoch=self.epoch)
                 live.secrets.extend(self.global_secrets)
@@ -168,7 +227,7 @@ class Controller:
     def _heartbeat(self, live):
         interval = max(0.1, self.capabilities["lease"] / 3)
         while not live.done.wait(interval):
-            if not self.healthy:
+            if not self.healthy or self.draining:
                 return
             try:
                 self.guardian.call(
@@ -234,7 +293,7 @@ class Controller:
         state, uncertain = "failed", False
         heartbeat = None
         try:
-            if not self.healthy:
+            if not self.healthy or self.draining:
                 raise StoreError("admission_closed", 503)
             if not self.store.dispatching(run["id"]):
                 return
@@ -251,6 +310,7 @@ class Controller:
             )
             heartbeat.start()
             self.store.started(run["id"])
+            self.telemetry.duration("startup", max(0, time.time() - run["created_at"]))
             if self.store.run(run["id"])["state"] == "stopping":
                 state = "cancelled"
                 return
@@ -319,12 +379,25 @@ class Controller:
                 stopped = self.guardian.call(
                     "cancel", run=run["id"], generation=run["generation"]
                 )
-                self.store.finish(
+                terminal = self.store.finish(
                     run["id"],
                     state,
                     result,
                     stopped["state"] == "stopped",
                     uncertain=uncertain and state != "succeeded",
+                    rates=self.rates,
+                )
+                self.telemetry.terminal(terminal)
+                LOGGER.info(
+                    "%s",
+                    json.dumps(
+                        {
+                            "event": "run_terminal",
+                            "run": run["id"],
+                            "generation": run["generation"],
+                            "state": terminal["state"],
+                        }
+                    ),
                 )
             except Exception:
                 self.healthy = False
@@ -333,10 +406,9 @@ class Controller:
                 self.live.pop(run["id"], None)
 
     def cancel(self, run_id):
-        with self.lock:
-            live = self.live.get(run_id)
-            if live:
-                live.done.set()
+        live = self.live.get(run_id)
+        if live:
+            live.done.set()
         try:
             run = self.store.stopping(run_id)
         except sqlite3.Error:
@@ -369,8 +441,7 @@ class Controller:
 
     def pending_interaction(self, run_id):
         row = self.store.interaction(run_id)
-        with self.lock:
-            live = self.live.get(run_id)
+        live = self.live.get(run_id)
         if live is None:
             raise StoreError("interaction_unavailable")
         with live.lock:
@@ -410,8 +481,7 @@ class Controller:
             raise StoreError("storage_unavailable", 503) from None
         if not deliver:
             return {"accepted": True, "delivery": row["delivery"], "replayed": True}
-        with self.lock:
-            live = self.live.get(run_id)
+        live = self.live.get(run_id)
         if live is None:
             self.cancel(run_id)
             raise StoreError("interaction_delivery_unknown", 503)
@@ -448,23 +518,66 @@ class Controller:
             self.cancel(run_id)
             raise StoreError("interaction_delivery_unknown", 503) from None
 
-    def close(self):
+    def _drain_runs(self):
+        try:
+            self.guardian.call("fence", controller_epoch=str(uuid4()))
+            for run in self.store.active():
+                try:
+                    self.cancel(run["id"])
+                except Exception:
+                    self.drain_errors.append("termination_unconfirmed")
+        except Exception:
+            self.healthy = False
+            self.drain_errors.append("drain_unconfirmed")
+            LOGGER.error("Drain could not confirm execution termination")
+
+    def drain(self):
         self.draining = True
+        with self.drain_lock:
+            for live in self.live.copy().values():
+                live.done.set()
+            if self.drain_thread is None:
+                self.drain_thread = threading.Thread(
+                    target=self._drain_runs, daemon=True
+                )
+                self.drain_thread.start()
+            return {
+                "draining": True,
+                "complete": not self.drain_thread.is_alive(),
+                "errors": list(self.drain_errors),
+            }
+
+    def _close_store(self):
+        try:
+            self.store.close()
+        except Exception:
+            self.store_close_error = True
+            LOGGER.error("Storage close failed; guardian owns recovery")
+
+    def close(self, timeout=25):
+        deadline = time.monotonic() + timeout
         self.maintenance_done.set()
-        self.maintenance_thread.join(timeout=5)
-        failed = []
-        for run in self.store.active():
-            try:
-                self.cancel(run["id"])
-            except Exception:
-                failed.append(run["id"])
-        with self.lock:
-            pending = list(self.live.values())
+        self.drain()
+        self.maintenance_thread.join(timeout=max(0, deadline - time.monotonic()))
+        self.drain_thread.join(timeout=max(0, deadline - time.monotonic()))
+        pending = list(self.live.copy().values())
         for live in pending:
             live.done.set()
-            live.thread.join(timeout=20)
-            if live.thread.is_alive():
-                failed.append(live.run["id"])
-        if failed:
-            raise StoreError("drain_incomplete", 503)
-        self.store.close()
+            live.thread.join(timeout=max(0, deadline - time.monotonic()))
+        self.telemetry.close()
+        self.probe.close()
+        if (
+            self.maintenance_thread.is_alive()
+            or self.drain_thread.is_alive()
+            or self.drain_errors
+            or any(live.thread.is_alive() for live in pending)
+        ):
+            raise StoreError("drain_incomplete_guardian_owns_recovery", 503)
+        if self.store_close_thread is None:
+            self.store_close_thread = threading.Thread(
+                target=self._close_store, daemon=True
+            )
+            self.store_close_thread.start()
+        self.store_close_thread.join(timeout=max(0, deadline - time.monotonic()))
+        if self.store_close_thread.is_alive() or self.store_close_error:
+            raise StoreError("storage_close_incomplete_guardian_owns_recovery", 503)

@@ -379,6 +379,7 @@
               "deployment/shareable-build",
               "deployment/container-service",
               "guides/durable-service",
+              "deployment/service-operations",
               "spec/service-supervision",
               "deployment/ui",
               "deployment/testing-electron",

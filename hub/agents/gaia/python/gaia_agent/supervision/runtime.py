@@ -9,6 +9,29 @@ import subprocess
 PREFIX = "ai.gaia.execution."
 
 
+class DockerOperationError(RuntimeError):
+    """Safe diagnostics without Docker arguments, output, or mounted secrets."""
+
+    def __init__(self, operation, reason):
+        allowed = {
+            "create",
+            "start",
+            "inspect",
+            "ps",
+            "kill",
+            "rm",
+            "network",
+            "volume",
+            "image",
+            "run",
+        }
+        self.operation = operation if operation in allowed else "other"
+        self.reason = reason
+        super().__init__(
+            f"Docker {self.operation}: {reason}; execution status is unknown"
+        )
+
+
 class DockerRuntime:
     """The guardian alone receives the host-administrative runtime endpoint."""
 
@@ -18,15 +41,21 @@ class DockerRuntime:
         self.endpoint, self.executable, self.timeout = endpoint, executable, timeout
 
     def call(self, *arguments):
-        result = subprocess.run(
-            [self.executable, "--host", self.endpoint, *arguments],
-            capture_output=True,
-            text=True,
-            timeout=self.timeout,
-            check=False,
-        )
+        operation = arguments[0] if arguments else "other"
+        try:
+            result = subprocess.run(
+                [self.executable, "--host", self.endpoint, *arguments],
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            raise DockerOperationError(operation, "timeout") from None
+        except OSError:
+            raise DockerOperationError(operation, "unavailable") from None
         if result.returncode:
-            raise RuntimeError("Docker operation failed; execution status is unknown")
+            raise DockerOperationError(operation, "nonzero_exit")
         return result.stdout.strip()
 
     def inventory(self, deployment):

@@ -4,7 +4,9 @@
 
 import argparse
 import asyncio
+import json
 import sqlite3
+import time
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -12,20 +14,38 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from gaia_agent import caller_auth
 from gaia_agent.service_limits import RequestBodyLimitMiddleware
 from gaia_agent.supervision.protocol import Client
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    field_validator,
+)
 
 from .controller import Controller
-from .store import StoreError, encode
+from .store import SCHEMA_VERSION, StoreError, encode
 
 PREFIX = "/v1/gaia/service"
 
 
 class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("*", check_fields=False)
+    @classmethod
+    def valid_utf8(cls, value):
+        if isinstance(value, str):
+            try:
+                value.encode("utf-8")
+            except UnicodeEncodeError:
+                raise ValueError("Expected valid UTF-8 text") from None
+        return value
 
 
 class SessionRequest(Strict):
@@ -37,6 +57,10 @@ class RunRequest(Strict):
     prompt: str
     max_steps: StrictInt = Field(default=20, ge=1, le=20)
     acknowledge_history_loss: StrictBool = False
+
+
+class ArtifactRequest(Strict):
+    content: str
 
 
 class AnswerRequest(Strict):
@@ -64,6 +88,7 @@ def public_run(run):
             "terminal_seq",
             "seq",
             "earliest_seq",
+            "usage",
         )
     }
 
@@ -85,6 +110,15 @@ def build_app(controller, auth):
     app = FastAPI(
         title="GAIA durable service", lifespan=lifespan, docs_url=None, redoc_url=None
     )
+
+    @app.middleware("http")
+    async def timing(request, call_next):
+        started = time.monotonic()
+        try:
+            return await call_next(request)
+        finally:
+            controller.telemetry.duration("request", time.monotonic() - started)
+
     app.add_middleware(caller_auth.HostOriginMiddleware)
     app.add_middleware(RequestBodyLimitMiddleware, max_bytes=1048576)
 
@@ -93,6 +127,12 @@ def build_app(controller, auth):
             raise HTTPException(401, "Bearer credential required")
 
     router = APIRouter(prefix=PREFIX, dependencies=[Depends(authorized)])
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(_request, _exc):
+        # Framework validation errors reflect input and can themselves fail to
+        # encode non-finite JSON numbers. Never echo prompts/answers here.
+        return JSONResponse({"error": "invalid_request"}, status_code=422)
 
     @app.exception_handler(StoreError)
     async def store_error(_request, exc):
@@ -112,14 +152,22 @@ def build_app(controller, auth):
 
     @app.get("/ready")
     def ready():
-        available = controller.healthy and not controller.draining
-        return JSONResponse({"ready": available}, status_code=200 if available else 503)
+        available = (
+            controller.healthy
+            and not controller.draining
+            and controller.guardian_ready
+            and controller.probe.state["ready"]
+        )
+        return JSONResponse(
+            {"ready": available, "inference": controller.probe.state},
+            status_code=200 if available else 503,
+        )
 
     @router.get("/capabilities")
     def capabilities():
         return {
             "api_version": 1,
-            "schema_version": 1,
+            "schema_version": SCHEMA_VERSION,
             "durable_runs": True,
             "disconnect_cancels": False,
             "guardian": controller.capabilities,
@@ -235,16 +283,52 @@ def build_app(controller, auth):
     def cleanup(job_id: UUID):
         return controller.store.cleanup(str(job_id))
 
+    @router.post("/drain")
+    def drain():
+        return controller.drain()
+
+    @router.get("/metrics")
+    def metrics():
+        return {
+            **controller.telemetry.snapshot(),
+            "store": controller.store.statistics(),
+        }
+
+    @router.post("/sessions/{session_id}/artifacts", status_code=201)
+    def artifact(session_id: UUID, body: ArtifactRequest):
+        return controller.store.put_artifact(str(session_id), body.content)
+
+    @router.get("/sessions/{session_id}/artifacts/{artifact_id}")
+    def read_artifact(session_id: UUID, artifact_id: UUID):
+        return JSONResponse(
+            controller.store.read_artifact(str(session_id), str(artifact_id)),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @router.post("/cleanup/{job_id}/retry")
+    def retry_cleanup(job_id: UUID):
+        controller.store.cleanup(str(job_id))
+        controller.store.cleanup_artifacts()
+        return controller.store.cleanup(str(job_id))
+
     @router.get("/diagnostics")
     def diagnostics():
         return {
             "healthy": controller.healthy,
             "draining": controller.draining,
-            "active_runs": len(controller.store.active()),
+            "store": controller.store.statistics(),
             "model": controller.capabilities["model"],
-            "schema_version": 1,
-            "usage_status": "unavailable",
-            "telemetry_export": False,
+            "schema_version": SCHEMA_VERSION,
+            "telemetry": controller.telemetry.snapshot(),
+            "retention": {
+                "content_days": controller.content_days,
+                "metadata_days": controller.metadata_days,
+            },
+            "execution_profile": "docker-single-tenant",
+            "storage": "local-filesystem-only",
+            "inference_readiness": controller.probe.state,
+            "guardian_ready": controller.guardian_ready,
+            "persistent_volume_quota": "not_enforced",
         }
 
     app.include_router(router)
@@ -261,6 +345,12 @@ def main(argv=None):
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8081)
     parser.add_argument("--allowed-host", action="append", required=True)
+    parser.add_argument("--trace-directory", type=Path)
+    parser.add_argument("--rate-table", type=Path)
+    parser.add_argument("--content-days", type=int, default=7)
+    parser.add_argument("--metadata-days", type=int, default=30)
+    parser.add_argument("--inference-probe-url")
+    parser.add_argument("--inference-probe-token-file", type=Path)
     args = parser.parse_args(argv)
     if any(
         not host
@@ -283,6 +373,12 @@ def main(argv=None):
         args.state,
         Client(args.guardian_socket, guardian_token),
         (auth.token, guardian_token),
+        trace_directory=args.trace_directory,
+        rates=json.loads(args.rate_table.read_text()) if args.rate_table else None,
+        content_days=args.content_days,
+        metadata_days=args.metadata_days,
+        inference_probe_url=args.inference_probe_url,
+        inference_probe_token_file=args.inference_probe_token_file,
     )
     app = build_app(controller, auth)
     uvicorn.run(

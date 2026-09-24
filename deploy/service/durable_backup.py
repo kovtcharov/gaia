@@ -11,6 +11,7 @@ import fcntl
 import hashlib
 import json
 import os
+import shutil
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -60,15 +61,28 @@ def require_idle(runtime, policy):
 
 def verify(root):
     manifest = json.loads((root / "manifest.json").read_text())
-    if manifest["schema"] != SCHEMA_VERSION or manifest["database_sha256"] != checksum(
-        root / "service.sqlite3"
-    ):
+    if manifest["schema"] not in (1, SCHEMA_VERSION) or manifest[
+        "database_sha256"
+    ] != checksum(root / "service.sqlite3"):
         raise ValueError("Database backup integrity failed")
     for workspace, files in manifest["workspaces"].items():
         if str(UUID(workspace)) != workspace:
             raise ValueError("Invalid workspace identity")
         if inventory(root / workspace) != files:
             raise ValueError("Workspace backup integrity failed")
+    for artifact, digest in manifest.get("artifacts", {}).items():
+        if (
+            str(UUID(artifact)) != artifact
+            or checksum(root / "artifacts" / artifact) != digest
+        ):
+            raise ValueError("Artifact backup integrity failed")
+    with sqlite3.connect(
+        (root / "service.sqlite3").resolve().as_uri() + "?mode=ro", uri=True
+    ) as database:
+        if manifest["schema"] >= 2:
+            expected = {row[0] for row in database.execute("SELECT id FROM artifacts")}
+            if not expected.issubset(manifest.get("artifacts", {})):
+                raise ValueError("Backup is missing referenced artifacts")
     return manifest
 
 
@@ -103,6 +117,18 @@ def backup(root, state, guardian_state, policy, runtime):
                             "cp", f"{container}:/{volume}", str(destination / volume)
                         )
                 manifest["workspaces"][workspace] = inventory(destination)
+            artifacts = state / "artifacts"
+            manifest["artifacts"] = {}
+            if artifacts.exists():
+                if artifacts.is_symlink() or any(
+                    path.is_symlink() or not path.is_file()
+                    for path in artifacts.iterdir()
+                ):
+                    raise ValueError("Invalid service artifact directory")
+                shutil.copytree(artifacts, root / "artifacts")
+                manifest["artifacts"] = {
+                    path.name: checksum(path) for path in artifacts.iterdir()
+                }
             require_idle(runtime, policy)
             (root / "manifest.json").write_text(json.dumps(manifest, sort_keys=True))
             verify(root)
@@ -173,6 +199,8 @@ def restore(root, state, policy, runtime):
     finally:
         source.close()
         target.close()
+    if manifest.get("artifacts"):
+        shutil.copytree(root / "artifacts", state / "artifacts")
     (state / "RESTORE_INCOMPLETE").unlink()
 
 

@@ -324,3 +324,82 @@ def test_failed_receipt_stops_execution_without_delivery(controller, monkeypatch
     assert (
         controller.store.interaction(run["id"], interaction["id"])["state"] == "pending"
     )
+
+
+def test_drain_fences_even_when_admission_lock_is_stalled(controller):
+    acquired, release, fenced = threading.Event(), threading.Event(), threading.Event()
+    original = controller.guardian.call
+
+    def guardian(operation, **payload):
+        if operation == "fence":
+            fenced.set()
+        return original(operation, **payload)
+
+    controller.guardian.call = guardian
+
+    def blocked():
+        with controller.lock:
+            acquired.set()
+            assert release.wait(3)
+
+    thread = threading.Thread(target=blocked)
+    thread.start()
+    assert acquired.wait(1)
+    try:
+        before = time.monotonic()
+        controller.drain()
+        assert time.monotonic() - before < 0.2
+        assert fenced.wait(1)
+    finally:
+        release.set()
+        thread.join(2)
+
+
+def test_close_deadline_covers_unrelated_storage_lock(controller):
+    controller.drain()
+    controller.drain_thread.join(1)
+    acquired, release = threading.Event(), threading.Event()
+
+    def storage_operation():
+        with controller.store.lock:
+            acquired.set()
+            assert release.wait(3)
+
+    thread = threading.Thread(target=storage_operation)
+    thread.start()
+    assert acquired.wait(1)
+    try:
+        before = time.monotonic()
+        with pytest.raises(StoreError, match="storage_close_incomplete"):
+            controller.close(timeout=0.1)
+        assert time.monotonic() - before < 0.5
+    finally:
+        release.set()
+        thread.join(1)
+        controller.store_close_thread.join(1)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"prompt":NaN}',
+        b'{"prompt":"\\ud800"}',
+        b'{"prompt":"canary-private-prompt","max_steps":Infinity}',
+        b'{"prompt":"canary-private-prompt","max_steps":-Infinity}',
+        b'{"prompt":{"secret":"canary-private-prompt"}}',
+    ],
+)
+def test_adversarial_validation_is_bounded_and_never_reflects_content(controller, body):
+    client = app_client(controller)
+    session = client.post(
+        PREFIX + "/sessions", json={"workspace_id": controller.guardian.workspace}
+    ).json()
+    response = client.post(
+        PREFIX + f"/sessions/{session['id']}/runs",
+        content=body,
+        headers={"Idempotency-Key": "malformed", "Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
+    assert "canary-private-prompt" not in response.text
+    assert not controller.store.active()
+    assert client.get(PREFIX + "/metrics").status_code == 200

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — service operations candidate
+
+- Add bounded telemetry, model readiness, explicit usage/cost estimates and finite drain.
+- Add managed artifact ownership, retryable cleanup and schema-1 upgrade/rollback fixtures.
+- Add real-socket adversarial checks and full container endurance/saturation qualification.
+
 ## Unreleased — durable service beta
 
 - Add a separate durable API/controller and CLI with transactional idempotency,
