@@ -39,7 +39,13 @@ class RequestBodyLimitMiddleware:
         )
         control = (
             control
-            or path in {"/v1/gaia/service/diagnostics", "/v1/gaia/service/capabilities"}
+            or path
+            in {
+                "/v1/gaia/service/diagnostics",
+                "/v1/gaia/service/capabilities",
+                "/v1/gaia/service/metrics",
+                "/v1/gaia/service/drain",
+            }
             or re.fullmatch(
                 r"/v1/gaia/service/runs/[0-9a-f-]{36}(?:/(?:cancel|interaction|interactions/[0-9a-f-]{36}/answer))?",
                 path,

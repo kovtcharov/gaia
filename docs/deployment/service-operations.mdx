@@ -1,0 +1,166 @@
+---
+title: Durable service operations
+description: Release candidate operations, qualification and recovery gates
+---
+
+This is a **release candidate**, not a promoted supported release. Use the
+[single-tenant durable service](/guides/durable-service) contract. Local tests do
+not substitute for signed registry artifacts, clean installation of those exact
+digests, vulnerability review or tests on absent hardware.
+
+## Readiness, drain and rotation
+
+Configure a host-reachable inference API URL with the exact advertised model ID.
+The probe must address the inference service, not the controller itself. For a
+container-only inference address, publish a dedicated loopback port. The worker
+can continue using its private container network address.
+
+```bash
+gaia-agent --controller --state /private/controller \
+  --guardian-socket /private/guardian/guardian.sock \
+  --guardian-token-file /private/guardian-token --allowed-host 127.0.0.1 \
+  --inference-probe-url http://127.0.0.1:8000/api/v1 \
+  --inference-probe-token-file /private/inference-token
+```
+
+`/health` reports controller liveness. `/ready` also requires a successful cached
+model-discovery probe and healthy guardian reconciliation. A missing probe is
+explicitly unready. Probes run every five seconds with one bounded background
+worker, a three-second observation deadline and a 1 MiB catalog limit. A stuck
+probe cannot create additional threads or block cancellation. Readiness cannot
+guarantee a subsequent provider call will succeed; actual workers still check
+model readiness before query dispatch. Ordinary capacity saturation is separate.
+
+Authenticated `POST /v1/gaia/service/drain` immediately closes admission and starts
+fencing/cancellation. Poll it for `complete` and inspect `errors`; a draining flag
+alone does not mean every executor has stopped. Controls remain available. SIGTERM
+uses a 25-second global drain budget plus a two-second optional telemetry flush.
+Unconfirmed shutdown raises an explicit error and leaves recovery to the independent
+guardian. No new request is admitted once draining starts.
+
+For credential rotation, drain, stop the controller, confirm no owned executors,
+then stop the guardian. Replace private mounted token files, restart the guardian
+and controller, and verify the old bearer is refused. Inference credentials use
+the same stopped-worker rotation boundary. There is no overlapping-key/SSO claim.
+
+## Metrics, traces and usage
+
+Authenticated `/v1/gaia/service/metrics` returns fixed-label counters, fixed duration
+buckets, current capacity, retained event bytes, SQLite/WAL bytes and pending cleanup.
+Process counters reset on restart; database outcome counts describe retained history.
+No prompt, tool argument, path, run ID or session ID is a metric label. Request
+latency measures response-header handling; streaming lifetime is separate from it.
+Startup and run buckets measure observed controller lifecycle. An empty tool histogram
+means tool timing is unavailable, not a measured zero.
+
+Optional `--trace-directory /private/traces` exports only terminal correlation IDs,
+generation, outcome, execution status, uncertainty and timestamp. It excludes
+content, credentials and usage payloads. The queue holds at most 128 records and
+rotates two approximately 8 MiB JSONL files. Export failure increments visible
+drop/failure counters and never blocks durable execution. Traces are best-effort,
+not an audit database. Protect the directory as private operator data.
+
+Run status includes `usage.status` (`reported`, `incomplete`, or `unavailable`),
+nullable token counts, configured model and measurement source. Worker output-token
+measurements alone remain incomplete. Cancelled billing may be incomplete; missing
+counts are never invented as zero. A run aggregate is stored once with its terminal
+transaction; duplicate terminal calls do not double-count provider usage.
+
+An optional operator JSON `--rate-table` accepts a version and per-model USD input/
+output prices per million tokens. It computes an explicitly **estimated** cost only
+when both counts are reported and the run succeeded. Cache discounts are not inferred.
+No rates are bundled; this is not an invoice, spending cap or billing integration.
+
+```json
+{"version":"operator-2026-09","models":{"EXACT_MODEL_ID":{"input_per_million":1.0,"output_per_million":2.0}}}
+```
+
+## Data lifecycle and migration
+
+`--content-days` defaults to 7 (0 disables completed content retention);
+`--metadata-days` defaults to 30 and must be at least the content window and one day.
+Maintenance processes bounded batches. Active records are never aged out. Expired
+history requires explicit acknowledgement before continuation. Minimal key tombstones
+protect retries through thirty days after terminal completion or explicit deletion.
+These are technical policies, not a secure-erasure or legal-compliance guarantee.
+
+The controller owns a separate artifact directory under its private state root.
+`POST /v1/gaia/service/sessions/{id}/artifacts` accepts UTF-8 `content` up to 512 KiB,
+with at most 64 files/16 MiB per session. The response supplies a server-generated
+UUID; `GET /sessions/{id}/artifacts/{artifact}` retrieves it with `no-store`.
+File and directory entries are fsynced before the SQLite ownership reference commits.
+Deleting a session queues only these managed files for deletion. Failure stays visible
+in `/cleanup/{id}` and can be retried with `POST /cleanup/{id}/retry`; periodic
+maintenance also retries. Operator/shared workspace files remain untouched. Managed
+artifacts currently expire by session deletion; content-age retention covers run
+messages/events, not an implicit workspace or artifact erasure policy.
+
+Schema 2 upgrades schema 1 under the exclusive controller lock and writes
+`before-schema-2.sqlite3` using SQLite backup before migration. Drain the beta before
+upgrade. A preserved beta SQL fixture tests messages/outcomes and compatible rollback
+backup; older binaries must refuse schema 2. If migration fails after creating the
+backup, inspect it and restore the previous version before retrying; do not overwrite
+or silently downgrade state. Full backup additionally includes managed artifacts and
+refuses a missing referenced file. Restore clones use fresh deployment identities,
+volumes and tokens, and cannot inherit actionable approvals or guardian ownership.
+
+## Failure runbook
+
+| Symptom | Required action |
+| --- | --- |
+| Storage full/unwritable | Stop traffic; preserve state; verify guardian termination; free capacity; restart for reconciliation. Never delete active reservations manually. |
+| Runtime unavailable/unknown stop | Keep admission closed; restore Docker transport; verify owned inventory reconciles; do not launch replacement work on that workspace. |
+| Provider/model unready | Inspect safe readiness code and exact model configuration; restore inference; wait for cached probe recovery. Liveness should remain available. |
+| Cleanup failed | Inspect operator filesystem permissions/capacity; retry the cleanup job; do not report erasure complete. |
+| Incomplete restore | Discard the newly created clone volumes/state and restore again from a verified backup. Never start with the marker removed manually. |
+| Stalled shutdown | Allow guardian lease expiry/reconciliation; verify exact owned container labels and stopped state before another controller or backup. |
+
+The tested profile is a trusted single tenant, local SQLite, Docker named volumes,
+read-only worker root, bounded tmpfs/memory/PIDs/output and dedicated workspace
+serialization. Persistent-volume disk quotas and default egress allowlists are **not
+enforced** by this profile. Host administrators and Docker socket owners are trusted.
+Do not expose it as unrelated-user tenancy. The guardian also caps its retained
+execution journal at 10,000 records and refuses further dispatch at that limit;
+restart does not reset that history. Plan a drained deployment replacement before
+that bound. Automatic guardian-history compaction is not implemented.
+
+## Stress and adversarial qualification
+
+```bash
+PYTHONPATH=hub/agents/gaia/python:src python deploy/service/durable_smoke_test.py \
+  --endpoint unix:///var/run/docker.sock --tasks 1000 --saturation-seconds 600 \
+  --report test-results/reliability.json
+```
+
+This executes frozen workers over real HTTP, interleaves cancellation/restart,
+checks exactly one terminal event and zero orphan executors, then applies eight
+concurrent submitters for ten minutes while probing reserved controls. It records
+latencies, RSS and database growth. The initial guardrails allow less than 128 MiB
+controller RSS growth and controls under five seconds; measured values, not these
+ceilings, establish future performance budgets.
+
+Adversarial cases include 32 incomplete 1 MiB uploads, a thirty-third rejected
+upload with reserved controls responsive, malformed/overlarge requests, bad bearer
+and Origin, duplicate-key contention, event floods with terminal reserve, split-secret
+chunks, stale/conflicting receipts, unavailable storage, missing/corrupted backup
+artifacts, symlink/path attempts, exporter failures and blocked admission during drain.
+These cases derive from the boundaries that can lose correctness under pressure:
+
+| Boundary | Adversarial or stress input | Required invariant |
+| --- | --- | --- |
+| Admission transaction | 1,000 same-key requests from 16 threads | One run and one user message |
+| HTTP upload budget | 32 stalled large bodies plus new arrivals | Bounded admission; controls still respond |
+| Event persistence | Repeated near-limit events | Explicit limit error; terminal event still commits |
+| Interaction delivery | Stale generation, conflicting answer, lost acknowledgement | No stale approval or repeated delivery |
+| Runtime ownership | Controller death, lost create acknowledgement, unavailable runtime | No duplicate dispatch; no capacity release before confirmed stop |
+| Storage ownership | Stalled writer, missing artifact, path/symlink substitution | Fail visibly and terminate; never delete operator files |
+| Long-lived controller | 1,000 tasks, scheduled cancellation/crash, then eight submitters | Zero orphans, bounded memory, exactly one terminal event |
+| Secret handling | Split sensitive chunks and runtime exceptions containing credentials | No persisted secret fragments or command arguments |
+
+The native container workflow runs short real-socket adversarial tests on every
+applicable PR; the manual release workflow runs full endurance/saturation on exact
+candidate digests before assembling a preview manifest.
+
+The acceptance report must distinguish passed, failed and untested rows. Host suspend,
+GPU/NPU inference, malicious host administrators, network filesystems, hard persistent
+storage quotas and registry promotion are not inferred from this Mac Docker run.

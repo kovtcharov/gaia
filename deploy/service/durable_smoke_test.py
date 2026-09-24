@@ -26,11 +26,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--endpoint", required=True)
     parser.add_argument("--docker", default="docker")
+    parser.add_argument("--image", default="gaia-service:test")
+    parser.add_argument("--tasks", type=int, default=0)
+    parser.add_argument("--saturation-seconds", type=int, default=0)
+    parser.add_argument("--report", type=Path, default=Path("durable-reliability.json"))
     args = parser.parse_args()
     runtime = DockerRuntime(
         args.endpoint, shutil.which(args.docker) or args.docker, timeout=60
     )
-    image = runtime.call("image", "inspect", "gaia-service:test", "--format", "{{.Id}}")
+    image = runtime.call("image", "inspect", args.image, "--format", "{{.Id}}")
     prefix = "gaia-durable-" + uuid4().hex
     network, inference = prefix + "-net", prefix + "-inference"
     workspace = str(uuid4())
@@ -40,6 +44,9 @@ def main():
     root = Path(tempfile.mkdtemp(prefix="gd-", dir="/tmp"))
     runtime.call("network", "create", network)
     try:
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            fixture_port = listener.getsockname()[1]
         runtime.call(
             "run",
             "-d",
@@ -47,6 +54,8 @@ def main():
             inference,
             "--network",
             network,
+            "--publish",
+            f"127.0.0.1:{fixture_port}:8099",
             "--mount",
             f"type=bind,src={Path(__file__).with_name('inference_fixture.py').resolve()},dst=/fixture.py,readonly",
             "--entrypoint=python3",
@@ -94,6 +103,11 @@ def main():
             "--token-file",
             str(root / "guardian-token"),
         ]
+        inference_port = json.loads(
+            runtime.call(
+                "inspect", "--format", "{{json .NetworkSettings.Ports}}", inference
+            )
+        )["8099/tcp"][0]["HostPort"]
         controller_command = [
             sys.executable,
             "-m",
@@ -108,6 +122,10 @@ def main():
             str(port),
             "--allowed-host",
             "127.0.0.1",
+            "--inference-probe-url",
+            f"http://127.0.0.1:{inference_port}/api/v1",
+            "--inference-probe-token-file",
+            str(secret),
         ]
         environment = {**os.environ, "GAIA_GAIA_SIDECAR_TOKEN": caller_token}
         with (root / "process.log").open("w+") as log:
@@ -129,6 +147,18 @@ def main():
                     return False
 
             wait_for(ready)
+            from adversarial_http import exercise as adversarial
+
+            adversarial(client, url, caller_token, workspace)
+            runtime.call("stop", inference)
+            wait_for(
+                lambda: client.session.get(url + "/ready", timeout=2).status_code
+                == 503,
+                12,
+            )
+            assert client.session.get(url + "/health", timeout=2).status_code == 200
+            runtime.call("start", inference)
+            wait_for(ready, 12)
             session = client.call("POST", "/sessions", json={"workspace_id": workspace})
             path = f"/sessions/{session['id']}/runs"
             payload = {"prompt": "fixture-wait"}
@@ -219,6 +249,37 @@ def main():
                 check=True,
                 timeout=10,
             )
+            artifact = client.call(
+                "POST",
+                f"/sessions/{session['id']}/artifacts",
+                json={"content": "managed fixture artifact"},
+            )
+            if args.tasks or args.saturation_seconds:
+                from reliability import exercise
+
+                def restart():
+                    nonlocal replacement
+                    replacement.kill()
+                    replacement.wait(timeout=5)
+                    replacement = subprocess.Popen(
+                        controller_command, env=environment, stdout=log, stderr=log
+                    )
+                    processes.append(replacement)
+                    wait_for(ready, 20)
+
+                exercise(
+                    url,
+                    caller_token,
+                    workspace,
+                    runtime,
+                    policy["deployment"],
+                    lambda: replacement.pid,
+                    restart,
+                    args.tasks,
+                    args.saturation_seconds,
+                    args.report,
+                    image,
+                )
             client.session.close()
             replacement.terminate()
             replacement.wait(timeout=30)
@@ -255,6 +316,10 @@ def main():
                 assert restored.run(third["id"])["state"] == "succeeded"
                 assert restored.run(third["id"])["generation"] != third["generation"]
                 assert not restored.active()
+                assert (
+                    restored.read_artifact(session["id"], artifact["id"])["content"]
+                    == "managed fixture artifact"
+                )
             finally:
                 restored.close()
             with holder(runtime, clone, clones) as container:
@@ -293,6 +358,19 @@ def main():
                 )
             )
     except BaseException:
+        journal = root / "guardian/journal.json"
+        if journal.exists():
+            rows = json.loads(journal.read_text())["runs"]
+            # Deliberate allowlist: never persist bearer tokens or runtime configuration.
+            fields = {"state", "container_id", "created", "expires", "lease", "reason"}
+            evidence = [
+                {key: value for key, value in row.items() if key in fields}
+                for row in list(rows.values())[-10:]
+            ]
+            args.report.with_suffix(".failure.json").write_text(
+                json.dumps({"status": "failed", "recent_executors": evidence}, indent=2)
+                + "\n"
+            )
         if (root / "process.log").exists():
             output = (root / "process.log").read_text()
             for value in (

@@ -626,3 +626,9 @@ Idempotent submission, bounded replay, generation-scoped interaction receipts,
 restart interruption without redispatch, seven-day content retention and offline
 full backup/clone restore are described in the [durable service guide](https://amd-gaia.ai/docs/guides/durable-service).
 This beta is one trusted deployment, not unrelated-user tenancy or high availability.
+
+The operations candidate adds schema-2 migration with beta rollback backup,
+managed artifacts with retryable cleanup, authenticated metrics/drain, bounded
+optional content-free traces and explicit incomplete usage. Readiness requires a
+configured host-reachable model probe. See [operations](https://amd-gaia.ai/docs/deployment/service-operations)
+for qualification and unfulfilled promotion/hardware gates.

@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "controller_source_sha256": "b9a5932ca050e85c69590c5461ced6d29b1816925a22db16b099b5b992b18bc4",
+  "sequential_tasks": 10,
+  "outcomes": {
+    "succeeded": 10
+  },
+  "saturation_seconds": 10,
+  "pressure": {
+    "accepted": 2,
+    "rejected": 1016,
+    "errors": 0
+  },
+  "orphan_executors": 0,
+  "active_after": 0,
+  "elapsed_seconds": 61.72769495798275,
+  "latency_seconds": {
+    "median": 4.4983645000029355,
+    "max": 6.801218917011283
+  },
+  "control_latency_max_seconds": 0.018085874966345727,
+  "controller_rss_bytes": {
+    "first": 44662784,
+    "max": 44662784,
+    "last": 36618240
+  },
+  "store": {
+    "active_runs": 0,
+    "runs_by_state": {
+      "interrupted": 1,
+      "succeeded": 14
+    },
+    "capacity": 1,
+    "database_bytes": 1895016,
+    "retained_event_bytes": 9915,
+    "pending_cleanup": 0,
+    "workspace_quota": "not_enforced"
+  },
+  "image": "sha256:2143b2958bad423f70109507a86f155a2212112d08e8661feccd6a656b4f7b9b"
+}

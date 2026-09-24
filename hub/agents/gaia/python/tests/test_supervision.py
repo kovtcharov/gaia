@@ -392,3 +392,31 @@ def test_pre_dispatch_cancellation_fences_delayed_start(guardian):
     with pytest.raises(GuardianError, match="already_dispatched"):
         guardian.start(run, generation, next(iter(guardian.policy["workspaces"])))
     assert not guardian.runtime.containers
+
+
+@pytest.mark.parametrize("failure", ["timeout", "unavailable", "nonzero_exit"])
+def test_runtime_failure_diagnostics_never_expose_arguments(monkeypatch, failure):
+    import subprocess
+    from types import SimpleNamespace
+
+    from gaia_agent.supervision.runtime import DockerOperationError, DockerRuntime
+
+    secret = "private-bearer-value"
+    calls = []
+
+    def invoke(arguments, **_kwargs):
+        calls.append(arguments)
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(arguments, 5, output=secret, stderr=secret)
+        if failure == "unavailable":
+            raise OSError(secret)
+        return SimpleNamespace(returncode=1, stdout=secret, stderr=secret)
+
+    monkeypatch.setattr(subprocess, "run", invoke)
+    with pytest.raises(DockerOperationError) as caught:
+        DockerRuntime("unix:///tmp/docker.sock").call("create", "--env", secret)
+    assert caught.value.operation == "create"
+    assert caught.value.reason == failure
+    assert secret not in str(caught.value)
+    assert caught.value.__suppress_context__ or failure == "nonzero_exit"
+    assert len(calls) == 1  # Ambiguous runtime operations must never be retried.

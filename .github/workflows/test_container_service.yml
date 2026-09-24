@@ -87,6 +87,7 @@ jobs:
             hub/agents/gaia/python/tests/test_durable_store.py \
             hub/agents/gaia/python/tests/test_durable_api.py \
             hub/agents/gaia/python/tests/test_durable_client.py \
+            hub/agents/gaia/python/tests/test_durable_operations.py \
             hub/agents/gaia/python/tests/test_service_limits.py \
             hub/agents/gaia/python/tests/test_service_client.py \
             hub/agents/gaia/python/tests/test_server_query.py \
@@ -98,6 +99,7 @@ jobs:
             tests/unit/test_lemonade_embedded.py \
             tests/unit/test_run_python_tool.py \
             deploy/service/test_worker_backup.py \
+            deploy/service/test_durable_backup.py \
             --junitxml=test-results/service.xml -q -ra
           python - <<'PY'
           import xml.etree.ElementTree as ET
