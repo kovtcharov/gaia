@@ -208,6 +208,9 @@ uses a cloud provider. Validate the selected tool surface with its real models.
   and a `context` list, optionally a `session_id` and model override.
 - Opt-in `can_confirm_tools: true` keeps `needs_confirmation` open for a strict
   boolean decision at `POST /v1/gaia/query/{run_id}/confirm` using its `confirm_id`.
+  In service mode, approval waits use the remaining configured run lifetime rather
+  than the interactive handler's 60-second default. The run deadline and cancellation
+  still end the wait without granting permission; clients cannot extend that deadline.
   Stale/duplicate decisions are rejected; older callers retain refusal.
 - Query cancellation, mid-run input response and memory retain the existing
   flagship HTTP contract. See the bundled flagship SPEC.
