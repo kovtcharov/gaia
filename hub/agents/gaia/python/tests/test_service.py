@@ -820,3 +820,79 @@ def test_embedding_readiness_requires_declared_model(
         response = client.get("/ready")
     assert response.status_code == (200 if embedding_present else 503)
     assert "prepared-embedding" in observed
+
+
+@pytest.mark.parametrize("can_confirm", [True, False])
+def test_service_confirmation_uses_bounded_run_lifetime(
+    configured, monkeypatch, can_confirm
+):
+    observed = []
+
+    class Agent:
+        def process_query(self, _query, max_steps=None):
+            observed.append(self.console.confirm_timeout_seconds)
+            return {"answer": "done"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(server, "build_query_agent", lambda **_kwargs: Agent())
+    with TestClient(
+        service.create_app(replace(configured, run_timeout_seconds=1800)),
+        base_url="http://worker.internal",
+    ) as client:
+        response = client.post(
+            "/v1/gaia/query",
+            headers={"Authorization": "Bearer test-service-secret"},
+            json={
+                "query": "test",
+                "context": [],
+                "run_id": str(uuid.uuid4()),
+                "can_confirm_tools": can_confirm,
+            },
+        )
+        assert response.status_code == 200
+    if can_confirm:
+        assert 1700 < observed[0] <= 1800
+    else:
+        assert observed == [60]
+
+
+def test_service_deadline_still_denies_unanswered_confirmation(configured, monkeypatch):
+    decisions = []
+    finished = threading.Event()
+
+    class Agent:
+        def process_query(self, _query, max_steps=None):
+            decisions.append(
+                self.console.confirm_tool_execution("run_python", {"code": "print(1)"})
+            )
+            return {"answer": "done"}
+
+        def close(self):
+            finished.set()
+
+    monkeypatch.setattr(server, "build_query_agent", lambda **_kwargs: Agent())
+    with TestClient(
+        service.create_app(replace(configured, run_timeout_seconds=0.1)),
+        base_url="http://worker.internal",
+    ) as client:
+        response = client.post(
+            "/v1/gaia/query",
+            headers={"Authorization": "Bearer test-service-secret"},
+            json={
+                "query": "test",
+                "context": [],
+                "run_id": str(uuid.uuid4()),
+                "can_confirm_tools": True,
+            },
+        )
+        events = [
+            json.loads(line[6:])
+            for line in response.text.splitlines()
+            if line.startswith("data: ")
+        ]
+        assert events[-1]["type"] == "error"
+        assert events[-1]["status"] == 504
+        assert finished.wait(2)
+        assert decisions == [False]

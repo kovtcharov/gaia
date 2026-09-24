@@ -674,6 +674,11 @@ async def query(request: QueryRequest, raw_request: Request):
             # else will ever reference it either, so this run owns its teardown.
             agent = build_query_agent(**kwargs)
             one_shot_agent = agent
+        if request.can_confirm_tools and deadline is not None:
+            # A service caller can return a decision after backgrounding. Keep
+            # approval answerable for the remaining bounded run lifetime; the
+            # run deadline/cancellation still wins and never grants permission.
+            handler.confirm_timeout_seconds = max(0.001, deadline - time.monotonic())
         agent.console = handler
         if request.can_answer_questions is False:
             # Nobody is there to answer. Let the loop know so it resolves
