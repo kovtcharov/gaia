@@ -1,0 +1,62 @@
+{
+  "image": "sha256:39309b1077701d646f1b0314cc7081b723833f165b4f477a59309bd76d530f2b",
+  "phases": [
+    {
+      "answer_generation": "not_tested",
+      "checkpoint": "ggml-org/embeddinggemma-300M-GGUF:Q8_0",
+      "client_platform": "Linux/aarch64",
+      "frozen": true,
+      "model": "user.embeddinggemma-300m-GGUF",
+      "phase": "index",
+      "profile": "rag-retrieval",
+      "revision": "0f741b5a6585bd53aeb15cd1372c56f2a0f65e12",
+      "status": "passed"
+    },
+    {
+      "answer_generation": "not_tested",
+      "checkpoint": "ggml-org/embeddinggemma-300M-GGUF:Q8_0",
+      "client_platform": "Linux/aarch64",
+      "frozen": true,
+      "model": "user.embeddinggemma-300m-GGUF",
+      "phase": "restart",
+      "profile": "rag-retrieval",
+      "revision": "0f741b5a6585bd53aeb15cd1372c56f2a0f65e12",
+      "status": "passed"
+    },
+    {
+      "answer_generation": "not_tested",
+      "checkpoint": "ggml-org/embeddinggemma-300M-GGUF:Q8_0",
+      "client_platform": "Linux/aarch64",
+      "frozen": true,
+      "model": "user.embeddinggemma-300m-GGUF",
+      "phase": "delete",
+      "profile": "rag-retrieval",
+      "revision": "0f741b5a6585bd53aeb15cd1372c56f2a0f65e12",
+      "status": "passed"
+    },
+    {
+      "answer_generation": "not_tested",
+      "checkpoint": "ggml-org/embeddinggemma-300M-GGUF:Q8_0",
+      "client_platform": "Linux/aarch64",
+      "frozen": true,
+      "model": "user.embeddinggemma-300m-GGUF",
+      "phase": "after-delete",
+      "profile": "rag-retrieval",
+      "revision": "0f741b5a6585bd53aeb15cd1372c56f2a0f65e12",
+      "status": "passed"
+    },
+    {
+      "answer_generation": "not_tested",
+      "checkpoint": "ggml-org/embeddinggemma-300M-GGUF:Q8_0",
+      "client_platform": "Linux/aarch64",
+      "frozen": true,
+      "model": "user.embeddinggemma-300m-GGUF",
+      "phase": "reindex",
+      "profile": "rag-retrieval",
+      "revision": "0f741b5a6585bd53aeb15cd1372c56f2a0f65e12",
+      "status": "passed"
+    }
+  ],
+  "downloads": "none_expected_prepared_model_required",
+  "revision_verification": "operator_supplied"
+}

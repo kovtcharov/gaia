@@ -380,6 +380,7 @@
               "deployment/container-service",
               "guides/durable-service",
               "deployment/service-operations",
+              "deployment/service-profiles",
               "spec/service-supervision",
               "deployment/ui",
               "deployment/testing-electron",

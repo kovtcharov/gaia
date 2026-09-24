@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Explicit local Docker adapter for owned, independently terminable workers."""
 
+import ipaddress
 import json
 import re
 import subprocess
@@ -82,6 +83,8 @@ class DockerRuntime:
         labels = []
         for key, value in identity.items():
             labels += ["--label", f"{PREFIX}{key}={value}"]
+        if policy.get("network_internal"):
+            labels += ["--label", PREFIX + "network-profile=internal"]
         args = [
             "create",
             *labels,
@@ -125,7 +128,28 @@ class DockerRuntime:
                 "--env",
                 "LEMONADE_API_KEY_FILE=/run/inference-secret",
             ]
+        if policy.get("embedding_model"):
+            args += [
+                "--env",
+                "GAIA_SERVICE_EMBEDDING_MODEL=" + policy["embedding_model"],
+                "--env",
+                "GAIA_SERVICE_EMBEDDING_REVISION=" + policy["embedding_revision"],
+            ]
         if policy.get("network"):
+            if policy.get("network_internal"):
+                network = json.loads(
+                    self.call(
+                        "network",
+                        "inspect",
+                        policy["network"],
+                        "--format",
+                        "{{json .Internal}}",
+                    )
+                )
+                if network is not True:
+                    raise ValueError(
+                        "Configured network does not enforce the internal profile"
+                    )
             args += ["--network", policy["network"]]
         return self.call(*args, policy["image"])
 
@@ -135,6 +159,24 @@ class DockerRuntime:
         value = self.inspect(container_id, identity)
         if not value["State"]["Running"]:
             raise RuntimeError("Executor failed to start")
+        if value["Config"]["Labels"].get(PREFIX + "network-profile") == "internal":
+            networks = value["NetworkSettings"]["Networks"]
+            if len(networks) != 1:
+                raise RuntimeError("Internal executor must have exactly one network")
+            name, network = next(iter(networks.items()))
+            if (
+                json.loads(
+                    self.call(
+                        "network", "inspect", name, "--format", "{{json .Internal}}"
+                    )
+                )
+                is not True
+            ):
+                raise RuntimeError("Executor network is no longer internal")
+            address = ipaddress.ip_address(network["IPAddress"])
+            if address.version != 4 or not address.is_private or address.is_loopback:
+                raise RuntimeError("Invalid internal executor address")
+            return "http://" + str(address) + ":8080"
         ports = value["NetworkSettings"]["Ports"]["8080/tcp"]
         if len(ports) != 1 or ports[0]["HostIp"] != "127.0.0.1":
             raise RuntimeError("Unexpected executor network binding")

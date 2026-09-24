@@ -98,6 +98,8 @@ class ChatAgentConfig:
     claude_model: str = "claude-sonnet-5"
     base_url: Optional[str] = None
     model_id: Optional[str] = None  # None = use default model (Gemma)
+    embedding_model: Optional[str] = None
+    embedding_revision: Optional[str] = None
 
     # Execution settings
     max_steps: int = field(default_factory=default_max_steps)
@@ -303,7 +305,9 @@ class ChatAgent(
         # embedder so chat and embeddings stay co-resident on the NPU backend
         # (a GGUF embedder runs on Vulkan and evicts the FLM chat model every
         # turn — #1744). GPU/CPU keep the GGUF nomic embedder.
-        effective_embedding_model = get_embedding_model_for_device(config.device)
+        effective_embedding_model = (
+            config.embedding_model or get_embedding_model_for_device(config.device)
+        )
 
         # RAG (#2323 Increment 3): ``RAGConfig`` is cheap (no I/O) and built
         # eagerly here — every profile's allowed_paths/model/embedding wiring
@@ -318,6 +322,7 @@ class ChatAgent(
             self._rag_config = RAGConfig(
                 model=effective_model_id,
                 embedding_model=effective_embedding_model,
+                embedding_revision=config.embedding_revision,
                 chunk_size=config.chunk_size,
                 chunk_overlap=config.chunk_overlap,  # Configurable overlap for context preservation
                 max_chunks=config.max_chunks,

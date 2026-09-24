@@ -27,6 +27,8 @@ def main():
     parser.add_argument("--endpoint", required=True)
     parser.add_argument("--docker", default="docker")
     parser.add_argument("--image", default="gaia-service:test")
+    parser.add_argument("--tool-profiles", action="store_true")
+    parser.add_argument("--internal-network", action="store_true")
     parser.add_argument("--tasks", type=int, default=0)
     parser.add_argument("--saturation-seconds", type=int, default=0)
     parser.add_argument("--report", type=Path, default=Path("durable-reliability.json"))
@@ -42,7 +44,12 @@ def main():
     clones = {key: value + "-clone" for key, value in mapping.items()}
     processes, containers, volumes = [], [], []
     root = Path(tempfile.mkdtemp(prefix="gd-", dir="/tmp"))
-    runtime.call("network", "create", network)
+    runtime.call(
+        "network", "create", *(["--internal"] if args.internal_network else []), network
+    )
+    probe_network = network + "-probe" if args.internal_network else network
+    if args.internal_network:
+        runtime.call("network", "create", probe_network)
     try:
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
@@ -53,16 +60,26 @@ def main():
             "--name",
             inference,
             "--network",
-            network,
+            probe_network,
+            "--network-alias",
+            "profile-inference",
             "--publish",
             f"127.0.0.1:{fixture_port}:8099",
             "--mount",
-            f"type=bind,src={Path(__file__).with_name('inference_fixture.py').resolve()},dst=/fixture.py,readonly",
+            f"type=bind,src={Path(__file__).resolve().parent},dst=/fixtures,readonly",
             "--entrypoint=python3",
             image,
-            "/fixture.py",
+            (
+                "/fixtures/profile_fixture.py"
+                if args.tool_profiles
+                else "/fixtures/inference_fixture.py"
+            ),
         )
         containers.append(inference)
+        if args.internal_network:
+            runtime.call(
+                "network", "connect", "--alias", "profile-inference", network, inference
+            )
         for name in mapping.values():
             runtime.call("volume", "create", name)
             volumes.append(name)
@@ -81,6 +98,7 @@ def main():
             "docker": runtime.executable,
             "model": "fireworks.container-fixture",
             "network": network,
+            "network_internal": args.internal_network,
             "inference_secret_file": str(secret),
             "inference_url": f"http://{inference}:8099/api/v1",
             "workspaces": {workspace: mapping},
@@ -249,6 +267,17 @@ def main():
                 check=True,
                 timeout=10,
             )
+            if args.tool_profiles:
+                from tool_profile_smoke import exercise as tool_profiles
+
+                tool_profiles(
+                    client,
+                    url,
+                    workspace,
+                    f"http://127.0.0.1:{inference_port}",
+                    runtime,
+                    policy,
+                )
             artifact = client.call(
                 "POST",
                 f"/sessions/{session['id']}/artifacts",
@@ -406,6 +435,8 @@ def main():
         for volume in volumes:
             runtime.call("volume", "rm", volume)
         runtime.call("network", "rm", network)
+        if args.internal_network:
+            runtime.call("network", "rm", probe_network)
         shutil.rmtree(root)
 
 

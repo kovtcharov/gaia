@@ -12,3 +12,22 @@ verification; promotion still requires the release workflow's complete endurance
 qualification on the exact release image and native architecture gates. These
 reports do not establish a supported release, hardware matrix, or suspend/resume
 qualification.
+
+
+## M5 final candidate
+
+`m5-macos-arm64-final-image.json` records the final frozen image with real external
+tool profiles, 10 sequential tasks and 10 seconds of saturation. HTTP controls,
+crash/replay, full clone restore and zero orphan executors also passed.
+`m5-macos-arm64-rag.json` records five independent frozen processes against a real
+prepared EmbeddingGemma model via Lemonade/Metal. It qualifies retrieval/index
+lifecycle, not generated-answer quality or controller-mediated live RAG restoration.
+
+A preceding concurrent local runtime attempt exceeded its 45-second first-run
+deadline and closed admission after guardian communication/termination uncertainty.
+Its cleanup removed all owned containers. A concurrent regression attempt had one
+10-second child-process startup timeout (455 tests passed). Sequential reruns passed
+all 456 tests and the real runtime checks without weakening deadlines. These failed
+attempts remain qualification context; no claim of availability under arbitrary host
+starvation or suspend is made. Native Linux internal-network tests and exact-release
+endurance remain CI/promotion gates.

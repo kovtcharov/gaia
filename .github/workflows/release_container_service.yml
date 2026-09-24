@@ -80,7 +80,7 @@ jobs:
         run: |
           set -euo pipefail
           python deploy/service/guardian_smoke_test.py --endpoint unix:///var/run/docker.sock
-          python deploy/service/durable_smoke_test.py --endpoint unix:///var/run/docker.sock --tasks 1000 --saturation-seconds 600 --report evidence/reliability.json 2>&1 | tee evidence/reliability.log
+          python deploy/service/durable_smoke_test.py --endpoint unix:///var/run/docker.sock --tasks 1000 --saturation-seconds 600 --tool-profiles --internal-network --report evidence/reliability.json 2>&1 | tee evidence/reliability.log
       - uses: actions/attest@v4
         with:
           subject-name: ${{ steps.image.outputs.name }}
