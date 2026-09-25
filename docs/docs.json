@@ -378,6 +378,7 @@
             "pages": [
               "deployment/shareable-build",
               "deployment/container-service",
+              "spec/service-supervision",
               "deployment/ui",
               "deployment/testing-electron",
               "deployment/code-signing"
