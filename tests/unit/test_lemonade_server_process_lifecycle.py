@@ -124,7 +124,11 @@ def _launch_with_mocked_server(client):
         patch("gaia.llm.lemonade_client.socket.create_connection"),
         patch("gaia.llm.lemonade_client.time.sleep"),
     ):
-        client.launch_server(background="silent")
+        try:
+            client.launch_server(background="silent")
+        finally:
+            # Detach the fake server so a later GC's __del__ can't kill in another test.
+            client.server_process = None
     return launched
 
 

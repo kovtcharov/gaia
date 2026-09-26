@@ -767,7 +767,7 @@ class TestResolveMcpConfig:
             runner.resolve_mcp_config(tmp_path)
 
         assert any(
-            "gaia-agent-ui" in r.getMessage() and sys.executable in r.getMessage()
+            "gaia-agent-ui" in r.args and sys.executable in r.args
             for r in caplog.records
         )
 
