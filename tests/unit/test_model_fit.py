@@ -21,6 +21,7 @@ from gaia.llm.model_fit import (
     ModelFitError,
     capacity_from_system_info,
     check_fit,
+    check_server_supports,
     pick_default_model,
 )
 
@@ -71,6 +72,7 @@ DGPU = {
 }
 
 QWEN = lc.find_model_requirement(lc.LARGE_DEFAULT_MODEL_NAME)
+FLASH = lc.find_model_requirement(lc.FLASH_OPTION_MODEL_NAME)
 
 
 class TestCapacity:
@@ -98,16 +100,34 @@ class TestCapacity:
 
 
 class TestFit:
-    def test_qwen_flash_fits_a_128gb_strix_halo(self):
+    def test_qwen_30b_fits_a_128gb_strix_halo(self):
         assert check_fit(QWEN.size_gb, capacity_from_system_info(STRIX_HALO_128)).fits
 
-    @pytest.mark.parametrize("info", [STRIX_HALO_64, MAC_M4, CPU_ONLY, DGPU])
-    def test_qwen_flash_does_not_fit_smaller_machines(self, info):
-        verdict = check_fit(QWEN.size_gb, capacity_from_system_info(info))
+    def test_qwen_30b_also_fits_a_64gb_strix_halo(self):
+        # At 17.4 GB, the new default has a much smaller footprint than Flash's
+        # 82.86 GB — a 64 GB Strix Halo (~55.9 GB pool) now qualifies too.
+        assert check_fit(QWEN.size_gb, capacity_from_system_info(STRIX_HALO_64)).fits
+
+    def test_qwen_30b_does_not_fit_the_smallest_machines(self):
+        # At 17.4 GB, only a genuinely small machine (12 GB unified memory)
+        # fails to fit — a 32 GB CPU-only box or a 24 GB dGPU now qualify,
+        # unlike Flash's 82.86 GB, which only a 128 GB-class Strix Halo fit.
+        verdict = check_fit(QWEN.size_gb, capacity_from_system_info(MAC_M4))
+        assert not verdict.fits and "memory" in verdict.reason
+
+    @pytest.mark.parametrize("info", [CPU_ONLY, DGPU])
+    def test_qwen_30b_fits_a_32gb_cpu_box_and_a_24gb_dgpu(self, info):
+        assert check_fit(QWEN.size_gb, capacity_from_system_info(info)).fits
+
+    def test_flash_does_not_fit_a_64gb_strix_halo(self):
+        # Flash's 82.86 GB (with the vision projector) still needs the full
+        # 128 GB Strix Halo class — this is why it stays a manual opt-in
+        # rather than something smaller machines get offered.
+        verdict = check_fit(FLASH.size_gb, capacity_from_system_info(STRIX_HALO_64))
         assert not verdict.fits and "memory" in verdict.reason
 
     def test_disk_is_part_of_fit(self):
-        cap = MachineCapacity(memory_gb=112, memory_source="AMD iGPU", disk_free_gb=40)
+        cap = MachineCapacity(memory_gb=112, memory_source="AMD iGPU", disk_free_gb=10)
         verdict = check_fit(QWEN.size_gb, cap)
         assert not verdict.fits and "disk" in verdict.reason
 
@@ -130,7 +150,9 @@ class TestDefaultPick:
         "info,expected",
         [
             (STRIX_HALO_128, lc.LARGE_DEFAULT_MODEL_NAME),
-            (STRIX_HALO_64, lc.DEFAULT_MODEL_NAME),
+            # 17.4 GB fits a 64 GB Strix Halo too — a much wider footprint
+            # than Flash's 128 GB-class-only 82.86 GB.
+            (STRIX_HALO_64, lc.LARGE_DEFAULT_MODEL_NAME),
             (MAC_M4, lc.DEFAULT_MODEL_NAME),
         ],
     )
@@ -159,18 +181,20 @@ class TestResolveDefault:
 
 class TestRegistry:
     def test_user_prefix_is_tolerated_in_lookups(self):
-        listed = lc.LARGE_DEFAULT_MODEL_NAME[len("user.") :]
-        assert lc.find_model_requirement(listed) is QWEN
+        listed = lc.FLASH_OPTION_MODEL_NAME[len("user.") :]
+        assert lc.find_model_requirement(listed) is FLASH
         # The listed id must still load at GAIA's 64K window, not the 32K floor.
-        assert QWEN.min_ctx_size == lc.GPU_CTX_SIZE
+        assert FLASH.min_ctx_size == lc.GPU_CTX_SIZE
 
     def test_builtin_pulls_by_name_only(self):
         # Passing recipe for a built-in 400s (#1655).
         gemma = lc.find_model_requirement(lc.DEFAULT_MODEL_NAME)
         assert gemma.pull_kwargs() == {}
+        # The default is also a Lemonade built-in — same rule applies.
+        assert QWEN.pull_kwargs() == {}
 
     def test_custom_model_carries_its_registration(self):
-        kwargs = QWEN.pull_kwargs()
+        kwargs = FLASH.pull_kwargs()
         assert kwargs["checkpoint"].startswith("unsloth/Qwen3.8-Flash-Next-GGUF:")
         assert kwargs["recipe"] == "llamacpp"
         assert kwargs["mmproj"] == "mmproj-F16.gguf"
@@ -208,16 +232,13 @@ class TestTuiDrift:
     def test_both_defaults_are_recommended(self, doc):
         local = {m["id"] for m in doc["models"] if m["provider"] == "local"}
         assert lc.DEFAULT_MODEL_NAME in local
-        assert lc.LARGE_DEFAULT_MODEL_NAME[len("user.") :] in local
+        assert lc.LARGE_DEFAULT_MODEL_NAME in local
 
-    def test_the_fast_alternative_is_recommended_and_known(self, doc):
+    def test_the_multimodal_alternative_is_recommended_and_known(self, doc):
         """Switchable to by name, and sized so the fit check can judge it."""
         local = {m["id"] for m in doc["models"] if m["provider"] == "local"}
-        assert lc.QWEN3_30B_MODEL_NAME in local
-        mr = lc.find_model_requirement(lc.QWEN3_30B_MODEL_NAME)
-        assert mr is not None and mr.size_gb and mr.tool_calling
-        # A built-in: registration fields would make Lemonade 400 the pull.
-        assert mr.pull_kwargs() == {}
+        assert lc.FLASH_OPTION_MODEL_NAME[len("user.") :] in local
+        assert FLASH is not None and FLASH.size_gb and FLASH.tool_calling
 
 
 class TestAgentUiFollowsTheMachineDefault:
@@ -233,7 +254,7 @@ class TestAgentUiFollowsTheMachineDefault:
     def test_ui_matches_a_user_model_by_its_listed_id(self):
         from gaia.ui.routers.system import _norm_model_id
 
-        assert _norm_model_id(lc.LARGE_DEFAULT_MODEL_NAME) == _norm_model_id(
+        assert _norm_model_id(lc.FLASH_OPTION_MODEL_NAME) == _norm_model_id(
             "Qwen3.8-Flash-Next-GGUF"
         )
 
@@ -251,8 +272,10 @@ class TestRealLemonadeReports:
     def test_linux_strix_halo_pool_is_carve_out_plus_gtt(self):
         cap = capacity_from_system_info(_fixture("lemonade11_amd_igpu_linux.json"))
         assert (cap.memory_source, cap.memory_gb) == ("AMD iGPU", pytest.approx(63.0))
-        # The default Linux GTT limit (half of RAM) is too small for Qwen3.8 Flash.
-        assert not check_fit(QWEN.size_gb, cap).fits
+        # The default Linux GTT limit (half of RAM) is too small for Flash's
+        # 82.86 GB, but the new, much smaller 17.4 GB default fits fine.
+        assert not check_fit(FLASH.size_gb, cap).fits
+        assert check_fit(QWEN.size_gb, cap).fits
 
     def test_macos_metal(self):
         cap = capacity_from_system_info(_fixture("lemonade11_metal_macos.json"))
@@ -288,7 +311,13 @@ class TestRealLemonadeReports:
 
 
 class TestLemonadeVersionGate:
-    """Qwen3.8 Flash needs llama.cpp's qwen4exp, first bundled in v2026.39.1."""
+    """The default (Qwen3 30B A3B) is a Lemonade built-in with no version floor
+    of its own — a big PC gets it on any supported Lemonade. Qwen3.8 Flash
+    (the switchable alternative, no longer auto-selected) is the one that
+    needs llama.cpp's qwen4exp, first bundled in v2026.39.1; verified via its
+    ModelRequirement directly rather than through the ladder it is no longer
+    part of.
+    """
 
     def _client(self, info, version):
         class FakeClient:
@@ -300,33 +329,29 @@ class TestLemonadeVersionGate:
 
         return FakeClient()
 
-    @pytest.mark.parametrize(
-        "version,expected",
-        [
-            ("2026.39.1", lc.LARGE_DEFAULT_MODEL_NAME),
-            ("2026.40.0~3.abc1234", lc.LARGE_DEFAULT_MODEL_NAME),
-            ("11.9.0", lc.DEFAULT_MODEL_NAME),
-            (None, lc.DEFAULT_MODEL_NAME),
-        ],
-    )
-    def test_a_big_pc_on_an_old_lemonade_keeps_gemma(self, version, expected):
-        model_id, skipped, _ = lc.recommend_default_chat_model(
+    @pytest.mark.parametrize("version", ["2026.39.1", "2026.40.0~3.abc1234", "11.9.0", None])
+    def test_a_big_pc_gets_the_default_on_any_lemonade_version(self, version):
+        model_id, _, _ = lc.recommend_default_chat_model(
             self._client(STRIX_HALO_128, version)
         )
-        assert model_id == expected
-        if expected == lc.DEFAULT_MODEL_NAME:
-            assert "--force-reinstall" in skipped[0][1]
+        assert model_id == lc.LARGE_DEFAULT_MODEL_NAME
 
     def test_a_pc_too_small_is_told_it_is_too_small_not_to_upgrade(self):
         _, skipped, _ = lc.recommend_default_chat_model(self._client(MAC_M4, "11.9.0"))
         assert "memory" in skipped[0][1] and "force-reinstall" not in skipped[0][1]
 
+    def test_the_multimodal_alternative_still_needs_the_version_floor(self):
+        verdict = check_server_supports(FLASH.min_lemonade_version, "11.9.0")
+        assert not verdict.fits and "force-reinstall" in verdict.reason
+        verdict = check_server_supports(FLASH.min_lemonade_version, "2026.39.1")
+        assert verdict.fits
 
-def test_qwen_size_counts_the_vision_projector_lemonade_downloads():
+
+def test_flash_size_counts_the_vision_projector_lemonade_downloads():
     """Lemonade's own requirement for this checkpoint is 77.2 GiB (82.9 GB): the
     three shards plus mmproj. A smaller figure passes disks Lemonade then refuses."""
     cap = MachineCapacity(memory_gb=112, memory_source="AMD iGPU", disk_free_gb=82.5)
-    verdict = check_fit(QWEN.size_gb, cap)
+    verdict = check_fit(FLASH.size_gb, cap)
     assert not verdict.fits and "disk" in verdict.reason
 
 

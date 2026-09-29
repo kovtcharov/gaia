@@ -274,16 +274,20 @@ def lemonade_auth_headers(api_key: Optional[str]) -> Dict[str, str]:
 # ui/routers/system.py.
 DEFAULT_MODEL_NAME = "Gemma-4-E4B-it-GGUF"
 
-# The default on machines with the memory for it (a 128 GB Strix Halo): a 125B
-# MoE with 6B active. Not a Lemonade built-in — registered as a ``user.`` model
-# on first pull (see its MODELS entry). ``gaia init`` picks it only when
-# gaia.llm.model_fit says it fits, and records the pick as ``default_model``.
-LARGE_DEFAULT_MODEL_NAME = "user.Qwen3.8-Flash-Next-GGUF"
+# The default on any machine with the memory for it — at 17.4 GB this fits far
+# more than the 128 GB Strix Halo class that Qwen3.8 Flash needed (a 24 GB dGPU
+# or a 32 GB CPU-only box qualifies too). A Lemonade built-in, 2-5x faster
+# decode than Flash on Strix Halo, but text-only. ``gaia init`` picks it only
+# when gaia.llm.model_fit says it fits, and records the pick as
+# ``default_model``.
+LARGE_DEFAULT_MODEL_NAME = "Qwen3-30B-A3B-Instruct-2507-GGUF"
 
-# The faster big-PC candidate: a Lemonade built-in, 2-5x faster decode than
-# Flash on Strix Halo, but text-only. Supported and switchable; which one is the
-# default is settled by `util/compare_local_models.py` on real hardware.
-QWEN3_30B_MODEL_NAME = "Qwen3-30B-A3B-Instruct-2507-GGUF"
+# The multimodal big-PC alternative: a 125B MoE with 6B active. Not a
+# Lemonade built-in — registered as a ``user.`` model on first pull (see its
+# MODELS entry). Not auto-selected by ``gaia init`` — switch to it explicitly
+# with `gaia config set default_model` when vision/reasoning matters more
+# than decode speed.
+FLASH_OPTION_MODEL_NAME = "user.Qwen3.8-Flash-Next-GGUF"
 
 
 def resolve_default_chat_model() -> str:
@@ -729,15 +733,17 @@ MODELS = {
         min_ctx_size=GPU_CTX_SIZE,
         tool_calling=True,
     ),
-    # --- Qwen3.8-Flash-Next: the default where it fits (Strix Halo 128 GB) ---
+    # --- Qwen3.8-Flash-Next: the multimodal big-PC option (Strix Halo 128 GB) ---
     # 125B MoE (6B active) + 51B n-gram embedding; needs llama.cpp's qwen4exp
     # support, first bundled in Lemonade v2026.39.1. UD-IQ3_XXS (82 GB, three
     # shards in one repo folder) is the largest quant that fits a 96 GB GPU
     # carve-out with room for the 64K window — its KV cache is ~25 KB/token,
-    # since only 12 of 48 layers carry attention.
+    # since only 12 of 48 layers carry attention. Not the default (see
+    # LARGE_DEFAULT_MODEL_NAME) — switch to it with `gaia config set
+    # default_model` when vision/reasoning matters more than decode speed.
     "qwen3.8-flash": ModelRequirement(
         model_type=ModelType.LLM,
-        model_id=LARGE_DEFAULT_MODEL_NAME,
+        model_id=FLASH_OPTION_MODEL_NAME,
         display_name="Qwen3.8 Flash Next (Multimodal)",
         min_ctx_size=GPU_CTX_SIZE,
         tool_calling=True,
@@ -750,13 +756,13 @@ MODELS = {
         size_gb=82.86,
         min_lemonade_version="2026.39.1",
     ),
-    # --- Qwen3 30B A3B Instruct 2507: the fast big-PC alternative ---
+    # --- Qwen3 30B A3B Instruct 2507: the default where it fits (Strix Halo 128 GB) ---
     # 30.5B MoE (3.3B active), a Lemonade built-in on llama.cpp (Q4_0).
     # Native tool calls, no vision and no thinking mode. The "-HRX" build of the
     # same weights is Linux-only and experimental, so it is not listed here.
     "qwen3-30b-a3b-instruct": ModelRequirement(
         model_type=ModelType.LLM,
-        model_id=QWEN3_30B_MODEL_NAME,
+        model_id=LARGE_DEFAULT_MODEL_NAME,
         display_name="Qwen3 30B A3B Instruct 2507",
         min_ctx_size=GPU_CTX_SIZE,
         tool_calling=True,
