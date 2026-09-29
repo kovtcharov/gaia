@@ -14,14 +14,15 @@ the terminal UI meant building it from source.
 
 ### Changed
 
-- Qwen3 30B A3B Instruct 2507 is a supported chat model on the same big-memory
-  PCs: faster than Qwen3.8 Flash Next, text only. Switch with
-  `gaia config set default_model Qwen3-30B-A3B-Instruct-2507-GGUF`.
-- The default chat model now follows the hardware. On a PC with the memory for it
-  (a 128 GB Strix Halo), `gaia init` also sets up Qwen3.8 Flash Next and records
-  it as `default_model`; the agent and its `GET /v1/gaia/init` readiness check
-  use it for chat. Gemma 4 E4B is still downloaded for vision. Every other PC
-  keeps Gemma alone.
+- The default chat model now follows the hardware. On a PC with ~19 GB free for
+  models — most dGPUs and CPU-only PCs with enough RAM, not just a 128 GB Strix
+  Halo — `gaia init` sets up Qwen3 30B A3B Instruct 2507 (a 17 GB Lemonade
+  built-in, text only) and records it as `default_model`; the agent and its
+  `GET /v1/gaia/init` readiness check use it for chat. Gemma 4 E4B is still
+  downloaded for vision. Every smaller PC keeps Gemma alone.
+- Qwen3.8 Flash Next (82 GB, multimodal) is a supported manual option on
+  128 GB-class PCs — not auto-selected. Switch with
+  `gaia config set default_model user.Qwen3.8-Flash-Next-GGUF`.
 
 ### Fixed
 

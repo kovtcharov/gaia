@@ -329,7 +329,9 @@ class TestLemonadeVersionGate:
 
         return FakeClient()
 
-    @pytest.mark.parametrize("version", ["2026.39.1", "2026.40.0~3.abc1234", "11.9.0", None])
+    @pytest.mark.parametrize(
+        "version", ["2026.39.1", "2026.40.0~3.abc1234", "11.9.0", None]
+    )
     def test_a_big_pc_gets_the_default_on_any_lemonade_version(self, version):
         model_id, _, _ = lc.recommend_default_chat_model(
             self._client(STRIX_HALO_128, version)

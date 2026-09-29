@@ -232,21 +232,21 @@ profile. The default `gaia` profile is a superset, so a bare `gaia init` covers 
 
 <Note>
 For the `gaia`, `chat`, `rag` and `all` profiles the chat model follows the
-hardware. Where Lemonade reports enough memory for it — about 88 GB for models, as on a
-128 GB Strix Halo — `gaia init` also sets up `user.Qwen3.8-Flash-Next-GGUF` (an 82 GB
-download) as the chat model, prints why, and records it as `default_model`. Gemma is still
-downloaded, since vision and document-image extraction load it by name. Every other PC
-gets Gemma alone. Qwen is also skipped, with the reason printed, when the running Lemonade
-is older than v2026.39.1 (its llama.cpp cannot load the model): `gaia init --yes` keeps an
-older Lemonade that meets the profile minimum, so upgrade with `gaia init --force-reinstall`. A `default_model` you set yourself always wins, and `--check` asks for
-the same model `gaia init` would download.
+hardware. Where Lemonade reports enough memory for it — about 19 GB for models, which
+reaches well past a 128 GB Strix Halo to most dGPUs and CPU-only PCs with enough RAM —
+`gaia init` also sets up `Qwen3-30B-A3B-Instruct-2507-GGUF` (a 17 GB Lemonade built-in,
+text only) as the chat model, prints why, and records it as `default_model`. Gemma is
+still downloaded, since vision and document-image extraction load it by name. Every
+smaller PC gets Gemma alone. A `default_model` you set yourself always wins, and
+`--check` asks for the same model `gaia init` would download.
 </Note>
 
 <Note>
-On the same big-memory PCs, `Qwen3-30B-A3B-Instruct-2507-GGUF` (a 17 GB Lemonade
-built-in) is the faster alternative: it generates several times faster than Qwen3.8 Flash
-on a Strix Halo, but reads text only. Switch to it with
-`gaia config set default_model Qwen3-30B-A3B-Instruct-2507-GGUF`, or pick it in the
+On 128 GB-class PCs, `user.Qwen3.8-Flash-Next-GGUF` (an 82 GB download, multimodal) is
+a supported manual alternative — not auto-selected, since it needs the full Strix Halo
+memory class and a Lemonade newer than v2026.39.1 (its llama.cpp cannot load the model
+otherwise; upgrade with `gaia init --force-reinstall`). Switch to it with
+`gaia config set default_model user.Qwen3.8-Flash-Next-GGUF`, or pick it in the
 terminal UI's model picker; Lemonade downloads it on first use. To measure both on your
 own PC, speed, tool calling and (with `--tasks core`) agent quality, run
 `python util/compare_local_models.py` from a GAIA checkout.

@@ -9,7 +9,7 @@
       "register_as": "user.Qwen3.8-Flash-Next-GGUF",
       "provider": "local",
       "label": "Qwen3.8 Flash Next",
-      "note": "default on PCs with ~88 GB for models (Strix Halo 128 GB)",
+      "note": "manual option on PCs with ~88 GB for models (Strix Halo 128 GB); switch to it with `gaia config set default_model`",
       "size_gb": 82.86,
       "checkpoint": "unsloth/Qwen3.8-Flash-Next-GGUF:UD-IQ3_XXS",
       "recipe": "llamacpp",
@@ -22,13 +22,14 @@
       "id": "Gemma-4-E4B-it-GGUF",
       "provider": "local",
       "label": "Gemma 4 E4B",
-      "note": "default on every other PC"
+      "note": "default on PCs too small for Qwen3 30B A3B (below ~19 GB for models)"
     },
     {
       "id": "Qwen3-30B-A3B-Instruct-2507-GGUF",
       "provider": "local",
       "label": "Qwen3 30B A3B Instruct 2507",
-      "note": "faster than Flash on the same PCs, text only (~19 GB)"
+      "note": "default where it fits (~19 GB for models); faster than Flash, text only",
+      "size_gb": 17.4
     },
     {
       "id": "Qwen3-Coder-30B-A3B-Instruct-GGUF",

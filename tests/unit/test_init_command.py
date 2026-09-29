@@ -2521,13 +2521,39 @@ class TestHardwareChatModel(unittest.TestCase):
             c.args[0]: c.kwargs for c in client.ensure_model_downloaded.call_args_list
         }
         self.assertIn(DEFAULT_MODEL_NAME, calls)
+        # The default is a Lemonade built-in: no registration kwargs, just a
+        # size-scaled timeout for the download.
         qwen = calls[LARGE_DEFAULT_MODEL_NAME]
+        self.assertEqual(qwen.get("checkpoint"), None)
+        self.assertEqual(qwen.get("recipe"), None)
+        self.assertGreater(qwen["timeout"], 1200)
+
+    def test_download_registers_flash_with_its_checkpoint_when_configured(self):
+        """Flash is no longer the auto-picked default, but a user who switched
+        to it with `gaia config set default_model` must still download it
+        with its registration kwargs, not by name alone (#1655)."""
+        from gaia.config import GaiaConfig
+        from gaia.installer.init_command import InitCommand
+        from gaia.llm.lemonade_client import FLASH_OPTION_MODEL_NAME
+
+        cfg = GaiaConfig()
+        cfg.default_model = FLASH_OPTION_MODEL_NAME
+        cfg.save()
+        cmd = InitCommand(profile="gaia", yes=True)
+        client = self._client(STRIX_HALO_128)
+        with patch("gaia.llm.lemonade_client.LemonadeClient", return_value=client):
+            self.assertTrue(cmd._download_models())
+        self.assertTrue(cmd._chat_model_ready)
+        calls = {
+            c.args[0]: c.kwargs for c in client.ensure_model_downloaded.call_args_list
+        }
+        flash = calls[FLASH_OPTION_MODEL_NAME]
         self.assertTrue(
-            qwen["checkpoint"].startswith("unsloth/Qwen3.8-Flash-Next-GGUF:")
+            flash["checkpoint"].startswith("unsloth/Qwen3.8-Flash-Next-GGUF:")
         )
-        self.assertEqual(qwen["recipe"], "llamacpp")
-        self.assertEqual(qwen["mmproj"], "mmproj-F16.gguf")
-        self.assertGreater(qwen["timeout"], 7200)
+        self.assertEqual(flash["recipe"], "llamacpp")
+        self.assertEqual(flash["mmproj"], "mmproj-F16.gguf")
+        self.assertGreater(flash["timeout"], 7200)
 
     def test_vlm_profile_keeps_gemma_and_never_probes(self):
         from gaia.installer.init_command import with_chat_model
@@ -2629,12 +2655,15 @@ class TestHardwareChatModel(unittest.TestCase):
         )
 
     def test_a_user_default_the_server_cannot_load_is_refused(self):
+        """The default (a Lemonade built-in) has no version floor of its own —
+        this refusal path is exercised by a user-configured Flash instead,
+        which still needs llama.cpp's qwen4exp (v2026.39.1+)."""
         from gaia.config import GaiaConfig
-        from gaia.llm.lemonade_client import LARGE_DEFAULT_MODEL_NAME
+        from gaia.llm.lemonade_client import FLASH_OPTION_MODEL_NAME
         from gaia.llm.model_fit import ModelFitError
 
         cfg = GaiaConfig()
-        cfg.default_model = LARGE_DEFAULT_MODEL_NAME
+        cfg.default_model = FLASH_OPTION_MODEL_NAME
         cfg.save()
         client = self._client(STRIX_HALO_128)
         client.health_check.return_value = {"status": "ok", "version": "11.9.0"}
