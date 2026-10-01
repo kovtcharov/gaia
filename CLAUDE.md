@@ -625,7 +625,7 @@ is set in its own `agent.py` (see [Default Models](#default-models)).
 | Agent | Description |
 |-------|-------------|
 | **GaiaAgent** | The flagship — conversation, documents, data, web, memory, skills — hub (`gaia/`) |
-| **ChatAgent** | Multi-profile conversation (chat/doc/file) with RAG; the flagship's base class — hub (`chat/`) |
+| **ChatAgent** | The flagship's base class. Its `chat`/`doc`/`file` ids are `hidden` — resolvable, not selectable — hub (`chat/`) |
 | **EmailTriageAgent** | Email triage for Gmail or Outlook (local inference; needs the Google or Microsoft connector) — hub (`email/`) |
 | **BuilderAgent** | Scaffolds new agents from templates — in-core (`builder/`) |
 
@@ -648,6 +648,7 @@ New agents are Python classes inheriting from `Agent` (see [`src/gaia/agents/bas
 | `file_search` | `gaia.agents.tools.file_tools.FileSearchToolsMixin` | Fuzzy/glob file search |
 | `file_io` | `gaia.agents.tools.file_io_tools.FileIOToolsMixin` | Read/write/edit files |
 | `shell` | `gaia.agents.tools.shell_tools.ShellToolsMixin` | Sandboxed shell commands |
+| `cli_setup` | `gaia.agents.tools.cli_setup_tools.CliSetupToolsMixin` | Install and sign in to a skill's CLI |
 | `screenshot` | `gaia.agents.tools.screenshot_tools.ScreenshotToolsMixin` | Screen capture |
 | `filesystem` | `gaia.agents.tools.filesystem_tools.FileSystemToolsMixin` | File system navigation |
 | `scratchpad` | `gaia.agents.tools.scratchpad_tools.ScratchpadToolsMixin` | SQL scratchpad tables for data analysis |

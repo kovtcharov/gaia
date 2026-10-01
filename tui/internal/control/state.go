@@ -52,14 +52,15 @@ type ChatState struct {
 	// so it is the field that says whether a scroll was registered at all.
 	FollowTail bool `json:"follow_tail"`
 	// MouseOwner is "app" while the TUI is tracking the mouse (the wheel
-	// scrolls, links are clickable) or "terminal" while it is not — either
-	// because the user asked for SELECT MODE or because nothing wants it yet.
+	// scrolls, links are clickable) or "terminal" while it is not — the
+	// default, so drag-select reaches the terminal.
 	MouseOwner string `json:"mouse_owner"`
 	// MouseMotion is "cell" or "all" — which tracking mode is armed. An
 	// overlay needs "all" for hover; the plain transcript does not.
 	MouseMotion string `json:"mouse_motion,omitempty"`
-	// SelectMode is the user's own Ctrl+T choice, independent of who happens
-	// to hold the mouse this frame.
+	// SelectMode is true unless the user gave the mouse to the app with
+	// Ctrl+T — their own choice, independent of whether an overlay holds the
+	// mouse this frame.
 	SelectMode bool `json:"select_mode"`
 	// ViewportRows is the height of the transcript window in rows, and
 	// HeaderRows how many screen rows sit above it — the offset a client adds
@@ -80,8 +81,8 @@ type ChatState struct {
 // to the token totals, and MeasuredTurns says how many were measured — so a
 // caller can tell a genuinely cheap session from a partly-unmeasured one.
 type SessionCost struct {
-	Turns         int     `json:"turns"`
-	MeasuredTurns int     `json:"measured_turns"`
+	Turns         int `json:"turns"`
+	MeasuredTurns int `json:"measured_turns"`
 	// ActiveSeconds is the sum of the turns, not the session's wall clock —
 	// the time between turns is the user reading, not the agent working. A
 	// driver attributing a task's duration wants this; one that wants wall

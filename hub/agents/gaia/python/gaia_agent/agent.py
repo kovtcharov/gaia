@@ -46,12 +46,18 @@ import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import ClassVar, List, Optional
+from typing import ClassVar, FrozenSet, List, Optional
 
 from gaia_agent.connectors import MAILBOX_REQUIREMENTS
+from gaia_agent.engineering_tools import (
+    ENGINEERING_SKILL,
+    ENGINEERING_TOOL_NAMES,
+    EngineeringToolsMixin,
+)
 from gaia_agent_chat.agent import ChatAgent, ChatAgentConfig
+from gaia_agent_chat.profiles import get_profile_spec
 
-from gaia.agents.base.project_map import ProjectMapMixin
+from gaia.agents.base.project_map import ProjectMapMixin, is_code_repository
 from gaia.agents.base.skill_catalog import catalog_env_override
 from gaia.agents.base.skill_loader import (
     DEFAULT_SKILL_THRESHOLD,
@@ -105,7 +111,12 @@ def _bundled_skill_roots() -> List[str]:
     out-of-the-box prompt is byte-identical — this only means that when a user
     asks for a skill by name, it is there to load.
     """
-    return [str(d) for d in (_SKILLS_DIR, _HUB_SKILLS_DIR) if d.is_dir()]
+    roots: List[str] = []
+    for directory in (_SKILLS_DIR, _HUB_SKILLS_DIR):
+        path = str(directory)
+        if directory.is_dir() and path not in roots:
+            roots.append(path)
+    return roots
 
 
 _MANIFEST_CANDIDATES = (
@@ -117,6 +128,24 @@ _MANIFEST_CANDIDATES = (
 
 #: Env override for the active skill set, mirroring the email agent's channel.
 SKILL_SET_ENV = "GAIA_SKILL_SET"
+
+#: Env override for the fast conversational path (#4103).
+FAST_ENV = "GAIA_FAST"
+
+#: The profile a fast session composes as: the only spec with no tool groups.
+_FAST_PROFILE = "chat"
+
+
+def fast_env_override() -> Optional[bool]:
+    """Parse ``GAIA_FAST``, or ``None`` when it is unset.
+
+    Same truthy set as ``GAIA_DYNAMIC_TOOLS`` and ``GAIA_SKILL_DISCOVERY`` so a
+    user who has learned one of this agent's switches has learned all of them.
+    """
+    raw = os.getenv(FAST_ENV)
+    if raw is None:
+        return None
+    return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
 def _locate_agent_manifest() -> Optional[str]:
@@ -161,6 +190,11 @@ class GaiaAgentConfig(ChatAgentConfig):
     # resolution order is explicit arg -> env -> manifest default.
     skill_set: Optional[str] = None
 
+    # Explicit opt-in, independent of diagnostic --dev output. Inherited by WebUI.
+    developer_mode: bool = field(
+        default_factory=lambda: os.environ.get("GAIA_DEVELOPER_MODE") == "1"
+    )
+
     # Lazy skill-body activation (#2848 follow-up): per-turn semantic
     # selection of which LOADED skill's body actually renders, instead of
     # every loaded skill's body riding along on every turn for the life of
@@ -183,8 +217,11 @@ class GaiaAgentConfig(ChatAgentConfig):
     # bundle, so the flagship would truncate a cohesion group mid-pull instead
     # of loading it. Swept offline against nine representative queries with 13
     # CORE: 13 dynamic slots lands every matched bundle whole, 9 cut the web
-    # bundle in half on a research question, and 17 buys nothing further. Grows
-    # with CORE so the dynamic share stays 13.
+    # bundle in half on a research question, and 17 buys nothing further. Bump
+    # this literal when FULL_CORE_TOOLS grows so the dynamic share stays 13;
+    # per-session workspace CORE additions (e.g. the shell in a repo) don't
+    # need a bump here — _resolve_dynamic_tools_max() grows the cap by
+    # len(_workspace_core_tools()) automatically.
     dynamic_tools_max: int = 29
 
     # List every installed skill in the system prompt so the model loads one
@@ -222,9 +259,53 @@ class GaiaAgentConfig(ChatAgentConfig):
     project_root: Optional[str] = None
 
     # Build the semantic code index at task start when the project is a
-    # repository and has none. Off-switch: ``GAIA_PROJECT_MAP_AUTO_INDEX=0``,
-    # for a monorepo where a full embed pass is not worth it.
-    auto_index: bool = True
+    # repository and has none. Off by default: the first search_code_index
+    # builds it instead, so a task that never searches never pays for an embed
+    # pass over the whole repository. ``GAIA_PROJECT_MAP_AUTO_INDEX=1`` opts in.
+    auto_index: bool = False
+
+    # The fast conversational path (#4103). Trades this agent's whole tool
+    # surface for the prefill of a plain chat agent, for a session that is only
+    # ever going to be conversation. Session-scoped and one-way: a fast session
+    # has no documents, no files, no web and no skills, and cannot acquire them
+    # mid-run — start an ordinary session for that. Overridable via GAIA_FAST.
+    #
+    # Everything it switches off is derived in ``_apply_fast_mode``; the field
+    # itself only records the choice, so a caller reading back the config can
+    # tell a fast session from one that happens to be narrow.
+    fast: bool = False
+
+
+def _apply_fast_mode(config: GaiaAgentConfig) -> None:
+    """Rewrite *config* in place into the fast conversational path (#4103).
+
+    Composing as the ``chat`` profile is the whole mechanism: it is the one
+    ``ProfileSpec`` with no ``tool_groups``, so ChatAgent registers a bare
+    conversational surface and every downstream read of ``prompt_profile``
+    already behaves. Nothing here is a special case for fast mode.
+
+    The rest is removing what would otherwise be paid for and never used:
+
+    * The ``enable_*`` flags add prompt TEXT, never tools. Left on, a fast
+      session would describe filesystem, scratchpad and browser tooling it
+      cannot call — the worst of both, tokens spent inviting a tool call that
+      fails.
+    * Dynamic tool and skill selection are per-turn choosers over a surface
+      this session does not have. Turning skill selection off also pins
+      ``gaia-voice``: it is loaded, and a greeting is exactly the turn a
+      semantic chooser would score too low to render, dropping the persona.
+    * ``auto_index`` would embed a whole repository in the background for a
+      ``search_code_index`` that is not registered.
+    """
+    config.prompt_profile = _FAST_PROFILE
+    config.enable_filesystem = False
+    config.enable_scratchpad = False
+    config.enable_browser = False
+    config.enable_sd_tools = False
+    config.dynamic_tools = False
+    config.dynamic_skills = False
+    config.skill_discovery = False
+    config.auto_index = False
 
 
 # ``ProjectMapMixin`` is the one exception to "base agent first": it overrides
@@ -234,6 +315,7 @@ class GaiaAgentConfig(ChatAgentConfig):
 # overrides anything and a future method cannot silently win over ChatAgent's.
 class GaiaAgent(
     ProjectMapMixin,
+    EngineeringToolsMixin,
     ChatAgent,
     SkillLibraryToolsMixin,
     SkillLearningToolsMixin,
@@ -269,7 +351,53 @@ class GaiaAgent(
                 f"{sorted(kwargs)}; those keywords would be silently dropped. "
                 "Set them on the config object, or drop the config= argument."
             )
-        super().__init__(config=config or GaiaAgentConfig(**kwargs))
+        resolved = config or GaiaAgentConfig(**kwargs)
+        # ``GAIA_FAST`` wins in both directions, so a launcher that hard-codes
+        # fast=True is still overridable from the shell. Written back to the
+        # field so ``config.fast`` never disagrees with how the agent was built.
+        override = fast_env_override()
+        resolved.fast = override if override is not None else bool(resolved.fast)
+        if resolved.fast:
+            _apply_fast_mode(resolved)
+            logger.info(
+                "[gaia] fast mode: conversational profile only — no documents, "
+                "files, web or skills this session"
+            )
+        super().__init__(config=resolved)
+        if self.config.developer_mode:
+            self.load_skill(ENGINEERING_SKILL)
+            self._start_engineering_setup()
+
+    @property
+    def skill_manager(self):
+        """Exclude the developer skill before metadata discovery in normal mode."""
+        if getattr(self, "_skill_manager", None) is None:
+            from gaia.skills import SkillManager
+
+            self._skill_manager = SkillManager(
+                agent_skill_dirs=[*self.SKILL_DIRS, *self._bundled_skill_dirs()],
+                excluded_names=(
+                    () if self.config.developer_mode else (ENGINEERING_SKILL,)
+                ),
+            )
+        return self._skill_manager
+
+    def load_skill(self, name, *, manager=None):
+        # Also covers an explicitly supplied manager or a restored manifest.
+        if name == ENGINEERING_SKILL and not self.config.developer_mode:
+            raise PermissionError("The engineering skill requires --developer-mode.")
+        return super().load_skill(name, manager=manager)
+
+    @property
+    def _always_on_skill_names(self):
+        names = super()._always_on_skill_names
+        return names | {ENGINEERING_SKILL} if self.config.developer_mode else names
+
+    def _select_tools_for_turn(self, user_input):
+        selected = super()._select_tools_for_turn(user_input)
+        if self.config.developer_mode and selected is not None:
+            return sorted(set(selected) | set(ENGINEERING_TOOL_NAMES))
+        return selected
 
     def close(self) -> None:
         """Release this agent's watchers, HTTP session and SQLite handles now.
@@ -302,29 +430,60 @@ class GaiaAgent(
         *referenced* here, not called, so this needs no embedder/Lemonade
         access at construction time — only the first real turn does.
         """
+        engineering_tools = (
+            self.register_engineering_tools() if self.config.developer_mode else {}
+        )
         self.skill_loader = self._maybe_build_skill_loader()
         self._skill_catalog_enabled = self._resolve_skill_catalog_enabled()
-        self.register_skill_library_tools()
-        # Adaptive skills (#2674): lets the agent propose a correction to a
-        # loaded skill that does not fit. It only ever stages one — activating
-        # it is the user's own step through `gaia skill deltas --approve`.
-        self.register_skill_learning_tools()
-        # The project map's root when there is one, so "is the index built?"
-        # and "index it" both mean the repository the task is about. Falling
-        # back to allowed_paths for the same reason that field rejects cwd: the
-        # daemon launches this sidecar with cwd = the package directory, so cwd
-        # would sandbox code search to the agent's own source tree.
-        allowed = getattr(self.config, "allowed_paths", None) or [str(Path.home())]
-        # Through the mixin, so both read the one cached resolution and can
-        # never end up describing two different trees.
-        index_root = self._project_map_root() or allowed[0]
-        # The project root is where code search STARTS; allowed_paths is how far
-        # it may reach. Passing one value for both locked a session that began
-        # inside a repo to that repo (#3544).
-        self._init_code_index_state(repo_path=index_root, ceiling_paths=allowed)
-        self.register_code_index_tools()
-        self.register_email_tools()
+        if self._profile_registers_tools():
+            self.register_skill_library_tools()
+            # Adaptive skills (#2674): lets the agent propose a correction to a
+            # loaded skill that does not fit. It only ever stages one — activating
+            # it is the user's own step through `gaia skill deltas --approve`.
+            self.register_skill_learning_tools()
+            # The project map's root when there is one, so "is the index built?"
+            # and "index it" both mean the repository the task is about. Falling
+            # back to allowed_paths for the same reason that field rejects cwd: the
+            # daemon launches this sidecar with cwd = the package directory, so cwd
+            # would sandbox code search to the agent's own source tree.
+            allowed = getattr(self.config, "allowed_paths", None) or [str(Path.home())]
+            # Through the mixin, so both read the one cached resolution and can
+            # never end up describing two different trees.
+            index_root = self._project_map_root() or allowed[0]
+            # The project root is where code search STARTS; allowed_paths is how far
+            # it may reach. Passing one value for both locked a session that began
+            # inside a repo to that repo (#3544).
+            self._init_code_index_state(repo_path=index_root, ceiling_paths=allowed)
+            self.register_code_index_tools()
+            self.register_email_tools()
         super()._register_tools()
+        if engineering_tools:
+            # Keep developer closures out of the process-global registry even
+            # transiently: another WebUI agent may be constructing concurrently.
+            self._instance_tools = {**self._tools_registry, **engineering_tools}
+
+    def _profile_registers_tools(self) -> bool:
+        """False on a profile whose spec registers no tool groups (#4103).
+
+        ChatAgent returns early on such a profile — ``chat`` is the only one —
+        and this agent's own extras have to return early with it. Registering
+        17 more tools onto a surface the profile deliberately left bare is what
+        made ``prompt_profile="chat"`` cost 6.3K prefill instead of 2.2K.
+        """
+        profile = getattr(self.config, "prompt_profile", "full")
+        return not get_profile_spec(profile).early_return
+
+    def _workspace_core_tools(self) -> FrozenSet[str]:
+        """The shell, always on when this session works in a code repository.
+
+        Coding requests rarely read like shell requests ("skip these tests on
+        PRs"), so semantic selection left a repo session without a shell even
+        though the project map tells the model which commands it accepts.
+        """
+        root = self._project_map_root()
+        if root and is_code_repository(root):
+            return frozenset({"run_shell_command"})
+        return frozenset()
 
     # ── lazy skill-body loader (#2848 follow-up) ────────────────────────────
 
@@ -449,4 +608,10 @@ class GaiaAgent(
         return os.environ.get(SKILL_SET_ENV) or None
 
 
-__all__ = ["GaiaAgent", "GaiaAgentConfig", "SKILL_SET_ENV"]
+__all__ = [
+    "GaiaAgent",
+    "GaiaAgentConfig",
+    "SKILL_SET_ENV",
+    "FAST_ENV",
+    "fast_env_override",
+]

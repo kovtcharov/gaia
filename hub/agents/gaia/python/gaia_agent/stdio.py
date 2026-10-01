@@ -62,6 +62,7 @@ window a control ack could not.
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
@@ -73,7 +74,11 @@ from typing import Any, Dict, List, Optional
 
 from gaia_agent.memory_dump import MEMORY_DUMP_QUERY, build_memory_dump
 
-from gaia.agents.base.readiness import start_advice
+from gaia.agents.base.readiness import (
+    probe_model_present,
+    resolve_probe_base,
+    start_advice,
+)
 from gaia.llm import create_client
 from gaia.llm.inference_location import resolve_inference_location
 from gaia.llm.lemonade_client import (
@@ -92,7 +97,7 @@ logger = get_logger(__name__)
 #: Level the permission audit trail is pinned at, independent of --dev.
 AUDIT_LEVEL = logging.INFO
 
-#: Logger carrying permission-state history: bypass toggles and every
+#: Logger carrying permission-state history: full-access toggles and every
 #: decision that was denied or dropped.
 #:
 #: It needs a channel of its own because user mode logs ERROR only and the
@@ -133,9 +138,14 @@ CONTROL_KEY = "gaia_control"
 QUERY_KEY = "gaia_query"
 
 #: Control verbs. ``tool_decision`` answers the confirmation currently on
-#: screen; ``bypass`` turns unattended approval on or off for the session.
+#: screen; ``full_access`` turns unattended approval on or off for the session.
 CONTROL_TOOL_DECISION = "tool_decision"
-CONTROL_BYPASS = "bypass"
+CONTROL_FULL_ACCESS = "full_access"
+#: The retired spelling of ``full_access``. A host still sending it is older
+#: than this agent, so the toggle it meant cannot be trusted in either
+#: direction: it is answered by turning full access OFF, the direction that
+#: cannot run a tool nobody approved.
+_RETIRED_CONTROL_VERB = "bypass"
 #: ``clear_history`` starts a fresh conversation: the host's /clear must clear
 #: the child's ``conversation_history`` too, or "cleared" context keeps riding
 #: into every later prompt. Routed through the query queue so a clear typed
@@ -148,7 +158,7 @@ class _ClearHistory:
 
 
 #: ``cancel`` stops the running turn but not the process, so loaded skills,
-#: "always" grants, history and the bypass mode all survive it.
+#: "always" grants, history and full access all survive it.
 CONTROL_CANCEL = "cancel"
 
 
@@ -161,7 +171,7 @@ class PermissionState:
     """Permission state that outlives any single turn.
 
     Two things have to survive a turn boundary, because a fresh
-    ``SSEOutputHandler`` is built for each one: whether bypass is on, and which
+    ``SSEOutputHandler`` is built for each one: whether full access is on, and which
     calls the user has granted "always". Losing either would re-prompt for a
     call the user already approved, which is the same defect as never having
     offered "always" at all.
@@ -170,51 +180,53 @@ class PermissionState:
     while the turn thread is swapping ``handler`` around it.
     """
 
-    def __init__(self, bypass: bool = False, *, lifts_shell_gates: bool = True) -> None:
+    def __init__(
+        self, full_access: bool = False, *, lifts_shell_gates: bool = True
+    ) -> None:
         self._lock = threading.Lock()
-        self._bypass = bypass
+        self._full_access = full_access
         self._lifts_shell_gates = lifts_shell_gates
         self._grants: set = set()
         self._handler: Any = None
-        if bypass:
+        if full_access:
             # Starting unattended is the same security event as toggling it on
-            # mid-session, and it never went through set_bypass.
+            # mid-session, and it never went through set_full_access.
             audit.warning(
-                "Bypass permissions ENABLED at launch (shell gates %s)",
+                "Full access ENABLED at launch (shell gates %s)",
                 "off" if lifts_shell_gates else "still on",
             )
 
     @property
-    def bypass(self) -> bool:
+    def full_access(self) -> bool:
         with self._lock:
-            return self._bypass
+            return self._full_access
 
     def _apply(self, handler: Any, enabled: bool) -> None:
-        """Write this session's bypass decision onto one handler.
+        """Write this session's full-access decision onto one handler.
 
         Two attributes, because they are two different grants that happen to be
         turned on together. ``auto_approve_gated_tools`` skips the confirmation
-        prompt; ``bypass_permissions`` additionally lifts the shell guardrails —
-        the operator block, the read-only binary policy and the rate limit
-        (#3373, #3374). An unattended harness that only pre-approves prompts
-        sets the first and must not inherit the second, which is what
+        prompt; ``full_access`` additionally lifts the shell guardrails — the
+        operator block, the read-only binary policy and the rate limit (#3373,
+        #3374). An unattended harness that only pre-approves prompts sets the
+        first and must not inherit the second, which is what
         ``lifts_shell_gates=False`` buys the HTTP transport.
         """
         handler.auto_approve_gated_tools = enabled
-        handler.bypass_permissions = enabled and self._lifts_shell_gates
+        handler.full_access = enabled and self._lifts_shell_gates
 
-    def set_bypass(self, enabled: bool) -> None:
-        """Turn bypass on or off, taking effect on the very next gated tool.
+    def set_full_access(self, enabled: bool) -> None:
+        """Turn full access on or off, taking effect on the very next gated tool.
 
         Applied to the live handler too, so a toggle mid-turn is not queued
         behind the turn it was meant to change.
         """
         with self._lock:
-            self._bypass = enabled
+            self._full_access = enabled
             if self._handler is not None:
                 self._apply(self._handler, enabled)
         audit.warning(
-            "Bypass permissions %s (shell gates %s)",
+            "Full access %s (shell gates %s)",
             "ENABLED" if enabled else "disabled",
             ("off" if enabled else "on") if self._lifts_shell_gates else "still on",
         )
@@ -222,7 +234,7 @@ class PermissionState:
     def attach(self, handler: Any) -> None:
         """Hand a turn's handler the session's accumulated permission state."""
         with self._lock:
-            self._apply(handler, self._bypass)
+            self._apply(handler, self._full_access)
             handler.session_grants().update(self._grants)
             # A human is on the other end of this pipe with a modal on screen,
             # so the wait is theirs to end — see confirm_tool_execution. The
@@ -326,8 +338,16 @@ def apply_control(message: Dict[str, Any], state: PermissionState) -> None:
     desynchronise the stream. The sender already knows what it sent.
     """
     verb = message.get(CONTROL_KEY)
-    if verb == CONTROL_BYPASS:
-        state.set_bypass(bool(message.get("enabled")))
+    if verb == CONTROL_FULL_ACCESS:
+        state.set_full_access(bool(message.get("enabled")))
+    elif verb == _RETIRED_CONTROL_VERB:
+        state.set_full_access(False)
+        audit.error(
+            "Control verb %r was renamed to %r; turned full access OFF rather than "
+            "guess what an older host meant. Update the TUI to match this agent.",
+            _RETIRED_CONTROL_VERB,
+            CONTROL_FULL_ACCESS,
+        )
     elif verb == CONTROL_CANCEL:
         if not state.cancel_active("host asked to cancel"):
             logger.info("Cancel requested with no turn running — nothing to stop")
@@ -598,10 +618,32 @@ def _apply_claude_switch(agent: Any, target: str) -> str:
     return CLAUDE_MODELS[target]
 
 
+def _replayed_cloud_key(base_url: Optional[str], target: str) -> bool:
+    """Whether Lemonade lists cloud model *target* once handed its remembered key.
+
+    A restarted Lemonade forgets runtime keys and discovers nothing; the
+    readiness probe is the one place that gives back a key GAIA remembers for
+    that provider. False
+    for a local id, or when the probe cannot reach Lemonade — the caller's
+    "Unknown Lemonade model" refusal is then the actionable answer.
+    """
+    import requests
+
+    if cloud_model_provider(target) is None:
+        return False
+    try:
+        return probe_model_present(resolve_probe_base(base_url), target)
+    except requests.RequestException as exc:
+        logger.debug("[lemonade] cloud key replay probe for %r failed: %s", target, exc)
+        return False
+
+
 def _apply_local_switch(agent: Any, target: str) -> str:
     """Swap the live client to a local or cloud Lemonade model."""
     chat = agent.chat
     available = _lemonade_models(chat.config.base_url)  # raises if unreachable
+    if target not in available and _replayed_cloud_key(chat.config.base_url, target):
+        available = _lemonade_models(chat.config.base_url)
     if target not in available:
         raise RuntimeError(
             f"Unknown Lemonade model '{target}'. Downloaded local or discovered cloud "
@@ -620,10 +662,19 @@ def _apply_local_switch(agent: Any, target: str) -> str:
             base_url=chat.config.base_url,
             system_prompt=chat.config.system_prompt,
         )
+        # Warm the catalog metadata now, before this client answers anything.
+        # cloud_model_provider() only recognises a runtime-discovered provider
+        # (an id outside the fireworks./amd. prefixes) once list_models() has
+        # read it — and both the switch message below and the system prompt
+        # _apply_switch is about to rebuild call it on this same client
+        # (#4365).
+        refresh = getattr(new_client, "refresh_model_catalog", None)
+        if callable(refresh):
+            refresh()
     except Exception as exc:  # pylint: disable=broad-exception-caught
         # Reachability was already confirmed above — this covers whatever else
-        # LemonadeClient's constructor could still reject (a malformed
-        # base_url, mostly). Nothing on agent/chat has moved yet.
+        # LemonadeClient's constructor (or the catalog warm-up) could still
+        # reject. Nothing on agent/chat has moved yet.
         raise RuntimeError(f"{type(exc).__name__}: {exc}") from exc
 
     _apply_switch(
@@ -729,8 +780,16 @@ def run_model_command(agent: Any, query: str, out) -> None:
 
     logger.info("switched model to %s (%s)", arg, display)
     _write(_model_state_event(agent), out)
+    # Pass the live client's classifier, as the system prompt does — the id
+    # prefix knows only two providers, so a runtime-discovered one would be
+    # called local here while the prompt calls it cloud.
+    lookup = getattr(
+        getattr(agent.chat, "llm_client", None), "cloud_model_provider", None
+    )
     location = resolve_inference_location(
-        agent.chat.effective_model, use_claude=bool(agent._use_claude)
+        agent.chat.effective_model,
+        use_claude=bool(agent._use_claude),
+        cloud_provider_lookup=lookup if callable(lookup) else None,
     )
     _write(
         {
@@ -935,7 +994,7 @@ def _configure_logging(real_stdout, *, dev: bool) -> "Path":
             lg.setLevel(logging.NOTSET)
 
     # Configured last, so the NOTSET sweep above cannot clear it. Its own
-    # handler at AUDIT_LEVEL is what keeps a bypass toggle on the record in
+    # handler at AUDIT_LEVEL is what keeps a full-access toggle on the record in
     # user mode, where the shared handler drops everything below ERROR.
     # Not merged into the shared handler at an INFO floor: gaia loggers built
     # after this call default to INFO, so that would put the whole tree back
@@ -1023,7 +1082,7 @@ def run_turn(
     they are dropped before they reach the wire, so a front-end that asks for
     developer output gets an empty developer view.
 
-    *state* carries bypass and "always allow" across turns, and is what the
+    *state* carries full access and "always allow" across turns, and is what the
     stdin pump answers confirmations through. Omitted, the turn gets a fresh
     permission slate and no way to answer — the safe default, not a convenient
     one: no grant is ever inherited by accident.
@@ -1166,6 +1225,41 @@ def run_turn(
 
 CLEAR_CONVERSATION_QUERY = "\x00gaia:clear_conversation\x00"
 
+#: Sent by the host before the chat opens, so the first question does not pay
+#: for loading the model and reading the system prompt. Answered with a `final`
+#: whose answer is WARMED_UP, or WARM_UP_SKIPPED for a remote model, where
+#: nothing loads locally and a priming call would only cost money.
+WARM_UP_QUERY = "\x00gaia:warm_up\x00"
+WARMED_UP = "warmed_up"
+WARM_UP_SKIPPED = "warm_up_skipped"
+
+
+def run_warm_up(agent: Any, out) -> None:
+    """Do the first turn's one-time work now, reporting each step as a status.
+
+    A failure is reported as an `error` event naming what went wrong and that
+    chat still works — never swallowed, because the slow first answer it
+    leaves behind would otherwise look unexplained.
+    """
+    if _model_state_event(agent).get("model_remote"):
+        _write({"type": "final", "answer": WARM_UP_SKIPPED}, out)
+        return
+    try:
+        result = agent.warm_up(
+            progress=lambda message: _write({"type": "status", "message": message}, out)
+        )
+    except Exception as exc:  # noqa: BLE001 - reported to the user, not hidden
+        logger.warning("Warm-up failed: %s", exc, exc_info=True)
+        event = _terminal_error(exc)
+        event["detail"] = (
+            "Could not get the model ready ahead of time — chat still works, but "
+            f"the first answer will take longer. {event['detail']}"
+        )
+        _write(event, out)
+        return
+    logger.info("Warm-up finished in %ss", result.get("seconds"))
+    _write({"type": "final", "answer": WARMED_UP}, out)
+
 
 def dispatch_query(
     agent: Any,
@@ -1180,6 +1274,20 @@ def dispatch_query(
     the LLM and are never recorded as chat turns (see _record_turn's docstring
     on why a turn's own answer is what gets kept).
     """
+    setup = getattr(agent, "_engineering_setup", None)
+    if isinstance(setup, dict):
+        setup_status = setup.get("status", "ready")
+        if setup_status != getattr(agent, "_engineering_reported_setup_status", None):
+            if setup_status == "error":
+                message = "Developer setup failed: " + str(
+                    setup.get("error", "unknown error")
+                )
+            elif setup_status == "starting":
+                message = "Developer source-cache setup is still running. Daily tasks remain available."
+            else:
+                message = "Developer source cache is ready. Ask for engineering status to connect your coding app."
+            _write({"type": "status", "message": message}, out)
+            agent._engineering_reported_setup_status = setup_status
     if query == CLEAR_CONVERSATION_QUERY:
         agent.conversation_history.clear()
         _write({"type": "final", "answer": "conversation_cleared"}, out)
@@ -1187,10 +1295,24 @@ def dispatch_query(
     if query == MEMORY_DUMP_QUERY:
         _write(_memory_dump_event(agent), out)
         return
+    if query == WARM_UP_QUERY:
+        run_warm_up(agent, out)
+        return
     if is_model_command(query):
         run_model_command(agent, query, out)
         return
     run_turn(agent, query, out, dev=dev, state=state)
+
+
+class _RetiredFlag(argparse.Action):
+    """A flag that was renamed: fail naming the new one, never run as the old."""
+
+    def __init__(self, option_strings, dest, new_name, **kwargs):
+        self.new_name = new_name
+        super().__init__(option_strings, dest, nargs=0, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        parser.error(f"{option_string} was renamed to {self.new_name}")
 
 
 def build_parser() -> "argparse.ArgumentParser":
@@ -1229,13 +1351,20 @@ def build_parser() -> "argparse.ArgumentParser":
         "transport only ever speaks JSON lines, so it changes nothing.",
     )
     parser.add_argument(
+        "--developer-mode",
+        action="store_true",
+        default=os.environ.get("GAIA_DEVELOPER_MODE") == "1",
+        help="Enable the developer skill and consent-based coding-app handoff.",
+    )
+    parser.add_argument(
         "--dev",
         action="store_true",
         help="Developer mode: DEBUG-level logging to the log file instead of "
         "errors only.",
     )
     parser.add_argument(
-        "--bypass-permissions",
+        "--full-access",
+        dest="full_access",
         action="store_true",
         help="Start with the permission gates OFF: every gated tool runs "
         "without asking, the shell-only operators (>, >>, <, &, `, $(), "
@@ -1245,6 +1374,12 @@ def build_parser() -> "argparse.ArgumentParser":
         "the shell rate limit is lifted. This is arbitrary code execution. Off "
         "unless passed, and the host can toggle it at any time over the "
         "control channel. Every shell command run this way is audit-logged.",
+    )
+    parser.add_argument(
+        "--bypass-permissions",
+        action=_RetiredFlag,
+        new_name="--full-access",
+        help=argparse.SUPPRESS,
     )
     return parser
 
@@ -1256,7 +1391,7 @@ def main(argv: Optional[list] = None) -> int:
     out = sys.stdout
     _configure_logging(out, dev=args.dev)
 
-    state = PermissionState(bypass=args.bypass_permissions)
+    state = PermissionState(full_access=args.full_access)
 
     # Built ONCE, before the first query, and kept for the life of the process.
     # A failure here is fatal and must say so on the turn the user actually
@@ -1268,7 +1403,11 @@ def main(argv: Optional[list] = None) -> int:
         # it the turn is silent for its whole length and the finished text lands
         # in one frame — the transport could always carry tokens, the agent just
         # never produced any.
-        config_kwargs: Dict[str, Any] = {"silent_mode": True, "streaming": True}
+        config_kwargs: Dict[str, Any] = {
+            "silent_mode": True,
+            "streaming": True,
+            "developer_mode": args.developer_mode,
+        }
         if args.model:
             config_kwargs["model_id"] = args.model
         if args.use_claude:
@@ -1298,6 +1437,14 @@ def main(argv: Optional[list] = None) -> int:
     # the wire, read as part of whichever turn the child's first Send()
     # triggers (the transport doesn't scan stdout until then), so it always
     # lands before that turn's own events.
+    if args.developer_mode:
+        _write(
+            {
+                "type": "status",
+                "message": "Developer mode enabled. Preparing source cache; ask for engineering status to connect Claude Code or Codex. Context is shared only after explicit approval.",
+            },
+            out,
+        )
     if not _write_if_wire_alive(_model_state_event(agent), out):
         # Model load is the longest window the parent has to leave in, and it
         # is gone — there is nobody left to serve.

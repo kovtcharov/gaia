@@ -87,8 +87,11 @@
                     "group": "Core Agents",
                     "pages": [
                       "guides/gaia",
+                      "guides/document-extraction",
                       "guides/ai-providers",
                       "guides/chat",
+                      "guides/browser-use",
+                      "guides/harness-engineering",
                       "guides/talk",
                       "guides/transcription"
                     ]
@@ -336,6 +339,7 @@
             "group": "Command Line",
             "pages": [
               "reference/cli",
+              "reference/tui-dev",
               "reference/features"
             ]
           },
@@ -354,6 +358,7 @@
                 ]
               },
               "reference/session-analytics",
+              "reference/agent-benchmarks",
               "reference/dependency-management",
               "reference/contributing-docs"
             ]
@@ -432,18 +437,24 @@
               "plans/skill-format",
               "plans/skill-synthesis",
               "plans/adaptive-skills",
+              "spec/harness-engineering-mode",
+              "plans/adaptive-memory",
+              "plans/adaptive-recovery",
               "plans/oem-bundling"
             ]
           },
           {
             "group": "Infrastructure",
             "pages": [
+              "plans/browser-use",
               "plans/cua",
               "plans/docker-containers",
               "plans/mcp-docs",
               "plans/desktop-installer",
               "plans/tool-loader",
-              "plans/code-index-review"
+              "plans/code-index-review",
+              "plans/nightly-benchmarks",
+              "plans/eval-hillclimbing"
             ]
           },
           {

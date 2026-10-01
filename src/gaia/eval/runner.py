@@ -35,6 +35,7 @@ from typing import Optional
 import yaml
 
 from gaia.eval.config import DEFAULT_AGENT_TYPE
+from gaia.eval.scorecard import SKIPPED_STATUSES
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,15 @@ def resolve_mcp_config(run_dir) -> Path:
     run's artifacts. The path is absolute because ``claude -p`` runs from
     ``REPO_ROOT``, not the caller's cwd.
     """
+    config = _resolved_mcp_config()
+    resolved = Path(run_dir).resolve() / "mcp-config.resolved.json"
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    resolved.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    return resolved
+
+
+def _resolved_mcp_config() -> dict:
+    """The MCP config template with generic interpreter names resolved."""
     config = load_mcp_config_template()
     for name, server in (config.get("mcpServers") or {}).items():
         command = server.get("command")
@@ -109,11 +119,7 @@ def resolve_mcp_config(run_dir) -> Path:
                     command,
                     server["command"],
                 )
-
-    resolved = Path(run_dir).resolve() / "mcp-config.resolved.json"
-    resolved.parent.mkdir(parents=True, exist_ok=True)
-    resolved.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-    return resolved
+    return config
 
 
 # ── Single-runner lock ────────────────────────────────────────────────────
@@ -411,6 +417,50 @@ def _stamp_agent_provenance(
         )
 
 
+INFRA_ERROR_ABORT_AFTER = 3
+
+# The driver writes root_cause in its own words, so the known harness failures
+# are matched by pattern; anything else must repeat near-verbatim.
+_INFRA_ERROR_SIGNATURES = (
+    (
+        re.compile(
+            r"connection[_ ]closed|mcp server|mcp tools?|"
+            r"tools? (?:are |were |is )?(?:not available|unavailable)",
+            re.IGNORECASE,
+        ),
+        "the Agent UI MCP server is unavailable (CONNECTION_CLOSED / no tools)",
+    ),
+    (
+        re.compile(
+            r"not reachable|connection refused|econnrefused|failed to connect",
+            re.IGNORECASE,
+        ),
+        "the Agent UI backend is unreachable",
+    ),
+)
+
+
+def _infra_error_signature(result: dict) -> Optional[str]:
+    """A root-cause key for an INFRA_ERROR result; None for any other status."""
+    if result.get("status") != "INFRA_ERROR":
+        return None
+    parts = []
+    for field in ("error", "root_cause"):
+        value = result.get(field)
+        if value:
+            parts.append(value if isinstance(value, str) else json.dumps(value))
+    text = " ".join(parts)
+    for pattern, label in _INFRA_ERROR_SIGNATURES:
+        if pattern.search(text):
+            return label
+    scenario_id = str(result.get("scenario_id") or "")
+    if scenario_id:
+        text = re.sub(rf"\b{re.escape(scenario_id)}\b", "<scenario>", text)
+    return re.sub(r"\s+", " ", re.sub(r"\d+", "#", text)).strip()[:200] or (
+        "no error or root_cause reported"
+    )
+
+
 def _compute_effective_timeout(base_timeout: int, scenario_data: dict) -> int:
     """Return per-scenario timeout covering startup overhead + turns + docs."""
     num_turns = len(scenario_data.get("turns", []))
@@ -533,6 +583,55 @@ def _documents_exist(scenario_data: dict) -> bool:
             if path and not (REPO_ROOT / path).exists():
                 return False
     return True
+
+
+# Tags declaring a model a scenario cannot run without. A machine lacking it
+# records SKIPPED_NO_MODEL with the reason, never an INFRA_ERROR or a FAIL that
+# would read as the agent's fault.
+REQUIRES_ASR_TAG = "requires_asr"
+REQUIRES_VLM_TAG = "requires_vlm"
+
+
+def _required_models(scenario_data: dict) -> list:
+    """Return ``(tag, model_id)`` for each ``requires_*`` tag the scenario carries."""
+    from gaia.audio.lemonade_asr import DEFAULT_ASR_MODEL
+    from gaia.vlm.mixin import DEFAULT_VLM_MODEL
+
+    by_tag = {REQUIRES_ASR_TAG: DEFAULT_ASR_MODEL, REQUIRES_VLM_TAG: DEFAULT_VLM_MODEL}
+    tags = set(scenario_data.get("tags") or [])
+    return [(tag, model) for tag, model in by_tag.items() if tag in tags]
+
+
+def _missing_requirements(scenario_data: dict, downloaded_models: set) -> list:
+    """Return why this machine cannot run the scenario; empty means it can."""
+    from gaia.audio.media import find_ffmpeg
+
+    missing = [
+        f"{model} is not downloaded on the Lemonade server (tag {tag})"
+        for tag, model in _required_models(scenario_data)
+        if model not in downloaded_models
+    ]
+    # transcribe_media would otherwise try a package-manager install mid-run.
+    if REQUIRES_ASR_TAG in (scenario_data.get("tags") or []) and not find_ffmpeg():
+        missing.append(f"ffmpeg is not on PATH (tag {REQUIRES_ASR_TAG})")
+    return missing
+
+
+def _downloaded_lemonade_models() -> set:
+    """Model ids downloaded on the Lemonade server the backend talks to."""
+    from gaia.llm.lemonade_client import LemonadeClient
+
+    client = LemonadeClient(verbose=False, keep_alive=True)
+    try:
+        catalog = client.list_models()
+    except Exception as e:
+        raise RuntimeError(
+            f"Scenarios tagged {REQUIRES_ASR_TAG}/{REQUIRES_VLM_TAG} need Lemonade's "
+            f"model list to decide whether they can run, but GET "
+            f"{client.base_url}/models failed: {e}. Start Lemonade "
+            "(`gaia daemon start`) or set LEMONADE_BASE_URL to a running server."
+        ) from e
+    return {m["id"] for m in catalog.get("data", []) if m.get("id")}
 
 
 def find_scenarios(
@@ -1035,6 +1134,148 @@ def _check_mcp_server_commands() -> list:
     return errors
 
 
+MCP_HANDSHAKE_TIMEOUT_S = 20
+
+# stderr text → the fix to name. A launcher dying at import is the common case.
+_MCP_STDERR_HINTS = (
+    (
+        re.compile(r"No module named '?mcp[.'\s]"),
+        "the MCP SDK is not installed in this venv — install it with "
+        '`uv pip install -e ".[mcp]"` (or `pip install "amd-gaia[mcp]"`)',
+    ),
+    (
+        re.compile(r"No module named '?gaia[.'\s]"),
+        f"gaia is not importable from {sys.executable} — run the eval from the "
+        "venv GAIA is installed in",
+    ),
+)
+
+
+def _read_initialize_response(stdout, request_id):
+    """Return the first JSON-RPC message on ``stdout`` whose id is ``request_id``."""
+    for line in stdout:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"non-JSON line on stdout: {line[:200]!r}") from e
+        if isinstance(message, dict) and message.get("id") == request_id:
+            return message
+    return None
+
+
+def _probe_mcp_server(name, server, timeout=MCP_HANDSHAKE_TIMEOUT_S) -> Optional[str]:
+    """Start one MCP server and complete ``initialize``; return an error or None.
+
+    A command that resolves can still crash on import, and ``claude -p`` only
+    reports that as CONNECTION_CLOSED — so the server must actually answer.
+    """
+    import threading
+
+    command = [server["command"], *(server.get("args") or [])]
+    env = {**os.environ, **{k: str(v) for k, v in (server.get("env") or {}).items()}}
+    request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "gaia-eval-preflight", "version": "1"},
+        },
+    }
+
+    try:
+        proc = subprocess.Popen(
+            command,
+            cwd=str(REPO_ROOT),
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError as e:
+        return f"MCP server '{name}' could not be started ({command!r}): {e}"
+
+    outcome = {}
+    stderr_chunks = []
+
+    def _talk():
+        try:
+            proc.stdin.write(json.dumps(request) + "\n")
+            proc.stdin.flush()
+            outcome["response"] = _read_initialize_response(proc.stdout, 1)
+        except OSError:
+            outcome["response"] = None  # pipe closed: the server already exited
+        except ValueError as e:
+            outcome["error"] = str(e)
+
+    talker = threading.Thread(target=_talk, daemon=True)
+    drainer = threading.Thread(
+        target=lambda: stderr_chunks.append(proc.stderr.read()), daemon=True
+    )
+    talker.start()
+    drainer.start()
+    talker.join(timeout)
+    timed_out = talker.is_alive()
+    if not timed_out and outcome.get("response") is None:
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.wait(5)  # stdout closed; let the exit code land
+    exit_code = proc.poll()
+
+    proc.kill()
+    proc.wait()
+    drainer.join(5)
+
+    response = outcome.get("response")
+    if not timed_out and isinstance(response, dict) and "result" in response:
+        return None
+
+    if timed_out:
+        cause = f"no initialize response within {timeout}s"
+    elif "error" in outcome:
+        cause = f"broke the protocol: {outcome['error']}"
+    elif response is None:
+        cause = f"exited (code {exit_code}) before answering initialize"
+    else:
+        cause = f"answered initialize without a result: {json.dumps(response)[:300]}"
+
+    stderr_text = "".join(stderr_chunks).strip()
+    hint = next((h for rx, h in _MCP_STDERR_HINTS if rx.search(stderr_text)), None)
+    tail = "\n".join(stderr_text.splitlines()[-15:])
+    message = (
+        f"MCP server '{name}' ({' '.join(command)}) {cause}. "
+        "Every scenario would score INFRA_ERROR (CONNECTION_CLOSED)."
+    )
+    if hint:
+        message += f" Fix: {hint}."
+    message += (
+        "\n    server stderr:\n      " + tail.replace("\n", "\n      ")
+        if tail
+        else "\n    server stderr: (empty)"
+    )
+    return message
+
+
+def _check_mcp_server_handshakes() -> list:
+    """Start each configured MCP server and require a JSON-RPC handshake."""
+    try:
+        config = _resolved_mcp_config()
+    except (OSError, ValueError) as e:
+        return [str(e)]
+    errors = []
+    for name, server in (config.get("mcpServers") or {}).items():
+        error = _probe_mcp_server(name, server)
+        if error:
+            errors.append(error)
+    return errors
+
+
 def preflight_check(backend_url, scenarios=None):
     """Check prerequisites before running scenarios.
 
@@ -1070,7 +1311,8 @@ def preflight_check(backend_url, scenarios=None):
     if not MCP_CONFIG.exists():
         errors.append(f"MCP config not found: {MCP_CONFIG}")
     else:
-        errors.extend(_check_mcp_server_commands())
+        command_errors = _check_mcp_server_commands()
+        errors.extend(command_errors or _check_mcp_server_handshakes())
 
     # Check claude CLI
     claude_bin = shutil.which("claude")
@@ -1104,7 +1346,101 @@ def preflight_check(backend_url, scenarios=None):
         if memory_admin_error:
             errors.append(memory_admin_error)
 
+    # gaia_email reads an offline fixture mailbox; without it every scenario
+    # would score a "no mailbox connected" answer as the agent's failure.
+    if scenarios is not None and any(
+        (sd or {}).get("category") == "gaia_email" for _path, sd in scenarios
+    ):
+        mailbox_error = _probe_eval_mailbox(backend_url)
+        if mailbox_error:
+            errors.append(mailbox_error)
+
     return errors
+
+
+_MAILBOX_FIXTURE_STATES = {"attached": True, "detached": False}
+
+
+def _apply_mailbox_fixture(backend_url: str, scenario_data: dict) -> Optional[str]:
+    """Set the fixture mailbox to the scenario's ``setup.mailbox_fixture``.
+
+    Done by the runner, not the simulator: the switch is process-wide, so one
+    skipped call would leave every later scenario reading "no mailbox".
+    Returns ``None`` on success, or an error string.
+    """
+    import urllib.error
+    import urllib.request
+
+    state = (scenario_data.get("setup") or {}).get("mailbox_fixture")
+    if state is None:
+        return None
+    if state not in _MAILBOX_FIXTURE_STATES:
+        return (
+            f"setup.mailbox_fixture is {state!r}; use one of "
+            f"{sorted(_MAILBOX_FIXTURE_STATES)}"
+        )
+    url = f"{backend_url}/api/connectors/eval-mailbox"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps({"attached": _MAILBOX_FIXTURE_STATES[state]}).encode(),
+        headers={"Content-Type": "application/json", "X-Gaia-UI": "1"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            body = json.loads(r.read().decode("utf-8"))
+    except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+        return (
+            f"could not set the fixture mailbox to {state} via {url}: {e}. Start "
+            "the backend with GAIA_EVAL_MAILBOX pointing at "
+            "tests/fixtures/gaia/email/eval_inbox.mbox."
+        )
+    if body.get("attached") != _MAILBOX_FIXTURE_STATES[state]:
+        return f"{url} did not switch the fixture mailbox to {state}: {body}"
+    return None
+
+
+def _probe_eval_mailbox(backend_url: str) -> Optional[str]:
+    """Verify the backend serves the gaia_email fixture mailbox.
+
+    Returns ``None`` on success, or an error string for the preflight list.
+    """
+    import urllib.error
+    import urllib.request
+
+    url = f"{backend_url}/api/connectors/eval-mailbox"
+    req = urllib.request.Request(url, headers={"X-Gaia-UI": "1"})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            if r.status != 200:
+                return (
+                    f"Eval mailbox probe returned unexpected HTTP {r.status} from {url}"
+                )
+            state = json.loads(r.read().decode("utf-8"))
+        if not state.get("exists"):
+            return (
+                f"The backend's GAIA_EVAL_MAILBOX is {state.get('path')!r}, which "
+                "does not exist on its machine. Build it with `python "
+                "tests/fixtures/gaia/email/build_mailbox.py` and restart the backend "
+                "with the absolute path."
+            )
+        return None
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 404):
+            return (
+                "gaia_email scenarios read an offline fixture mailbox, but the "
+                f"backend at {backend_url} does not serve one (HTTP {e.code} from "
+                f"{url}). Restart the Agent UI backend with GAIA_EVAL_MAILBOX "
+                "pointing at tests/fixtures/gaia/email/eval_inbox.mbox, e.g.:\n"
+                "    GAIA_EVAL_MAILBOX=$PWD/tests/fixtures/gaia/email/eval_inbox.mbox "
+                "GAIA_MEMORY_ADMIN=1 python -m gaia.ui.server --port 4200"
+            )
+        return f"Eval mailbox probe failed with HTTP {e.code} from {url}: {e.reason}"
+    except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+        return (
+            f"Eval mailbox probe could not reach {backend_url}: {e}. "
+            "Is the Agent UI backend running?"
+        )
 
 
 def _probe_memory_admin(backend_url: str) -> Optional[str]:
@@ -1251,6 +1587,18 @@ def run_scenario_subprocess(
 ):
     """Invoke claude -p for one scenario. Returns parsed result dict."""
     scenario_id = scenario_data["id"]
+    mailbox_error = _apply_mailbox_fixture(backend_url, scenario_data)
+    if mailbox_error:
+        print(f"[SETUP_ERROR] {scenario_id}: {mailbox_error}", flush=True)
+        return {
+            "scenario_id": scenario_id,
+            "status": "SETUP_ERROR",
+            "overall_score": None,
+            "turns": [],
+            "error": mailbox_error,
+            "elapsed_s": 0.0,
+            "cost_estimate": {"turns": 0, "estimated_usd": 0.0},
+        }
     manifest_data = _load_merged_manifest(extra_corpus_dirs=extra_corpus_dirs)
 
     prompt = build_scenario_prompt(
@@ -1861,8 +2209,9 @@ def compare_scorecards(baseline_path, current_path):
     unchanged = []
     only_in_baseline = []
     only_in_current = []
-    # corpus_changed: one side is SKIPPED_NO_DOCUMENT — corpus availability changed,
-    # not a quality regression or improvement.  Reported separately to avoid noise.
+    # corpus_changed: one side was skipped (a corpus document or a required model
+    # was absent) — availability changed, not a quality regression or improvement.
+    # Reported separately to avoid noise.
     corpus_changed = []
     # unmeasured: the CURRENT run has a _NO_MEASUREMENT_STATUSES status — the
     # harness never produced a score, so there is nothing to compare.  Excluded
@@ -1880,8 +2229,8 @@ def compare_scorecards(baseline_path, current_path):
 
         b = base_map[sid]
         c = curr_map[sid]
-        b_skipped = b.get("status") == "SKIPPED_NO_DOCUMENT"
-        c_skipped = c.get("status") == "SKIPPED_NO_DOCUMENT"
+        b_skipped = b.get("status") in SKIPPED_STATUSES
+        c_skipped = c.get("status") in SKIPPED_STATUSES
         # Current side only. A baseline that never measured and a current run
         # that did is strictly more information than before, and cannot produce a
         # false regression: an unmeasured scenario scores 0, so every delta out of
@@ -2043,8 +2392,9 @@ def compare_scorecards(baseline_path, current_path):
 
     if corpus_changed:
         print(
-            f"\n[~] CORPUS AVAILABILITY CHANGED ({len(corpus_changed)} scenario(s)) — "
-            "SKIPPED_NO_DOCUMENT in one run; not a quality signal:"
+            f"\n[~] AVAILABILITY CHANGED ({len(corpus_changed)} scenario(s)) — "
+            "skipped in one run (corpus document or required model absent); "
+            "not a quality signal:"
         )
         for e in corpus_changed:
             print(
@@ -2194,6 +2544,30 @@ class AgentEvalRunner:
                 keep_sessions=keep_sessions,
             )
 
+    def _record_skip(self, scenario_data, status, reason, run_dir, results):
+        """Record a scenario the runner could not start on this machine."""
+        sid = scenario_data["id"]
+        print(f"[SKIP] {sid} — {reason}")
+        result = {
+            "scenario_id": sid,
+            "category": scenario_data.get("category", "unknown"),
+            "agent_type_requested": self.agent_type,
+            "agent_type_observed": None,
+            "status": status,
+            "skip_reason": reason,
+            "overall_score": None,
+            "turns": [],
+            "elapsed_s": 0.0,
+            "cost_estimate": {"turns": 0, "estimated_usd": 0.0},
+        }
+        # Write a trace so resume mode can reload this result without re-running
+        traces_dir = run_dir / "traces"
+        traces_dir.mkdir(exist_ok=True)
+        (traces_dir / f"{sid}.json").write_text(
+            json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        results.append(result)
+
     def _run_locked(
         self,
         scenario_id=None,
@@ -2237,6 +2611,12 @@ class AgentEvalRunner:
                 print(f"  - {e}", file=sys.stderr)
             sys.exit(1)
 
+        downloaded_models = (
+            _downloaded_lemonade_models()
+            if any(_required_models(sd) for _p, sd in scenarios)
+            else set()
+        )
+
         # Create run dir
         run_id = f"eval-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
         run_dir = self.results_dir / run_id
@@ -2250,6 +2630,8 @@ class AgentEvalRunner:
 
         # ---- Phase A: Run initial eval ----
         results = []
+        infra_streak = []
+        aborted = None
         for scenario_path, scenario_data in scenarios:
             sid = scenario_data["id"]
             if sid in completed:
@@ -2273,32 +2655,29 @@ class AgentEvalRunner:
                         print(f"[WARN] {sid} trace file corrupt — re-running")
                         del completed[sid]
 
-            # Skip scenarios whose corpus documents are not on disk.
             # Real-world documents are not committed to git; skip gracefully
             # rather than failing with SETUP_ERROR or INFRA_ERROR.
             if not _documents_exist(scenario_data):
-                print(
-                    f"[SKIP] {sid} — corpus document(s) not on disk (real-world corpus not committed to git)"
+                reason = "corpus document(s) not on disk (real-world corpus not committed to git)"
+                self._record_skip(
+                    scenario_data, "SKIPPED_NO_DOCUMENT", reason, run_dir, results
                 )
-                result = {
-                    "scenario_id": sid,
-                    "category": scenario_data.get("category", "unknown"),
-                    "agent_type_requested": self.agent_type,
-                    "agent_type_observed": None,
-                    "status": "SKIPPED_NO_DOCUMENT",
-                    "overall_score": None,
-                    "turns": [],
-                    "elapsed_s": 0.0,
-                    "cost_estimate": {"turns": 0, "estimated_usd": 0.0},
-                }
-                # Write a trace so resume mode can reload this result without re-running
-                traces_dir = run_dir / "traces"
-                traces_dir.mkdir(exist_ok=True)
-                (traces_dir / f"{sid}.json").write_text(
-                    json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
-                )
-                results.append(result)
                 completed[sid] = "SKIPPED_NO_DOCUMENT"
+                progress_path.write_text(
+                    json.dumps(completed, indent=2), encoding="utf-8"
+                )
+                continue
+
+            missing = _missing_requirements(scenario_data, downloaded_models)
+            if missing:
+                self._record_skip(
+                    scenario_data,
+                    "SKIPPED_NO_MODEL",
+                    "; ".join(missing),
+                    run_dir,
+                    results,
+                )
+                completed[sid] = "SKIPPED_NO_MODEL"
                 progress_path.write_text(
                     json.dumps(completed, indent=2), encoding="utf-8"
                 )
@@ -2346,6 +2725,21 @@ class AgentEvalRunner:
             completed[sid] = result.get("status")
             progress_path.write_text(json.dumps(completed, indent=2), encoding="utf-8")
 
+            signature = _infra_error_signature(result)
+            if signature is None or (infra_streak and infra_streak[0] != signature):
+                infra_streak = []
+            if signature is not None:
+                infra_streak.append(signature)
+            if len(infra_streak) >= INFRA_ERROR_ABORT_AFTER:
+                remaining = len(scenarios) - len(results)
+                aborted = (
+                    f"Stopped after {len(infra_streak)} consecutive INFRA_ERROR "
+                    f"results with the same cause: {signature}. "
+                    f"{remaining} scenario(s) were not run — fix the harness and "
+                    f"re-run; the scores so far measure infrastructure, not the agent."
+                )
+                break
+
         # Clean up progress file — all scenarios complete
         if progress_path.exists():
             progress_path.unlink()
@@ -2370,6 +2764,10 @@ class AgentEvalRunner:
         # Print summary
         self._print_summary(scorecard, run_id, run_dir)
 
+        if aborted:
+            print(f"\n[ERROR] {aborted}", file=sys.stderr)
+            sys.exit(1)
+
         if not fix_mode:
             return scorecard
 
@@ -2393,7 +2791,7 @@ class AgentEvalRunner:
             failed = [
                 s
                 for s in current_scorecard["scenarios"]
-                if s.get("status") not in ("PASS", "SKIPPED_NO_DOCUMENT")
+                if s.get("status") != "PASS" and s.get("status") not in SKIPPED_STATUSES
             ]
             if not failed:
                 print("\n[FIX] All scenarios passing. Done.")

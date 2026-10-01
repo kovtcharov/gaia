@@ -13,6 +13,7 @@ import (
 	"github.com/amd/gaia/tui/internal/client"
 	"github.com/amd/gaia/tui/internal/event"
 	"github.com/amd/gaia/tui/internal/ui"
+	"github.com/amd/gaia/tui/internal/ui/preflight"
 )
 
 // dev is developer mode: rich in-TUI output (per-turn timings, step and turn
@@ -26,16 +27,23 @@ import (
 // (see init) — old scripts and docs keep working, help lists one flag.
 var dev bool
 
-// bypassPermissions starts agents with the permission gates off: every gated
-// tool — shell commands, file writes — runs without asking, and the shell's own
-// guardrails come off with them (redirection and the other shell-only operators
-// parse, the read-only binary allowlist is replaced by a developer set, the
-// rate limit is lifted).
+// developerMode enables harness engineering, independently of diagnostic output.
+var developerMode bool
+
+// fullAccessFlag backs --full-access: the agent runs every gated tool — shell
+// commands, file writes — without asking, and the shell's own guardrails come
+// off with them (redirection and the other shell-only operators parse, the
+// read-only binary allowlist is replaced by a developer set, the rate limit is
+// lifted).
 //
-// Off unless passed, and only for this launch. Nothing persists it, so there
-// is no way to land in this mode without having typed it, and the TUI carries
-// an unmissable banner for as long as it is on.
-var bypassPermissions bool
+// Off unless passed, or saved as the default with /full-access always or
+// `gaia config set full_access true` (see preflight.ReadFullAccess). Either
+// way the TUI carries an unmissable banner for as long as it is on.
+var fullAccessFlag bool
+
+// retiredBypassFlag exists only so --bypass-permissions fails naming
+// --full-access, rather than with cobra's bare "unknown flag".
+var retiredBypassFlag bool
 
 // useClaude routes the spawned agent's inference to Anthropic's Claude API
 // instead of the local Lemonade backend. A real privacy change from GAIA's
@@ -158,6 +166,10 @@ var rootCmd = &cobra.Command{
 	// actual error off a short terminal. Usage is what --help is for.
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := applyDeveloperMode(); err != nil {
+			return err
+		}
+
 		ctrl, err := controlOptionsFor(cmd)
 		if err != nil {
 			return err
@@ -167,8 +179,25 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 		defer closeTrace(trace)
-		return ui.RunFlagship(dev, mockAgent, ctrl, bypassPermissions, useClaude, claudeModelArg(), trace)
+		// The saved preference is the default; an explicit --full-access
+		// overrides it in either direction, which is what makes
+		// --full-access=false a one-launch opt-out.
+		saved := preflight.ReadFullAccess().Enabled
+		fullAccess, fromSaved := saved, saved
+		if cmd.Flags().Changed("full-access") {
+			fullAccess, fromSaved = fullAccessFlag, false
+		}
+		return ui.RunFlagship(dev, mockAgent, ctrl, fullAccess, fromSaved, useClaude, claudeModelArg(), trace)
 	},
+}
+
+// applyDeveloperMode opts the subprocess in while leaving an existing host
+// environment untouched when the flag is absent (also used by WebUI hosts).
+func applyDeveloperMode() error {
+	if developerMode {
+		return os.Setenv("GAIA_DEVELOPER_MODE", "1")
+	}
+	return nil
 }
 
 // closeTrace flushes and closes the trace, reporting a recording that stopped
@@ -188,6 +217,8 @@ func init() {
 	// not a mistake. root_test.go pins this.
 	cobra.MousetrapHelpText = ""
 
+	rootCmd.Flags().BoolVar(&developerMode, "developer-mode", false,
+		"enable the developer skill and consent-based Claude Code/Codex handoff")
 	rootCmd.PersistentFlags().BoolVar(&dev, "dev", false,
 		"developer mode: show per-turn timings, steps, and tool arguments and output "+
 			"(agents the TUI spawns itself also log at DEBUG to ~/.gaia/logs/). "+
@@ -199,12 +230,17 @@ func init() {
 	if err := rootCmd.PersistentFlags().MarkHidden("debug"); err != nil {
 		panic(err) // only fails on a flag name that was never registered
 	}
-	rootCmd.PersistentFlags().BoolVar(&bypassPermissions, "bypass-permissions", false,
+	rootCmd.PersistentFlags().BoolVar(&fullAccessFlag, "full-access", false,
 		"subprocess agents only: run every tool without asking for confirmation, "+
 			"with the shell guardrails off — the agent acts fully autonomously "+
 			"and can execute arbitrary code. Off by default; the TUI shows a "+
 			"persistent warning "+
-			"while it is on, and /bypass off turns it off mid-session")
+			"while it is on, and /full-access off turns it off mid-session")
+	// Retired name: registered only so passing it fails naming the new one.
+	rootCmd.PersistentFlags().BoolVar(&retiredBypassFlag, "bypass-permissions", false, "")
+	if err := rootCmd.PersistentFlags().MarkHidden("bypass-permissions"); err != nil {
+		panic(err) // only fails on a flag name that was never registered
+	}
 	rootCmd.PersistentFlags().BoolVar(&useClaude, "use-claude", false,
 		"run the agent against Anthropic's Claude API instead of the local Lemonade "+
 			"backend — your conversation is sent to Anthropic, not processed on this "+
@@ -219,6 +255,9 @@ func init() {
 	// that will not do what it says must fail as a command-line error, not as
 	// something the user has to notice inside a running TUI.
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if rootCmd.PersistentFlags().Changed("bypass-permissions") {
+			return fmt.Errorf("--bypass-permissions was renamed to --full-access")
+		}
 		if rootCmd.PersistentFlags().Changed("claude-model") && !useClaude {
 			return fmt.Errorf(
 				"--claude-model only applies with --use-claude: the local Lemonade " +

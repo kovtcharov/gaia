@@ -124,9 +124,10 @@ gaia-tui status             # is the background service running, and what do I h
 gaia-tui version
 ```
 
-`--bypass-permissions` is available only for agents launched as subprocesses.
+`--full-access` is available only for agents launched as subprocesses.
 Daemon-backed agents, including a Hub-installed flagship, reject it before
-readiness checks; omit the flag to run with confirmation prompts enabled.
+readiness checks; a saved `full_access` preference leaves prompts on there
+instead, and says so in the chat.
 
 Full command reference: <https://amd-gaia.ai/docs/reference/cli>
 
@@ -173,11 +174,12 @@ fine.
 
 Press **p** during setup, or enter **`/provider`** in chat, to choose **Local**,
 **Fireworks AI**, or **AMD LLM Gateway** through Lemonade 11.8.1+. Paste a key into
-the masked field; it stays in Lemonade memory until the server restarts. Provider
-settings are shared with other clients of that server. Each provider lists a
-★ **Recommended** group first. For Fireworks that group is the models that
-scored best on GAIA's agent benchmark, ranked and labelled with why
-(`fireworks.glm-5p3-flash` — best overall, cheapest;
+the masked field; once it connects it is kept in the OS credential store and
+handed back to Lemonade after a restart. Provider settings are shared with
+other clients of that server. Each provider lists a ★ **Recommended** group
+first. For Fireworks that group is the models that scored best on GAIA's agent
+benchmark, ranked and labelled with why (`fireworks.glm-5p3-flash` — best
+overall, cheapest;
 `fireworks.deepseek-v4p1-flash` — fastest;
 `fireworks.deepseek-v4-pro-0813` — most truthful), whenever your account
 exposes them. AMD Gateway accepts your organization's HTTPS endpoint and

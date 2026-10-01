@@ -5,14 +5,15 @@
     "control_key": "gaia_control",
     "control_verbs": {
       "tool_decision": { "fields": ["decision", "confirm_id"], "sent_by_tui": true },
-      "bypass": { "fields": ["enabled"], "sent_by_tui": true },
+      "full_access": { "fields": ["enabled"], "sent_by_tui": true },
       "cancel": { "fields": [], "sent_by_tui": true },
       "clear_history": { "fields": [], "sent_by_tui": false }
     },
     "decisions": ["allow", "deny", "always"],
     "query_sentinels": {
       "clear_conversation": { "query": "\u0000gaia:clear_conversation\u0000", "ack_answer": "conversation_cleared" },
-      "memory_dump": { "query": "\u0000gaia:memory_dump\u0000" }
+      "memory_dump": { "query": "\u0000gaia:memory_dump\u0000" },
+      "warm_up": { "query": "\u0000gaia:warm_up\u0000", "ack_answer": "warmed_up", "skipped_answer": "warm_up_skipped" }
     }
   },
   "events": {

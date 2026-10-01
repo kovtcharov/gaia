@@ -45,13 +45,15 @@
       "id": "fireworks.glm-5p3-flash",
       "provider": "fireworks",
       "label": "GLM-5.3 Flash",
-      "note": "best overall, cheapest"
+      "note": "best overall, cheapest",
+      "evidence": "14/14 tasks · quality 4.89/5 · $0.09 per 14-task run"
     },
     {
       "id": "fireworks.deepseek-v4p1-flash",
       "provider": "fireworks",
       "label": "DeepSeek V4.1 Flash",
-      "note": "fastest"
+      "note": "fastest",
+      "evidence": "14/14 tasks · quality 4.92/5 · $0.10 per 14-task run"
     },
     {
       "id": "fireworks.deepseek-v4-pro-0813",

@@ -347,6 +347,46 @@ class TestConfig:
         config = json.loads(manager.write_config().read_text(encoding="utf-8"))
         assert "no_fetch_executables" not in config
 
+    def test_keys_lemonade_saved_survive_a_rewrite(self, manager):
+        # POST /api/v1/install persists cloud providers into this file; losing
+        # them on restart makes fireworks.* models 404 (#4422).
+        providers = [{"name": "fireworks", "base_url": "https://example.test/v1"}]
+        manager.config_dir.mkdir(parents=True, exist_ok=True)
+        path = manager.config_dir / "config.json"
+        path.write_text(json.dumps({"cloud_providers": providers}), encoding="utf-8")
+
+        config = json.loads(manager.write_config().read_text(encoding="utf-8"))
+
+        assert config["cloud_providers"] == providers
+        assert config["broadcast"] is False
+
+    def test_gaia_owned_keys_are_still_updated(self, manager, monkeypatch):
+        monkeypatch.setenv("GAIA_LEMONADE_REQUEST_BUDGET", "4321")
+        manager.config_dir.mkdir(parents=True, exist_ok=True)
+        path = manager.config_dir / "config.json"
+        stale = {"broadcast": True, "auto_evict": True, "global_timeout": 600}
+        path.write_text(json.dumps(stale), encoding="utf-8")
+
+        config = json.loads(manager.write_config().read_text(encoding="utf-8"))
+
+        assert config["global_timeout"] == 4321
+        assert config["broadcast"] is False
+        assert config["auto_evict"] is False
+
+    @pytest.mark.parametrize("content", ["{ not json", "[1, 2]"])
+    def test_unusable_existing_config_is_replaced_loudly(
+        self, manager, content, caplog
+    ):
+        manager.config_dir.mkdir(parents=True, exist_ok=True)
+        path = manager.config_dir / "config.json"
+        path.write_text(content, encoding="utf-8")
+
+        with caplog.at_level("WARNING"):
+            config = json.loads(manager.write_config().read_text(encoding="utf-8"))
+
+        assert config["broadcast"] is False
+        assert str(path) in caplog.text
+
 
 class TestStatus:
     """Status reporting and stale-state recovery."""
@@ -388,6 +428,24 @@ class TestStatus:
         assert status.running is False
         assert status.unresponsive_pid == 4321
         assert manager.state_path.exists(), "live daemon lost its state file"
+
+    def test_start_disables_vulkan_coopmat(self, manager, monkeypatch):
+        """Without it the embedder crashes on first use on Strix Halo (#4449)."""
+        monkeypatch.delenv("GGML_VK_DISABLE_COOPMAT", raising=False)
+        monkeypatch.setattr(manager, "is_installed", lambda: True)
+        monkeypatch.setattr(manager, "write_config", lambda: None)
+        monkeypatch.setattr(manager, "_health", lambda *a, **k: {"status": "ok"})
+        spawned = []
+
+        def fake_popen(argv, **kwargs):
+            spawned.append(kwargs["env"])
+            return SimpleNamespace(pid=4321, poll=lambda: None, returncode=None)
+
+        monkeypatch.setattr("gaia.llm.lemonade_embedded.subprocess.Popen", fake_popen)
+
+        manager.start(port=65530)
+
+        assert spawned and spawned[0]["GGML_VK_DISABLE_COOPMAT"] == "1"
 
     def test_start_refuses_to_spawn_a_second_daemon(self, manager, monkeypatch):
         manager._write_state(

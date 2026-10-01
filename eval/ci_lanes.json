@@ -33,15 +33,15 @@
     },
     {
       "lane": "gaia-tasks",
-      "categories": ["gaia_skills_tasks", "gaia_tool_selection"]
+      "categories": ["gaia_skills_tasks", "gaia_tool_selection", "gaia_mcp"]
     },
     {
       "lane": "gaia-signal",
-      "categories": ["gaia_memory", "gaia_honesty", "gaia_web"]
+      "categories": ["gaia_memory", "gaia_honesty", "gaia_web", "gaia_media"]
     },
     {
       "lane": "gaia-code",
-      "categories": ["gaia_core", "gaia_files", "gaia_code"]
+      "categories": ["gaia_core", "gaia_files", "gaia_code", "gaia_voice"]
     },
     {
       "lane": "gaia-tools",
@@ -52,6 +52,10 @@
         "gaia_data",
         "gaia_skills_capture"
       ]
+    },
+    {
+      "lane": "gaia-email",
+      "categories": ["gaia_email"]
     }
   ],
   "excluded": {

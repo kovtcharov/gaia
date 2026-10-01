@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/amd/gaia/tui/internal/ui/components"
 )
 
 // The status bar is one row, and the hint shares it with the agent name. When
@@ -37,9 +39,9 @@ type hint struct {
 // without renumbering.
 const (
 	// How to stop the agent acting on its own. Outranks even the way out:
-	// while bypass is on, every frame the user cannot see this is a frame in
+	// while full access is on, every frame the user cannot see this is a frame in
 	// which tools are running unasked and they do not know how to stop it.
-	rankBypass = 110
+	rankFullAccess = 110
 	// How to get out. Survives to the last column: a user who cannot see this
 	// closes the terminal window.
 	rankEscape = 100
@@ -66,8 +68,8 @@ func (m ChatModel) statusHints() []hint {
 
 	// The banner is the primary indicator; this is the belt to its braces, on
 	// the one row that is always drawn.
-	if m.bypassPermissions {
-		hints = append(hints, hint{text: "/bypass off", rank: rankBypass})
+	if m.fullAccess {
+		hints = append(hints, hint{text: "/full-access off", rank: rankFullAccess})
 	}
 
 	if m.dev && m.totalSteps > 0 {
@@ -91,15 +93,23 @@ func (m ChatModel) statusHints() []hint {
 
 	// In an alt-screen app the wheel and the arrows are the ONLY way back to
 	// earlier turns; a user who does not know that concludes history is gone.
-	if m.mouseSelectMode {
-		hints = append(hints, hint{text: "↑↓ scroll", rank: rankAffordance})
-	} else {
+	// The warm-up stage has no transcript to scroll or select — it replaces
+	// the transcript entirely.
+	if !(m.warming && !m.warmHidden) {
 		hints = append(hints, hint{text: "↑↓/wheel scroll", rank: rankAffordance})
-		// Not while the agent is parked on a decision: the bar is a sentence,
-		// and "answer above" is the only thing the reader should act on. How
-		// to select text can wait for a frame where nothing is pending.
-		if m.confirmation == nil {
-			hints = append(hints, hint{text: "Ctrl+T select text", rank: rankSecondary})
+		// Only while the app holds the mouse: then plain drag-select is what the
+		// user has lost, and this is the way to get it back.
+		if m.appMouse && m.confirmation == nil {
+			hints = append(hints, hint{text: "Ctrl+T drag-select", rank: rankSecondary})
+		}
+		// Folded detail nobody knows how to open is detail thrown away. Idle only:
+		// mid-turn the row already says how to type on and how to stop.
+		if m.hasWork() && !m.streaming && m.confirmation == nil {
+			text := "Ctrl+O details"
+			if m.expandWork {
+				text = "Ctrl+O fold"
+			}
+			hints = append(hints, hint{text: text, rank: rankSecondary})
 		}
 	}
 
@@ -113,6 +123,12 @@ func (m ChatModel) statusHints() []hint {
 		// outranks everything, so spelling it again only got the bar saying
 		// "Ctrl+C quits · Ctrl+C quit".
 		hints = append(hints, hint{text: "answer above", rank: rankInterrupt})
+	} else if m.warming && !m.warmHidden {
+		// Esc does not cancel here — it shows the chat; see warmup.go.
+		hints = append(hints,
+			hint{text: "type ahead", rank: rankAffordance},
+			hint{text: "Esc show chat", rank: rankInterrupt},
+		)
 	} else if m.streaming {
 		// Worth advertising exactly when it applies: someone who believes the
 		// composer is frozen never tries it.
@@ -233,9 +249,12 @@ func itoa(n int) string {
 // the status bar has left once the agent name and its dot and padding are
 // accounted for.
 func (m ChatModel) hintBudget() int {
-	// " ● " + name, the bar's own padding, and a gap before the hint.
-	used := 3 + ansi.StringWidth(m.agentName) + len(" connected") + 4
-	return m.width - used
+	return components.StatusHintBudget(components.StatusBarState{
+		AgentName:        m.agentIdentity(),
+		Connected:        m.connected,
+		Streaming:        m.streaming,
+		AwaitingDecision: m.confirmation != nil && m.confirmation.Pending(),
+	}, m.width)
 }
 
 // sessionSpendHint is the running cost for the status bar, or "" when there is

@@ -347,19 +347,33 @@ Rules a client must respect:
 
 ## 8. Over `/v1/gaia/query`, a gated tool asks — when you can answer
 
-Nine of the agent's tools mutate the machine and need explicit approval
-before they run. Six sit in the base `TOOLS_REQUIRING_CONFIRMATION` set —
+Read this before you design a workflow around it. This section is about the HTTP
+surface — the agent's other transport can collect an approval; see SPEC §5.5.
+
+Twelve of the agent's 96 tools mutate the machine and need explicit approval
+before they run. Nine sit in the base `TOOLS_REQUIRING_CONFIRMATION` set —
 **`write_file`**, **`edit_file`**, **`run_shell_command`**,
-**`execute_python_file`**, **`run_python`**, and **`notify_desktop`**, which
-spawns a PowerShell child on Windows to draw the notification — and the
-flagship adds three of its own (`CONFIRMATION_REQUIRED_TOOLS`):
-**`install_skill`**, **`capture_skill`**, and **`remove_skill`**, because
-installing or capturing a skill writes third-party content under
-`~/.gaia/skills` and removing one deletes it. A capture that does land is
-additionally **code-inert**: its instructions load, but any `tools.py`/scripts
-stay unregistered until a human runs `gaia skill promote <name>` in a
-terminal. Everything else — reading, indexing, querying, web fetching,
-memory — runs without asking.
+**`wait_for_condition`**, which re-runs a shell command until it succeeds,
+**`execute_python_file`**, **`run_python`**, **`notify_desktop`**, which spawns
+a PowerShell child on Windows to draw the notification, and **`install_cli`** /
+**`sign_in_cli`**, which install software and sign a CLI in to the user's
+account — and the flagship adds three of its own
+(`CONFIRMATION_REQUIRED_TOOLS`): **`install_skill`**, **`capture_skill`**, and
+**`remove_skill`**, because installing or capturing a skill writes third-party
+content under `~/.gaia/skills` and removing one deletes it. A capture that does
+land is additionally **code-inert**: its instructions load, but any
+`tools.py`/scripts stay unregistered until a human runs
+`gaia skill promote <name>` in a terminal. Everything else — reading,
+indexing, querying, web fetching, memory, and the read-only `check_cli_setup`
+— runs without asking.
+
+The eight live-browser tools are gated by a **hook**, not a set, so a name
+alone does not tell you whether a call will ask. `browser_login` always asks.
+`browser_click` / `browser_type` ask when the call acts inside a session the
+run signed in to, or when the target element's label reads irreversible, and
+run unasked on the open web. The hook **fails closed**: if the browser cannot
+be asked what state it is in, the call is treated as authenticated and prompts.
+Design a workflow around the approval path, not around a fixed tool list.
 
 **Contract ≥ 2.14 can answer one.** Send a `session_id` and leave
 `can_answer_questions` unset (or `true`). The stream emits `needs_confirmation`
@@ -472,7 +486,14 @@ turn — budget for it. It is not a task recipe but the agent's honesty floor: d
 not claim work you did not do, do not present empty output as a result, do not
 substitute a near-miss and report success. Those failures corrupt an answer
 whatever the task is, which is why it cannot live in an opt-in bundle. It
-declares no tools, and its body measures 676 tokens (tiktoken `cl100k`).
+declares no tools, and its body measures 702 tokens (tiktoken `cl100k`).
+
+**`document-extract` ships bundled but not enabled.** `gaia-voice` routes a
+request for every item in a document to it, and it drives
+`extract_document_items` and `save_extracted_items` so a long transcript yields
+a complete, source-quoted inventory rather than a summary. A skill turns that
+inventorying on only by listing `extract_document_items` in `tools_required`;
+wording such as "find every call site" in another skill does not.
 
 **No skill *set* loads.** `gaia-agent.yaml` ships its `skill_sets:` and
 `default_skill_set:` blocks **commented out** — following the email agent's
@@ -498,18 +519,24 @@ Two consequences an integrator needs to plan for:
 
 - **Up to 600 prompt tokens, every turn.** That is the enforced ceiling
   (1.8% of the NPU profile's 32K window), not a typical value — budget it
-  alongside `gaia-voice`'s 676.
-- **A background embedding pass on first contact with a new repository.** If
-  the repo has no [code index](https://amd-gaia.ai/docs/guides/code-index), the
-  map starts one in a background thread so semantic search is ready when it is
-  needed. On a large monorepo that is minutes of local embedding.
-  `GAIA_PROJECT_MAP_AUTO_INDEX=0` turns it off.
+  alongside `gaia-voice`'s 702.
+- **An embedding pass on the first semantic code search.** If the repo has no
+  [code index](https://amd-gaia.ai/docs/guides/code-index), the first
+  `search_code_index` builds it, then searches. On a large monorepo that one
+  search takes minutes of local embedding; a task that never searches pays
+  nothing. `GAIA_PROJECT_MAP_AUTO_INDEX=1` builds it in the background at task
+  start instead.
 
 The sidecar's CLI accepts only `--host` and `--port`, so pointing the map at a
 specific project means `GAIA_PROJECT_ROOT=/path/to/repo` in its environment, or
 `GaiaAgentConfig(project_root=...)` when embedding. A directory that is neither
 a VCS checkout nor holds a recognised manifest gets **no map** — that is the
 designed answer, not a failure.
+
+The same root check also decides whether the shell rides along: when it
+resolves to a repository, `run_shell_command` is offered on every turn instead
+of only when semantic selection guesses the request sounds like a shell
+request. No repository, no change.
 
 ## 12. Ports
 
@@ -655,3 +682,21 @@ downloaded local models; `/model fireworks.gemma-4-31b-it` selects Gemma 4 31B I
 when available. Cloud chat sends conversation history to the selected provider;
 embeddings remain on Lemonade. The status event names the actual provider and
 marks remote inference. This is a TUI/stdio capability, not an HTTP query command.
+
+## Developer engineering mode
+
+Available only when GAIA was started with `--developer-mode` (or
+`GAIA_DEVELOPER_MODE=1`). If the engineering tools are missing, say that developer
+mode is off; don't route around it with shell or file tools. When describing a
+handoff, claim only what happened:
+
+- Context was shared only after the user approved that exact snapshot in the prompt.
+  Approval can't be remembered, so each share or append asks again.
+- Opening the coding app never creates or submits a task, and for Codex it doesn't
+  prefill a prompt either. Never say the context was "posted" or "sent" to Codex;
+  give the user the directory and the prompt to paste.
+- Preview and test results come from the coding app. Report them as app-reported,
+  not as checks GAIA ran.
+- Revoking stops future reads; it cannot recall data already delivered.
+
+See the [usage guide](https://amd-gaia.ai/docs/guides/harness-engineering).

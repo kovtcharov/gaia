@@ -23,9 +23,31 @@ the terminal UI meant building it from source.
 - Qwen3.8 Flash Next (82 GB, multimodal) is a supported manual option on
   128 GB-class PCs — not auto-selected. Switch with
   `gaia config set default_model user.Qwen3.8-Flash-Next-GGUF`.
+- **The code index is built on first search, not at task start.** In 32
+  SWE-bench tasks the agent never searched it, yet every task embedded the whole
+  repository in the background: about 2,000 local embedding requests per six
+  tasks. The first `search_code_index` now builds it; `GAIA_PROJECT_MAP_AUTO_INDEX=1`
+  restores building at task start.
+- **The first answer on a local model starts in seconds, not after a ~20 s
+  silence.** The terminal UI now shows a "Getting GAIA ready" stage before the
+  chat: the agent starts, loads its model and reads its system prompt there,
+  step by step. New stdio sentinel `warm_up` (answers `warmed_up`, or
+  `warm_up_skipped` for a remote model).
+- **Bypass permissions is now called full access, everywhere.** `--full-access`
+  and `/full-access` replace `--bypass-permissions` and `/bypass`; the old names
+  fail with a message naming the new one. `/full-access always` (or
+  `gaia config set full_access true`) keeps it on across launches.
 
 ### Fixed
 
+- **The agent no longer starts an unrelated job after answering.** A bugfix
+  request loaded the `coding` skill, whose "find every call site" tip switched
+  on document inventorying; after the fix was done and verified, the agent spent
+  minutes extracting every file it had read until the user cancelled. Only a
+  skill built on the extraction tool turns inventorying on now. Separately,
+  once a turn has answered, a tool call on nothing the request touched is not
+  run and a second one ends the turn, and a tool that keeps failing with new
+  arguments is stopped like an identical repeat.
 - `/v1/gaia/query` now honours `provider` on an existing session. It used to
   matter only when the session was created, so `provider: "lemonade"` could keep
   sending a Claude session's conversation to Anthropic, and `provider: "claude"`
@@ -66,6 +88,46 @@ the terminal UI meant building it from source.
 
 ### Added
 
+- **The agent can drive a real browser.** Pages behind JavaScript or a login
+  used to be out of reach — `fetch_page` is one HTTP GET, so a signed-in inbox
+  or a dashboard came back empty. Eight new tools open a real Chromium, read
+  it, click and type in it, and sign in to a site; the password goes to the
+  human, never the model, and the session is stored encrypted. Acting inside a
+  session you signed in to asks first. Ships behind the optional `browser`
+  extra; without it none of the eight register. Registered tool count goes
+  88 → 96.
+- **Fast mode, for a session that's only conversation.** `GAIA_FAST=1` drops
+  the flagship to a plain conversational surface for the whole session —
+  3,110 tokens of fixed prompt instead of 17,942 — so saying "hi" no longer
+  costs as much as a repo search. Session-scoped and one-way: a fast session
+  has no documents, files, web or skills and cannot pick them up mid-way.
+
+- **`chat`, `doc` and `file` are no longer offered as agents.** New users saw
+  four entries in the picker where only one is the product. The three ids still
+  resolve, so existing sessions, `*-lite` aliases and eval scenarios keep
+  working — they are hidden, not deleted, and `ChatAgent` remains the
+  flagship's base class. A session created without an explicit agent now lands
+  on the flagship rather than a hidden agent.
+- **Complete inventories from long documents.** Asking for every exercise,
+  action item or finding in a transcript now returns all of them, each with its
+  source quote, instead of a condensed list. The opt-in `document-extract` skill
+  drives new `extract_document_items` and `save_extracted_items` tools; a save is
+  reported only after the exact file is written and read back, and anything
+  unfinished is reported as incomplete. `gaia-voice` gains one routing line
+  (702 tokens).
+- **The agent can set up a skill's CLI instead of handing the job back.** Asking
+  it to triage GitHub issues on a machine without `gh` used to end the
+  conversation. Three new tools — `check_cli_setup` (read-only), `install_cli`
+  and `sign_in_cli` — let it report exactly what is wrong, install the CLI with
+  the machine's package manager, and drive the browser sign-in. Both mutating
+  tools are confirmation-gated on every call and no skill grant pre-approves
+  them; over `/v1/gaia/query` they are refused, like every other gated tool
+  (§8). Registered tool count goes 83 → 86.
+- **A shell command's `cd` now survives to the next one.** Every
+  `run_shell_command` call used to start from scratch, so `cd build` in one
+  call was invisible to the next. `get_shell_state` reads the session's
+  current directory, and `reset_shell_session` returns it to where the task
+  started. Registered tool count goes 86 → 88.
 - **Say something while the agent is still working.** `POST
   /v1/gaia/query/{run_id}/followup` hands a live run a message the user typed
   after it started (contract **2.15**). The run is not interrupted and no
@@ -117,6 +179,19 @@ the terminal UI meant building it from source.
   printed, instead of a throwaway script left in your repository. It joins the
   always-on tool set (about 250 more prompt tokens per call) and the `shell`
   bundle.
+- Opt-in developer-mode skill and consent-gated MCP handoffs to Claude Code/Codex,
+  with managed worktrees, approved feedback snapshots and reported preview results.
+  Python `[mcp]` installation is required for the bridge; normal mode has no access.
+- **The shell, always on inside a code repository.** When the project map
+  resolves to a repository (a VCS directory or a known manifest at its root),
+  `run_shell_command` is offered on every turn instead of only when the request
+  happens to sound like a shell request. Coding tasks such as "skip these tests
+  on PRs" previously ran without a shell and did every grep through `run_python`.
+  It follows the *same* root the map already uses, so the sidecar needs
+  `GAIA_PROJECT_ROOT=/path/to/repo` (or `GaiaAgentConfig(project_root=...)` when
+  embedding) to see your repository — its own working directory is whatever
+  started it, not yours. With no repository nothing changes, and the shell's
+  approval gate still applies either way. See SKILL §11.
 - **`sleep`, always on.** The agent can now wait before retrying, e.g. until a
   rate limit resets, instead of giving up; before, its only way to wait was
   `time.sleep` inside a confirmation-gated `run_python`. Up to five minutes per
@@ -178,7 +253,7 @@ the terminal UI meant building it from source.
   overrides the match threshold, and an embedder outage disables it for the
   session (every body renders — capability is never lost to a failed match).
 - **Per-turn tool selection, now on by default for the flagship `full`
-  profile.** The model is sent about 28 of its 81 tools on any one call — a
+  profile.** The model is sent about 28 of its 84 tools on any one call — a
   fixed core plus whichever cohesion bundles the query matched — instead of the
   whole registry every time. No capability is lost: `load_tools` is an escape
   hatch the model calls mid-turn to pull in a bundle the selector missed; that
@@ -187,7 +262,7 @@ the terminal UI meant building it from source.
   `GAIA_DYNAMIC_TOOLS=0` turns the selection off, `GAIA_DYNAMIC_TOOLS_MAX`
   moves the cap and `GAIA_DYNAMIC_TOOLS_TAU` the match threshold.
 - **One bundled skill ships enabled: `gaia-voice`.** It is a manifest `skills:`
-  entry, so it is always on and rendered in full on every LLM call — 676 tokens
+  entry, so it is always on and rendered in full on every LLM call — 702 tokens
   of every prompt, and it declares no tools. It is the agent's honesty floor
   (don't claim work you didn't do, don't present empty output as a result,
   don't substitute a near-miss and report success), which is why it is not in an
@@ -351,9 +426,9 @@ the terminal UI meant building it from source.
   that killed only the launcher: the cancelled tool call ran to completion and
   the surviving process consumed the next message. The first Esc now sends the
   agent a `cancel` control message, so the turn ends and the session keeps its
-  loaded skills, "always" grants, history and bypass mode. A second Esc stops
+  loaded skills, "always" grants, history and full access. A second Esc stops
   the whole process tree.
-- **A restart after a hard stop no longer turns bypass permissions back on.**
+- **A restart after a hard stop no longer turns full access back on.**
   The replacement agent is launched in the session's current permission mode
   instead of from the original flags, and the TUI says what the restart lost.
 

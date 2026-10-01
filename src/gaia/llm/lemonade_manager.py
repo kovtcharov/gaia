@@ -1399,6 +1399,7 @@ class LemonadeManager:
             print(
                 f"\n⏳ Reloading model with ctx_size={requested_ctx} tokens "
                 f"(was {cls._context_size}). This may take a moment...",
+                file=sys.stderr,
                 flush=True,
             )
 

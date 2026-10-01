@@ -121,15 +121,23 @@ func (m ChatModel) supersededSetup(ch <-chan gaiainit.Event) bool {
 
 // releaseAfterSetupGate fires whatever Init() deferred behind the first-boot
 // gate now that it has resolved -- ready, or a setup run finished, failed,
-// or was cancelled. Today that is only the one-shot --query launch; nothing
-// queues a chat turn before the user has seen the composer at least once.
+// or was cancelled: the one-shot --query launch, or else the warm-up stage
+// (warmup.go), which has no model to load until setup has run.
 func (m *ChatModel) releaseAfterSetupGate() tea.Cmd {
-	if m.initialQuery == "" {
-		return nil
+	var cmds []tea.Cmd
+	switch {
+	case m.startup.pending:
+		// The warm-up follows a confirmed restore (Update), on that model.
+		cmds = append(cmds, startupModelCmd())
+	case m.warmUpApplies():
+		cmds = append(cmds, func() tea.Msg { return startWarmUpMsg{} })
 	}
-	query := m.initialQuery
-	m.initialQuery = ""
-	return func() tea.Msg { return sendQueryMsg{query: query} }
+	if m.initialQuery != "" {
+		query := m.initialQuery
+		m.initialQuery = ""
+		cmds = append(cmds, func() tea.Msg { return sendQueryMsg{query: query} })
+	}
+	return tea.Batch(cmds...)
 }
 
 // handleSetupCheckResult reacts to the first-boot readiness probe. A ready
@@ -275,8 +283,8 @@ func (m *ChatModel) upsertSetupProgress(line string) {
 }
 
 // statusNote appends one status line and re-renders -- a small, generic
-// counterpart to bypassNote for callers (like /setup) that have nothing
-// bypass-specific about them.
+// counterpart to fullAccessNote for callers (like /setup) that have nothing
+// full-access-specific about them.
 func (m ChatModel) statusNote(text string) ChatModel {
 	m.messages = append(m.messages, Message{Role: RoleStatus, Content: text})
 	m.updateViewport()

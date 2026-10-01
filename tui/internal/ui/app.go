@@ -44,11 +44,11 @@ func prepareTerminal() {
 //
 // If mockAgent is non-empty, agent binary paths are overridden with it for
 // testing. A non-nil ctrl starts the loopback control API against this very
-// program. bypassPermissions starts the agent with confirmation prompts off.
+// program. fullAccess starts the agent with confirmation prompts off.
 // useClaude/claudeModel run it against Anthropic's Claude API instead of the
 // local Lemonade backend. A non-nil trace records every agent event to a JSONL
 // file; the caller owns it and closes it after this returns.
-func RunFlagship(dev bool, mockAgent string, ctrl *control.Options, bypassPermissions bool, useClaude bool, claudeModel string, trace *event.TraceWriter) error {
+func RunFlagship(dev bool, mockAgent string, ctrl *control.Options, fullAccess, fullAccessSaved bool, useClaude bool, claudeModel string, trace *event.TraceWriter) error {
 	cat := catalog.NewCatalog()
 	if mockAgent != "" {
 		cat.SetMockBinary(mockAgent)
@@ -60,13 +60,15 @@ func RunFlagship(dev bool, mockAgent string, ctrl *control.Options, bypassPermis
 		return fmt.Errorf("the catalog has no %q entry, so there is nothing to launch. "+
 			"Report this with GAIA diagnostics", catalog.FlagshipID)
 	}
-	if err := client.CheckBypassSupported(*agent, bypassPermissions); err != nil {
+	fullAccess, notice, err := launchFullAccess(*agent, fullAccess, fullAccessSaved)
+	if err != nil {
 		return err
 	}
-	m := root.NewFlagshipModel(*agent, dev).
+	m := withLastModel(root.NewFlagshipModel(*agent, dev).
 		WithCatalog(cat).
-		WithBypassPermissions(bypassPermissions).
-		WithClaude(useClaude, claudeModel).
+		WithFullAccess(fullAccess).
+		WithFullAccessNotice(notice).
+		WithClaude(useClaude, claudeModel)).
 		WithTrace(trace).
 		WithLocalPreflight(preflight.LocalOptions{
 			// The gate has to answer about the binary this launch will actually
@@ -98,6 +100,12 @@ func RunChat(subprocess string, query string, dev bool, ctrl *control.Options, t
 	return run(chat.NewChatModel(c, agentNameFromPath(argv[0]), query, dev), dev, ctrl)
 }
 
+// DECSET/DECRST 1007, alternate scroll mode.
+const (
+	altScrollOn  = "\x1b[?1007h"
+	altScrollOff = "\x1b[?1007l"
+)
+
 // teaOptions are the terminal capabilities every GAIA TUI program asks for.
 //
 // The mouse is deliberately NOT among them: who owns it is a per-screen
@@ -117,6 +125,12 @@ func teaOptions() []tea.ProgramOption {
 func run(model tea.Model, dev bool, ctrl *control.Options) error {
 	prepareTerminal()
 
+	// Alternate scroll mode: with the mouse left to the terminal (so drag-select
+	// works), the terminal sends each wheel tick as ↑/↓, which scroll the
+	// transcript. Reset on the way out so the shell gets its wheel back.
+	fmt.Fprint(os.Stdout, altScrollOn)
+	defer fmt.Fprint(os.Stdout, altScrollOff)
+
 	// The agent is a child process, and on Windows nothing reaps it when this
 	// one exits — so whatever the session opened is closed here, after the
 	// event loop has stopped, rather than left to the OS.
@@ -127,6 +141,9 @@ func run(model tea.Model, dev bool, ctrl *control.Options) error {
 			}
 		}()
 	}
+
+	// After the Closer check above, which has to see the real model.
+	model = repaintOnResize{inner: model}
 
 	// Swept whether or not this run publishes one of its own: a session started
 	// WITHOUT --control used to leave a dead predecessor's file in place.
@@ -210,7 +227,7 @@ func run(model tea.Model, dev bool, ctrl *control.Options) error {
 // that overrode the binary for one entry point and not the other let a test
 // spawn the real agent while believing it had substituted a stand-in.
 // Returns the process exit code.
-func RunAgent(agentID, query, model string, dev bool, timeout time.Duration, ctrl *control.Options, bypassPermissions bool, useClaude bool, claudeModel, mockAgent string, trace *event.TraceWriter) (int, error) {
+func RunAgent(agentID, query, model string, dev bool, timeout time.Duration, ctrl *control.Options, fullAccess bool, useClaude bool, claudeModel, mockAgent string, trace *event.TraceWriter) (int, error) {
 	cat := catalog.NewCatalog()
 	if mockAgent != "" {
 		cat.SetMockBinary(mockAgent)
@@ -223,7 +240,7 @@ func RunAgent(agentID, query, model string, dev bool, timeout time.Duration, ctr
 		return 1, fmt.Errorf("no agent %q in the catalog. %s", agentID, knownIDs(cat))
 	}
 
-	if err := client.CheckBypassSupported(*agent, bypassPermissions); err != nil {
+	if err := client.CheckFullAccessSupported(*agent, fullAccess); err != nil {
 		return 1, err
 	}
 
@@ -280,11 +297,11 @@ func RunAgent(agentID, query, model string, dev bool, timeout time.Duration, ctr
 			Logf:  logf,
 			// A one-shot has nobody at the keyboard; only the interactive chat
 			// can answer a question, so it must not claim it can.
-			Interactive:       false,
-			BypassPermissions: bypassPermissions,
-			UseClaude:         useClaude,
-			ClaudeModel:       claudeModel,
-			Trace:             trace,
+			Interactive: false,
+			FullAccess:  fullAccess,
+			UseClaude:   useClaude,
+			ClaudeModel: claudeModel,
+			Trace:       trace,
 		})
 		if err != nil {
 			return 1, err
@@ -302,11 +319,11 @@ func RunAgent(agentID, query, model string, dev bool, timeout time.Duration, ctr
 	// passes. That is what gains an interactive --agent launch a gate: it had
 	// none, and email in particular went straight to chat and reported a
 	// missing daemon as a failed first message.
-	m := root.NewFlagshipModel(*agent, dev).
+	m := withLastModel(root.NewFlagshipModel(*agent, dev).
 		WithCatalog(cat).
-		WithBypassPermissions(bypassPermissions).
+		WithFullAccess(fullAccess).
 		WithClaude(useClaude, claudeModel).
-		WithModel(model).
+		WithModel(model)).
 		WithTrace(trace)
 	if err := run(m, dev, ctrl); err != nil {
 		return 1, err
@@ -340,4 +357,38 @@ func orDefault(value, fallback string) string {
 func agentNameFromPath(path string) string {
 	name := filepath.Base(path)
 	return strings.TrimSuffix(name, ".exe")
+}
+
+// launchFullAccess decides whether this launch runs with full access, and what
+// to tell the user when a saved preference could not be honoured.
+//
+// The explicit flag is refused on a transport that cannot carry it. A saved
+// preference is a default, not a demand: it is set aside for this launch and
+// explained, never allowed to stop the TUI opening over a flag nobody typed.
+func launchFullAccess(agent catalog.Agent, fullAccess, saved bool) (bool, string, error) {
+	if fullAccess && saved && !client.FullAccessSupported(agent) {
+		return false, "[!] Full access is saved as your default, but " + agent.Name +
+			" runs through the GAIA background service, which does not support it yet. " +
+			"Confirmation prompts are ON for this session.\n" +
+			"    /full-access never clears the saved setting.", nil
+	}
+	if err := client.CheckFullAccessSupported(agent, fullAccess); err != nil {
+		return false, "", err
+	}
+	return fullAccess, "", nil
+}
+
+// withLastModel restores the model the user last chose and remembers the next
+// one. Applied after the launch flags, which win over a saved choice.
+func withLastModel(m root.FlagshipModel) root.FlagshipModel {
+	m = m.WithModelMemory(func(provider, model string) error {
+		_, err := preflight.WriteLastModel(provider, model)
+		return err
+	})
+	saved, err := preflight.ReadLastModel()
+	if err != nil {
+		return m.WithLaunchNotice("[!] Your last model was not restored: " + err.Error() +
+			". Pick one with /provider.")
+	}
+	return m.WithSavedModel(saved)
 }
