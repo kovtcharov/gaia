@@ -18,6 +18,8 @@ type Recommended struct {
 	Provider string `json:"provider"`
 	Label    string `json:"label"`
 	Note     string `json:"note"`
+	// Evidence is the measured result behind a cloud recommendation's note.
+	Evidence string `json:"evidence"`
 
 	// Registration for a model that is not a Lemonade built-in. Empty for
 	// built-ins, which Lemonade pulls by name.
@@ -67,7 +69,7 @@ func init() {
 	}
 	recommended, fitRule = doc.Models, doc.Fit
 	for _, r := range RecommendedFor("fireworks") {
-		RecommendedModels = append(RecommendedModels, Recommendation{ID: r.ID, Note: r.Note})
+		RecommendedModels = append(RecommendedModels, Recommendation{ID: r.ID, Note: r.Note, Evidence: r.Evidence})
 	}
 	if len(RecommendedModels) == 0 {
 		panic("recommended_models.json: no Fireworks recommendations")

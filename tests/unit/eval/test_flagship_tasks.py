@@ -20,6 +20,7 @@ import pytest
 from gaia.agents.base.verification import NOT_EXECUTED
 from gaia.eval import flagship_tasks as ft
 from gaia.eval import task_setups as setups
+from gaia.eval.bench import gaia_child, harness
 
 ALL_TASKS = ft.load_suite("full")
 TASKS = {t.id: t for t in ALL_TASKS}
@@ -197,7 +198,7 @@ ADVERSARIAL = {
 
 def test_every_suite_loads_and_core_is_a_subset_of_full():
     suites = {name: {t.id for t in ft.load_suite(name)} for name in ft.suite_names()}
-    assert set(suites) == {"core", "full", "adversarial"}
+    assert set(suites) == {"core", "full", "adversarial", "everyday", "therock"}
     assert suites["core"] <= suites["full"] and suites["adversarial"] <= suites["full"]
     assert suites["adversarial"] == ADVERSARIAL
     # CI runs core: only the short adversarial tasks, never the one that hangs.
@@ -213,7 +214,8 @@ def test_every_stated_task_has_a_reference_answer():
 
 
 def test_every_setup_is_used_by_a_task():
-    assert {t.setup for t in ALL_TASKS if t.setup} == set(setups.SETUPS)
+    every = [t for name in ft.suite_names() for t in ft.load_suite(name)]
+    assert {t.setup for t in every if t.setup} == set(setups.SETUPS)
 
 
 def test_the_fixture_suite_passes_untouched(tmp_path):
@@ -625,6 +627,10 @@ class _FakeAgent:
         self.config = config
         self.console = SimpleNamespace(auto_approve_gated_tools=False)
         self.error_history = list(type(self).error_history)
+        self.chat = SimpleNamespace(send_messages=lambda *a, **k: None)
+
+    def _execute_tool(self, tool_name, tool_args):
+        return {"status": "success"}
 
     def process_query(self, prompt):
         type(self).seen.append(
@@ -647,8 +653,28 @@ class _FakeAgent:
         }
 
 
+def inline_launch(cmd, *, env, cwd, timeout_s, stdout_path, stderr_path):
+    """The GAIA harness's child, run in this process so the stand-in agent is seen.
+
+    The environment the child would get replaces this process's for the call.
+    """
+    assert cmd[1:3] == ["-m", "gaia.eval.bench.gaia_child"], cmd
+    saved = dict(os.environ)
+    os.environ.clear()
+    os.environ.update(env)
+    try:
+        return gaia_child.main([cmd[3]]), False
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
 @pytest.fixture
 def fake_agent(monkeypatch, tmp_path):
+    monkeypatch.setattr(harness, "launch", inline_launch)
+    monkeypatch.setenv("GAIA_BENCH_WORK_ROOT", str(tmp_path / "work"))
+    # The run's gateway must never point at a live Lemonade.
+    monkeypatch.setenv("LEMONADE_BASE_URL", "http://127.0.0.1:9/api/v1")
     _FakeAgent.seen = []
     _FakeAgent.behaviour = staticmethod(lambda workdir: "done")
     _FakeAgent.error_history = []
@@ -924,6 +950,101 @@ RUN = "python -m pytest tests -q"
 )
 def test_verified_needs_a_passing_test_run_after_the_last_edit(conversation, verified):
     assert ft.tests_verified(conversation) is verified
+
+
+JEST_PASSED = "PASS src/a.test.js\n\nTests:       10 passed, 10 total\nTime: 1.2 s\n"
+JEST_FAILED = "FAIL src/a.test.js\n\nTests:       1 failed, 9 passed, 10 total\n"
+GO_PASSED = "ok  \tgithub.com/x/pkg\t0.012s\n"
+GO_FAILED = "--- FAIL: TestA (0.00s)\nFAIL\nFAIL\tgithub.com/x/pkg\t0.012s\n"
+
+
+@pytest.mark.parametrize(
+    "conversation, verified",
+    [
+        ([_edit(), _shell("npm test", 0, JEST_PASSED)], True),
+        ([_edit(), _shell("npm test | tail -5", 0, JEST_FAILED)], False),
+        ([_edit(), _shell("go test ./...", 0, GO_PASSED)], True),
+        ([_edit(), _shell("go test ./... 2>&1 | tail", 0, GO_FAILED)], False),
+        ([_edit(), _shell("npm test", 0, "> app@1.0.0 test\n> jest\n")], False),
+    ],
+    ids=[
+        "jest-passed",
+        "jest-failure-behind-a-pipe",
+        "go-passed",
+        "go-failure-behind-a-pipe",
+        "runner-printed-no-summary",
+    ],
+)
+def test_verified_reads_every_runner_the_record_knows(conversation, verified):
+    assert ft.tests_verified(conversation) is verified
+
+
+ANSWERED = {"role": "system", "content": {"type": "answered", "step": 4}}
+BUGFIX = "toybox/dates.py mishandles a lowercase z. Fix it and add a regression test."
+
+
+def _read(path):
+    return _tool("read_file", {"file_path": path}, {"status": "success"})
+
+
+@pytest.mark.parametrize(
+    "conversation, strays",
+    [
+        ([_read("toybox/cli.py"), _edit(), _shell(RUN, 0, PASSED)], []),
+        ([_edit(), ANSWERED, _shell(RUN, 0, PASSED), _edit()], []),
+        (
+            [
+                _edit(),
+                ANSWERED,
+                _tool(
+                    "extract_document_items",
+                    {"file_path": "toybox/cli.py"},
+                    {"status": "success"},
+                ),
+                _read("toybox/sorting.py"),
+            ],
+            ["extract_document_items", "read_file"],
+        ),
+        (
+            [
+                _edit(),
+                ANSWERED,
+                _tool(
+                    "read_file",
+                    {"file_path": "README.md"},
+                    {"executed": False, "status": "error", "error": "not run"},
+                ),
+            ],
+            [],
+        ),
+        ([_read("toybox/cli.py"), ANSWERED, _read("toybox/cli.py")], []),
+    ],
+    ids=[
+        "no-answer-yet",
+        "rerunning-tests-and-the-requested-file",
+        "new-work-after-the-answer",
+        "refused-calls-never-ran",
+        "a-file-read-before-the-answer",
+    ],
+)
+def test_calls_after_answer_counts_only_work_the_request_never_touched(
+    conversation, strays, tmp_path
+):
+    assert ft.calls_after_answer(conversation, BUGFIX, tmp_path) == strays
+
+
+def test_a_judged_task_that_kept_working_after_its_answer_stays_failed():
+    task = ft.Task(
+        id="q", check="stated", prompt="What does parse_updated accept?", max_steps=10
+    )
+    entry = {
+        "passed": False,
+        "why": "kept working after its answer: read_file",
+        "after_answer": ["read_file"],
+        "judge": {"answers_correctly": True},
+    }
+    ft._apply_verdict(entry, task)
+    assert entry["passed"] is False
 
 
 def test_a_huge_setup_diff_reaches_the_judge_as_a_file_list():
@@ -1298,6 +1419,59 @@ def test_the_report_puts_main_beside_this_run():
     assert "12 (main 10)" in report and "FAIL (main PASS)" in report
 
 
+def test_tool_calls_are_gated_once_expectations_set_a_limit():
+    card = _card(asdict_task("a", judge=_GOOD), asdict_task("b", judge=_GOOD))
+    calls = {c.metric: c for c in ft.gate(card, EXPECTED)}["Tool calls"]
+    assert calls.ok and not calls.gated
+    missed = [
+        c.metric for c in ft.gate(card, {**EXPECTED, "max_tool_calls": 3}) if not c.ok
+    ]
+    assert missed == ["Tool calls"]
+    assert ft.propose_expectations(card)["max_tool_calls"] == int(4 * 1.35)
+
+
+def test_consistent_expectations_take_the_worst_run_for_every_limit():
+    good = _card(
+        asdict_task("a", judge=_GOOD, steps=10, tokens=(10000, 0)),
+        asdict_task("b", judge=_GOOD, steps=10, tokens=(10000, 0)),
+    )
+    worse = _card(
+        asdict_task("a", passed=False, judge={**_GOOD, "work_quality": 2}),
+        asdict_task("b", judge=_GOOD, steps=30, tokens=(40000, 0)),
+    )
+    proposal = ft.propose_consistent_expectations([good, worse])
+    assert proposal["runs"] == 2
+    assert proposal["min_passed"] == ft.propose_expectations(worse)["min_passed"]
+    assert proposal["min_quality"] == ft.propose_expectations(worse)["min_quality"]
+    assert proposal["max_steps"] == ft.propose_expectations(worse)["max_steps"]
+    assert (
+        proposal["max_total_tokens"]
+        == ft.propose_expectations(worse)["max_total_tokens"]
+    )
+    # Every run it was measured from passes it, the worst included.
+    for card in (good, worse):
+        assert all(check.ok for check in ft.gate(card, proposal))
+
+
+def test_consistent_expectations_refuse_runs_of_different_models():
+    a = _card(asdict_task("a", judge=_GOOD))
+    b = {**_card(asdict_task("a", judge=_GOOD)), "model": "other"}
+    with pytest.raises(ValueError, match="differ in model"):
+        ft.propose_consistent_expectations([a, b])
+
+
+def test_consistent_expectations_refuse_runs_of_different_tasks():
+    full = _card(asdict_task("a", judge=_GOOD), asdict_task("b", judge=_GOOD))
+    partial = _card(asdict_task("a", judge=_GOOD))
+    with pytest.raises(ValueError, match="different tasks"):
+        ft.propose_consistent_expectations([full, partial])
+
+
+def test_consistent_expectations_need_at_least_one_run():
+    with pytest.raises(ValueError, match="No runs"):
+        ft.propose_consistent_expectations([])
+
+
 def test_expectations_are_not_proposed_from_an_unjudged_run():
     with pytest.raises(ValueError, match="judge the run"):
         ft.propose_expectations(_card(asdict_task("a")))
@@ -1516,3 +1690,26 @@ def test_a_judge_failure_is_described_as_a_grading_gap_not_an_outage(
     out = capsys.readouterr().out
     assert "No usable grade for 02-bugfix, 21-qa" in out
     assert "quality and misreport checks" in out and "unmeasured" not in out
+
+
+def test_model_calls_keep_only_calls_that_reached_the_model():
+    records = [
+        {
+            "path": "/api/v1/chat/completions",
+            "seconds": 2.0,
+            "first_byte_seconds": 2.0,
+            "tokens": {"input": 9},
+            "timings": {"prompt_n": 9},
+            "status": 200,
+        },
+        {"path": "/api/v1/health", "seconds": 0.1, "tokens": {}, "timings": {}},
+        {"path": "/api/v1/chat/completions", "unreachable": True},
+    ]
+    assert ft.model_calls(records) == [
+        {
+            "seconds": 2.0,
+            "first_byte_seconds": 2.0,
+            "tokens": {"input": 9},
+            "timings": {"prompt_n": 9},
+        }
+    ]

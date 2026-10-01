@@ -30,7 +30,10 @@ The committed SSE sequence pins under `python/eval_baselines/query_sequences/` s
 
 ## Surface totals
 
-- Registered agent-loop tools: **83** (CORE 16 + 21 bundles; bundles overlap CORE and each other by design, so per-bundle counts sum past the unique total)
+- Registered agent-loop tools: **96** (CORE 16 + 25 bundles; bundles overlap CORE and each other by design, so per-bundle counts sum past the unique total)
+  - `browser_nav`: 2
+  - `browser_use`: 6
+  - `cli_setup`: 3
   - `clipboard`: 2
   - `code_index`: 4
   - `data`: 6
@@ -48,6 +51,7 @@ The committed SSE sequence pins under `python/eval_baselines/query_sequences/` s
   - `rag_query`: 6
   - `screenshot`: 1
   - `shell`: 5
+  - `shell_session`: 2
   - `skill_hub`: 4
   - `skills`: 5
   - `vision`: 2
@@ -73,12 +77,15 @@ The committed SSE sequence pins under `python/eval_baselines/query_sequences/` s
 - Eval suites: **2**
   - `perf`: enforce=False, acceptance_enforce=None
   - `quality`: enforce=True, acceptance_enforce=None
-- Judged scenario categories (`eval/scenarios/gaia_*`): **13**
+- Judged scenario categories (`eval/scenarios/gaia_*`): **17**
   - `gaia_code`
   - `gaia_core`
   - `gaia_data`
+  - `gaia_email`
   - `gaia_files`
   - `gaia_honesty`
+  - `gaia_mcp`
+  - `gaia_media`
   - `gaia_memory`
   - `gaia_rag`
   - `gaia_shell`
@@ -86,6 +93,7 @@ The committed SSE sequence pins under `python/eval_baselines/query_sequences/` s
   - `gaia_skills_lifecycle`
   - `gaia_skills_tasks`
   - `gaia_tool_selection`
+  - `gaia_voice`
   - `gaia_web`
 
 ## MCP Scope Decision

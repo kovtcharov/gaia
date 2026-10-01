@@ -16,11 +16,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from gaia.config import GaiaConfig
+from gaia.config import GaiaConfig, gaia_home
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DB_PATH = Path.home() / ".gaia" / "chat" / "gaia_chat.db"
+
+def default_db_path() -> Path:
+    """Return the default chat database path under the resolved GAIA home."""
+    return gaia_home() / "chat" / "gaia_chat.db"
+
+
+DEFAULT_DB_PATH = default_db_path
 
 # Hard-coded floor for new sessions — kept in sync with the SQL schema DEFAULT
 # and any code that reads session["model"] and falls back when NULL. Not what a
@@ -164,7 +170,7 @@ class ChatDatabase:
                      Use ":memory:" for in-memory database (testing).
         """
         if db_path is None:
-            db_path = str(DEFAULT_DB_PATH)
+            db_path = str(default_db_path())
 
         self._db_path = db_path
         self._lock = threading.RLock()
@@ -456,7 +462,10 @@ class ChatDatabase:
         # pin it so the auto-retitler never overwrites it (#2165).
         title_is_custom = 0 if is_placeholder_title(title) else 1
         title = title or "New Chat"
-        agent_type = agent_type or "chat"
+        # The flagship, not `chat`: callers that don't pass an agent_type (API
+        # clients, the scheduler) would otherwise land on a hidden agent the
+        # picker no longer offers.
+        agent_type = agent_type or "gaia"
         device = device or "gpu"
         # mail_provider is a FILTER (#1596): no pick stays NULL ("every
         # connected mailbox") — never silently coerce to google.

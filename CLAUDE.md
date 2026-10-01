@@ -625,7 +625,7 @@ is set in its own `agent.py` (see [Default Models](#default-models)).
 | Agent | Description |
 |-------|-------------|
 | **GaiaAgent** | The flagship — conversation, documents, data, web, memory, skills — hub (`gaia/`) |
-| **ChatAgent** | Multi-profile conversation (chat/doc/file) with RAG; the flagship's base class — hub (`chat/`) |
+| **ChatAgent** | The flagship's base class. Its `chat`/`doc`/`file` ids are `hidden` — resolvable, not selectable — hub (`chat/`) |
 | **EmailTriageAgent** | Email triage for Gmail or Outlook (local inference; needs the Google or Microsoft connector) — hub (`email/`) |
 | **BuilderAgent** | Scaffolds new agents from templates — in-core (`builder/`) |
 
@@ -648,6 +648,7 @@ New agents are Python classes inheriting from `Agent` (see [`src/gaia/agents/bas
 | `file_search` | `gaia.agents.tools.file_tools.FileSearchToolsMixin` | Fuzzy/glob file search |
 | `file_io` | `gaia.agents.tools.file_io_tools.FileIOToolsMixin` | Read/write/edit files |
 | `shell` | `gaia.agents.tools.shell_tools.ShellToolsMixin` | Sandboxed shell commands |
+| `cli_setup` | `gaia.agents.tools.cli_setup_tools.CliSetupToolsMixin` | Install and sign in to a skill's CLI |
 | `screenshot` | `gaia.agents.tools.screenshot_tools.ScreenshotToolsMixin` | Screen capture |
 | `filesystem` | `gaia.agents.tools.filesystem_tools.FileSystemToolsMixin` | File system navigation |
 | `scratchpad` | `gaia.agents.tools.scratchpad_tools.ScratchpadToolsMixin` | SQL scratchpad tables for data analysis |
@@ -663,7 +664,7 @@ New agents are Python classes inheriting from `Agent` (see [`src/gaia/agents/bas
 When adding a new tool mixin, register it in `KNOWN_TOOLS` so other agents can compose it by name.
 
 ### Default Models
-- The default chat model follows the hardware. `gaia init` adds `user.Qwen3.8-Flash-Next-GGUF` (`LARGE_DEFAULT_MODEL_NAME`) where it fits and the server can load it — a 128 GB Strix Halo on Lemonade v2026.39.1+ — and records it as `default_model` in `~/.gaia/config.json` once downloaded; every other PC runs `Gemma-4-E4B-it-GGUF` (`DEFAULT_MODEL_NAME`), which every PC still downloads because vision loads it by name. "Fits" is [`src/gaia/llm/model_fit.py`](src/gaia/llm/model_fit.py), read off Lemonade's `/system-info` and `/health`; the TUI picker applies the same rule from `tui/internal/lemonade/recommended_models.json` (a drift test pins the two). `Qwen3-30B-A3B-Instruct-2507-GGUF` (`QWEN3_30B_MODEL_NAME`) is the supported, faster text-only alternative on the same PCs; `util/compare_local_models.py` measures the two on real hardware before the default changes.
+- The default chat model follows the hardware. `gaia init` adds `Qwen3-30B-A3B-Instruct-2507-GGUF` (`LARGE_DEFAULT_MODEL_NAME`, a Lemonade built-in, no version floor of its own) where it fits — at 17.4 GB this reaches well past Strix Halo, to most dGPUs and CPU-only PCs with enough RAM — and records it as `default_model` in `~/.gaia/config.json` once downloaded; every smaller PC runs `Gemma-4-E4B-it-GGUF` (`DEFAULT_MODEL_NAME`), which every PC still downloads because vision loads it by name. "Fits" is [`src/gaia/llm/model_fit.py`](src/gaia/llm/model_fit.py), read off Lemonade's `/system-info` and `/health`; the TUI picker applies the same rule from `tui/internal/lemonade/recommended_models.json` (a drift test pins the two). `user.Qwen3.8-Flash-Next-GGUF` (`FLASH_OPTION_MODEL_NAME`, 82.86 GB, multimodal, needs Lemonade v2026.39.1+) is a supported manual option on the same 128 GB-class PCs — not auto-selected — switchable with `gaia config set default_model`; `util/compare_local_models.py` measures both on real hardware.
 - Agents that leave `model_id` unset call `resolve_default_chat_model()` — `default_model`, else `DEFAULT_MODEL_NAME`. That covers GaiaAgent, ChatAgent, BuilderAgent, and the example templates. Sharing one model id is what keeps switching agents from evicting and cold-reloading the resident model.
 - **EmailTriageAgent is the one exception.** With no explicit `model_id` it calls `resolve_default_email_model()` (`hub/agents/email/python/gaia_agent_email/model_select.py`), which returns `gemma4-it-e2b-FLM` when an NPU is present *and* that model is already servable, and `DEFAULT_MODEL_NAME` in every other case.
 - Context window is pinned per device profile, not per agent: `GPU_CTX_SIZE` (65536, GPU/CPU) and `NPU_CTX_SIZE` (32768, the FLM ceiling) in [`src/gaia/llm/lemonade_client.py`](src/gaia/llm/lemonade_client.py). A machine runs one profile, so the ctx size is fixed machine-wide; the NPU email model above is the only case where a second model id enters the picture.

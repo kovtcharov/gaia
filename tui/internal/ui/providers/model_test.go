@@ -322,8 +322,8 @@ func TestSetupNoticesExistingEnvironmentKey(t *testing.T) {
 	if !strings.Contains(view, "environment key is already active") {
 		t.Fatal("existing environment key was not surfaced to the user", view)
 	}
-	if !strings.Contains(m.fields[3].Placeholder, "environment key") {
-		t.Fatal("key field placeholder does not mention the environment key", m.fields[3].Placeholder)
+	if m.fields[3].Placeholder != "A key is already set — Enter connects" {
+		t.Fatal("key field placeholder does not say a key is set", m.fields[3].Placeholder)
 	}
 }
 
@@ -387,7 +387,7 @@ func TestClearingRuntimeKeyDropsTheExistingKeyNotice(t *testing.T) {
 	if strings.Contains(view, "already configured for") || strings.Contains(view, "already active") {
 		t.Fatal("stale notice still claims a key is active after it was cleared", view)
 	}
-	if !strings.Contains(view, "Runtime key cleared") {
+	if !strings.Contains(view, "Key cleared, here and for future sessions") {
 		t.Fatal("missing clear confirmation", view)
 	}
 }
@@ -521,4 +521,37 @@ func TestEscStopsADownloadAndReturnsToTheList(t *testing.T) {
 		t.Fatalf("the stopped download's result ended the new one: stage=%s note=%q", got.stage, got.note)
 	}
 	m = key(next.(Model), tea.KeyEsc)
+}
+
+func TestFocusedRecommendedModelShowsItsMeasuredEvidence(t *testing.T) {
+	rec := lemonade.RecommendedModels[0]
+	if rec.Evidence == "" {
+		t.Fatal("the top recommendation must carry measured evidence")
+	}
+	m := New("", 120, 30)
+	m.selected = 1
+	next, _ := m.Update(fireworks("fireworks.plain-model", rec.ID))
+	m = next.(Model)
+	view := ansi.Strip(m.View())
+	if !strings.Contains(view, "Measured: "+rec.Evidence) {
+		t.Fatalf("focused ranked model shows no evidence: %s", view)
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = next.(Model)
+	if view := ansi.Strip(m.View()); strings.Contains(view, "Measured:") {
+		t.Fatalf("plain model shows evidence: %s", view)
+	}
+}
+
+// Terminals 69-73 columns wide cut the model-list hint mid-word ("esc b…").
+func TestModelListHintIsNeverCutMidWord(t *testing.T) {
+	for width := 60; width <= 80; width++ {
+		m := New("", width, 30)
+		m.selected = 1
+		next, _ := m.Update(fireworks("fireworks.a"))
+		lines := strings.Split(ansi.Strip(next.(Model).View()), "\n")
+		if hint := lines[len(lines)-2]; strings.Contains(hint, "…") {
+			t.Fatalf("hint truncated at width %d: %q", width, hint)
+		}
+	}
 }

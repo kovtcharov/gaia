@@ -19,7 +19,7 @@ never downloaded.
 
 Usage::
 
-    python util/compare_local_models.py                     # Flash vs Qwen3 30B
+    python util/compare_local_models.py                     # Qwen3 30B vs Flash
     python util/compare_local_models.py --tasks core        # plus agent quality
     python util/compare_local_models.py --models Qwen3-30B-A3B-Instruct-2507-HRX \\
         Qwen3-30B-A3B-Instruct-2507-GGUF                    # HRX vs llama.cpp
@@ -37,9 +37,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from gaia.llm.lemonade_client import (
+    FLASH_OPTION_MODEL_NAME,
     GPU_CTX_SIZE,
     LARGE_DEFAULT_MODEL_NAME,
-    QWEN3_30B_MODEL_NAME,
     LemonadeClient,
     LemonadeClientError,
     find_model_requirement,
@@ -52,7 +52,7 @@ from gaia.llm.model_fit import (
     check_server_supports,
 )
 
-DEFAULT_MODELS = (LARGE_DEFAULT_MODEL_NAME, QWEN3_30B_MODEL_NAME)
+DEFAULT_MODELS = (LARGE_DEFAULT_MODEL_NAME, FLASH_OPTION_MODEL_NAME)
 #: (label, approximate prompt tokens of filler). "short" has none.
 PROMPT_SIZES = (("short", 0), ("8K", 8_000), ("32K", 32_000))
 DECODE_TOKENS = 256

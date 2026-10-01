@@ -32,6 +32,11 @@ type stdioWireFixture struct {
 			MemoryDump struct {
 				Query string `json:"query"`
 			} `json:"memory_dump"`
+			WarmUp struct {
+				Query         string `json:"query"`
+				AckAnswer     string `json:"ack_answer"`
+				SkippedAnswer string `json:"skipped_answer"`
+			} `json:"warm_up"`
 		} `json:"query_sentinels"`
 	} `json:"stdin"`
 }
@@ -107,6 +112,11 @@ func TestQuerySentinelsMatchTheSharedFixture(t *testing.T) {
 		t.Errorf("clearConversationAck = %q, fixture says %q",
 			clearConversationAck, f.Stdin.QuerySentinels.ClearConversation.AckAnswer)
 	}
+	if w := f.Stdin.QuerySentinels.WarmUp; WarmUpQuery != w.Query ||
+		WarmedUp != w.AckAnswer || WarmUpSkipped != w.SkippedAnswer {
+		t.Errorf("warm-up sentinel = (%q, %q, %q), fixture says (%q, %q, %q)",
+			WarmUpQuery, WarmedUp, WarmUpSkipped, w.Query, w.AckAnswer, w.SkippedAnswer)
+	}
 	if memoryDumpQuery != f.Stdin.QuerySentinels.MemoryDump.Query {
 		t.Errorf("memoryDumpQuery = %q, fixture says %q",
 			memoryDumpQuery, f.Stdin.QuerySentinels.MemoryDump.Query)
@@ -121,8 +131,8 @@ func TestEveryControlLineTheClientWritesMatchesTheSharedFixture(t *testing.T) {
 		"tool_decision": func(c *SubprocessClient) error {
 			return c.RespondToolPermission("confirm-7", PermissionAlways)
 		},
-		"bypass": func(c *SubprocessClient) error { return c.SetBypassPermissions(true) },
-		"cancel": func(c *SubprocessClient) error { return c.Cancel(context.Background()) },
+		"full_access": func(c *SubprocessClient) error { return c.SetFullAccess(true) },
+		"cancel":      func(c *SubprocessClient) error { return c.Cancel(context.Background()) },
 	}
 
 	for verb, spec := range f.Stdin.ControlVerbs {

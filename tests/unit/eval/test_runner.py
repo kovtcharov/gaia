@@ -843,3 +843,307 @@ class TestMcpServerCommandPreflight:
         errors = runner.preflight_check("http://127.0.0.1:1")
 
         assert any("no-such-binary-xyz" in e for e in errors)
+
+
+_CRASH_AT_IMPORT = """
+import sys
+sys.stderr.write("Traceback (most recent call last):\\n")
+sys.stderr.write("ModuleNotFoundError: No module named 'mcp'\\n")
+sys.exit(1)
+"""
+
+_ANSWERS_INITIALIZE = """
+import json, sys
+request = json.loads(sys.stdin.readline())
+reply = {"jsonrpc": "2.0", "id": request["id"],
+         "result": {"protocolVersion": "2025-06-18", "capabilities": {},
+                    "serverInfo": {"name": "fake", "version": "0"}}}
+sys.stdout.write(json.dumps(reply) + "\\n")
+sys.stdout.flush()
+sys.stdin.read()
+"""
+
+_ANSWERS_WITH_ERROR = """
+import json, sys
+request = json.loads(sys.stdin.readline())
+reply = {"jsonrpc": "2.0", "id": request["id"],
+         "error": {"code": -32602, "message": "bad params"}}
+sys.stdout.write(json.dumps(reply) + "\\n")
+sys.stdout.flush()
+sys.stdin.read()
+"""
+
+_HANGS = """
+import sys, time
+sys.stdin.readline()
+time.sleep(60)
+"""
+
+
+class TestMcpServerHandshakePreflight:
+    """A server whose command resolves can still die before speaking MCP."""
+
+    @staticmethod
+    def _server(tmp_path, source, env=None):
+        script = tmp_path / "fake_launcher.py"
+        script.write_text(source, encoding="utf-8")
+        return {"command": sys.executable, "args": [str(script)], "env": env or {}}
+
+    def test_server_crashing_at_import_names_the_missing_extra(self, tmp_path):
+        error = runner._probe_mcp_server(
+            "gaia-agent-ui", self._server(tmp_path, _CRASH_AT_IMPORT)
+        )
+
+        assert error is not None
+        assert "gaia-agent-ui" in error
+        assert "exited (code 1) before answering initialize" in error
+        assert "amd-gaia[mcp]" in error
+        assert "No module named 'mcp'" in error  # the server's own stderr
+
+    def test_server_that_answers_initialize_passes(self, tmp_path):
+        server = self._server(tmp_path, _ANSWERS_INITIALIZE)
+
+        assert runner._probe_mcp_server("fake", server) is None
+
+    def test_initialize_error_response_fails(self, tmp_path):
+        error = runner._probe_mcp_server(
+            "fake", self._server(tmp_path, _ANSWERS_WITH_ERROR)
+        )
+
+        assert error is not None
+        assert "without a result" in error
+        assert "bad params" in error
+
+    def test_silent_server_times_out(self, tmp_path):
+        error = runner._probe_mcp_server(
+            "fake", self._server(tmp_path, _HANGS), timeout=1
+        )
+
+        assert error is not None
+        assert "no initialize response within 1s" in error
+
+    def test_server_env_is_passed_through(self, tmp_path):
+        source = _ANSWERS_INITIALIZE.replace(
+            "request = ",
+            "assert __import__('os').environ['PROBE_MARK'] == 'x'\n" "request = ",
+        )
+        server = self._server(tmp_path, source, env={"PROBE_MARK": "x"})
+
+        assert runner._probe_mcp_server("fake", server) is None
+
+    def test_preflight_runs_the_handshake_after_the_command_check(
+        self, tmp_path, monkeypatch
+    ):
+        server = self._server(tmp_path, _CRASH_AT_IMPORT)
+        template = tmp_path / "mcp-config.json"
+        template.write_text(
+            json.dumps({"mcpServers": {"gaia-agent-ui": server}}), encoding="utf-8"
+        )
+        monkeypatch.setattr(runner, "MCP_CONFIG", template)
+
+        errors = runner.preflight_check("http://127.0.0.1:1")
+
+        assert any("amd-gaia[mcp]" in e for e in errors)
+
+    def test_preflight_skips_the_handshake_when_the_command_is_missing(
+        self, tmp_path, monkeypatch
+    ):
+        template = tmp_path / "mcp-config.json"
+        template.write_text(
+            json.dumps({"mcpServers": {"ghost": {"command": "no-such-binary-xyz"}}}),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(runner, "MCP_CONFIG", template)
+
+        def _must_not_probe():
+            raise AssertionError("an unresolvable command must not be started")
+
+        monkeypatch.setattr(runner, "_check_mcp_server_handshakes", _must_not_probe)
+
+        errors = runner.preflight_check("http://127.0.0.1:1")
+
+        assert any("no-such-binary-xyz" in e for e in errors)
+
+
+class TestInfraErrorEarlyStop:
+    """A broken harness must stop the run, not score every scenario 0."""
+
+    @staticmethod
+    def _scenarios(tmp_path, count):
+        return [
+            (
+                tmp_path / f"s{i}.yaml",
+                {
+                    "id": f"s{i}",
+                    "category": "rag_quality",
+                    "setup": {"index_documents": []},
+                    "turns": [{"turn": 1, "objective": "x", "success_criteria": "y"}],
+                },
+            )
+            for i in range(count)
+        ]
+
+    def _run(self, tmp_path, monkeypatch, results):
+        scenarios = self._scenarios(tmp_path, len(results))
+        monkeypatch.setattr(runner, "find_scenarios", lambda **_kw: scenarios)
+        monkeypatch.setattr(runner, "preflight_check", lambda *_a, **_kw: [])
+        queue = list(results)
+        calls = []
+
+        def _fake_run(_path, scenario_data, *_a, **_kw):
+            calls.append(scenario_data["id"])
+            return {
+                "scenario_id": scenario_data["id"],
+                "category": scenario_data["category"],
+                "overall_score": None,
+                "turns": [],
+                **queue.pop(0),
+            }
+
+        monkeypatch.setattr(runner, "run_scenario_subprocess", _fake_run)
+        return runner.AgentEvalRunner(results_dir=str(tmp_path)), calls
+
+    def test_stops_after_consecutive_infra_errors_with_one_cause(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # Worded differently each time, as the driver writes it.
+        closed = [
+            {
+                "status": "INFRA_ERROR",
+                "root_cause": "MCP error -32000: CONNECTION_CLOSED",
+            },
+            {
+                "status": "INFRA_ERROR",
+                "root_cause": "system_status failed: Connection closed",
+            },
+            {"status": "INFRA_ERROR", "root_cause": "The MCP server exited; no tools."},
+        ]
+        eval_runner, calls = self._run(
+            tmp_path, monkeypatch, closed + [{"status": "PASS"}] * 3
+        )
+
+        with pytest.raises(SystemExit) as exc:
+            eval_runner.run(category="rag_quality")
+
+        assert exc.value.code == 1
+        assert calls == ["s0", "s1", "s2"]
+        stderr = capsys.readouterr().err
+        assert "3 consecutive INFRA_ERROR" in stderr
+        assert "MCP server is unavailable" in stderr
+        assert "3 scenario(s) were not run" in stderr
+
+    def test_differing_causes_do_not_stop_the_run(self, tmp_path, monkeypatch):
+        results = [
+            {"status": "INFRA_ERROR", "root_cause": "CONNECTION_CLOSED"},
+            {
+                "status": "INFRA_ERROR",
+                "error": "requested agent_type 'gaia' but ran 'chat'",
+            },
+            {"status": "INFRA_ERROR", "root_cause": "CONNECTION_CLOSED"},
+            {"status": "FAIL", "overall_score": 2.0},
+            {"status": "INFRA_ERROR", "root_cause": "CONNECTION_CLOSED"},
+            {"status": "INFRA_ERROR", "root_cause": "CONNECTION_CLOSED"},
+        ]
+        eval_runner, calls = self._run(tmp_path, monkeypatch, results)
+
+        scorecard = eval_runner.run(category="rag_quality")
+
+        assert len(calls) == 6
+        assert len(scorecard["scenarios"]) == 6
+
+    def test_unrecognised_cause_must_repeat_to_count_as_the_same(self):
+        def sig(sid, error):
+            return runner._infra_error_signature(
+                {"scenario_id": sid, "status": "INFRA_ERROR", "error": error}
+            )
+
+        assert sig("a", "a: disk full after 12s") == sig("b", "b: disk full after 3s")
+        assert sig("a", "disk full") != sig("a", "quota exceeded")
+        assert runner._infra_error_signature({"status": "FAIL"}) is None
+
+
+# ---------------------------------------------------------------------------
+# requires_asr / requires_vlm — skip visibly when the model is absent
+# ---------------------------------------------------------------------------
+
+
+class TestModelRequirements:
+    @pytest.fixture(autouse=True)
+    def _ffmpeg_present(self, monkeypatch):
+        import gaia.audio.media
+
+        monkeypatch.setattr(gaia.audio.media, "find_ffmpeg", lambda: "ffmpeg")
+
+    def test_untagged_scenario_needs_nothing(self):
+        assert runner._required_models({"tags": ["t1_basic"]}) == []
+        assert runner._missing_requirements({}, set()) == []
+
+    def test_present_models_are_not_missing(self):
+        from gaia.audio.lemonade_asr import DEFAULT_ASR_MODEL
+        from gaia.vlm.mixin import DEFAULT_VLM_MODEL
+
+        scenario = {"tags": ["requires_asr", "requires_vlm"]}
+        downloaded = {DEFAULT_ASR_MODEL, DEFAULT_VLM_MODEL}
+        assert runner._missing_requirements(scenario, downloaded) == []
+
+    def test_absent_model_is_named_with_its_tag(self):
+        from gaia.vlm.mixin import DEFAULT_VLM_MODEL
+
+        missing = runner._missing_requirements({"tags": ["requires_vlm"]}, set())
+        assert len(missing) == 1
+        assert DEFAULT_VLM_MODEL in missing[0]
+        assert "requires_vlm" in missing[0]
+
+    def test_asr_without_ffmpeg_is_missing(self, monkeypatch):
+        import gaia.audio.media
+        from gaia.audio.lemonade_asr import DEFAULT_ASR_MODEL
+
+        monkeypatch.setattr(gaia.audio.media, "find_ffmpeg", lambda: None)
+        missing = runner._missing_requirements(
+            {"tags": ["requires_asr"]}, {DEFAULT_ASR_MODEL}
+        )
+        assert missing == ["ffmpeg is not on PATH (tag requires_asr)"]
+
+    def test_unreachable_lemonade_fails_loudly(self, monkeypatch):
+        from gaia.llm.lemonade_client import LemonadeClient
+
+        def _boom(self, show_all=False):
+            raise ConnectionError("refused")
+
+        monkeypatch.setattr(LemonadeClient, "list_models", _boom)
+        with pytest.raises(RuntimeError, match="refused"):
+            runner._downloaded_lemonade_models()
+
+    def test_run_records_skip_instead_of_running(self, tmp_path, monkeypatch):
+        from gaia.eval.runner import AgentEvalRunner
+
+        scenario = {
+            "id": "needs_vlm",
+            "category": "gaia_media",
+            "tags": ["requires_vlm"],
+            "setup": {"index_documents": []},
+            "turns": [{"turn": 1, "objective": "x", "success_criteria": "y"}],
+        }
+        monkeypatch.setattr(
+            runner,
+            "find_scenarios",
+            lambda **_kw: [(tmp_path / "needs_vlm.yaml", scenario)],
+        )
+        monkeypatch.setattr(runner, "preflight_check", lambda *_a, **_kw: [])
+        monkeypatch.setattr(runner, "_downloaded_lemonade_models", lambda: set())
+
+        def _must_not_run(*_a, **_kw):
+            raise AssertionError("a scenario missing its model must not run")
+
+        monkeypatch.setattr(runner, "run_scenario_subprocess", _must_not_run)
+
+        scorecard = AgentEvalRunner(results_dir=str(tmp_path)).run(
+            category="gaia_media"
+        )
+
+        (result,) = scorecard["scenarios"]
+        assert result["status"] == "SKIPPED_NO_MODEL"
+        assert "requires_vlm" in result["skip_reason"]
+        assert scorecard["summary"]["skipped"] == 1
+        assert scorecard["summary"]["errored"] == 0
+        assert "warnings" not in scorecard

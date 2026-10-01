@@ -80,6 +80,7 @@ prompt text can honestly describe the call. There is no safe subset to list.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
@@ -88,6 +89,8 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
 
 from gaia.skills.errors import FORMAT_DOCS_URL, SkillPermissionError
+
+logger = logging.getLogger(__name__)
 
 #: A binary name is a bare executable, never a path — the grant resolves off
 #: ``PATH``, so neither a declared scope nor an invoked token may name a file the
@@ -295,6 +298,49 @@ class Subcommand:
 
 
 @dataclass(frozen=True)
+class BinarySetup:
+    """How GAIA installs and authenticates one CLI **on the user's behalf**.
+
+    Data, not code. The setup engine (:mod:`gaia.skills.binary_setup`) reads
+    this and runs it; adding self-setup for a second CLI is another entry here,
+    never a new branch in the engine — the same acceptance test the invocation
+    table holds itself to.
+
+    Every command is a fixed ``argv`` list, never a shell string, and never
+    interpolates anything the model said. The model chooses *which binary* to
+    set up; it cannot choose what runs. That is the whole security story for
+    the install tier: there is no place for it to inject a command.
+
+    Attributes:
+        install_commands: ``{sys.platform prefix: argv}`` — the exact command
+            for each OS GAIA can install on. A platform absent from this map
+            has no automated install and is told so, with the manual URL.
+        install_docs_url: Where to install by hand. Named whenever the
+            automated path is unavailable or fails.
+        auth_status_argv: Argv (after the binary) that reports auth state as
+            JSON on stdout. Empty for a CLI that needs no authentication.
+        auth_login_argv: Argv that starts the browser device flow. Must be
+            runnable with **stdin closed** — an agent's child process has no
+            terminal, so a login that insists on one cannot be driven and is
+            not supported here.
+        auth_login_timeout_s: How long to wait for the user to finish in the
+            browser before giving up and saying so. Bounded on purpose: a
+            device code expires, so waiting forever only hides that it did.
+        required_scopes: The permissions the skills using this CLI actually
+            need. Requested at login and verified after — never widened
+            "just in case", because every extra scope is one the user's token
+            carries for everything else it does too.
+    """
+
+    install_commands: Mapping[str, Sequence[str]] = field(default_factory=dict)
+    install_docs_url: str = ""
+    auth_status_argv: Sequence[str] = ()
+    auth_login_argv: Sequence[str] = ()
+    auth_login_timeout_s: float = 600.0
+    required_scopes: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True)
 class BinaryPolicy:
     """Everything core knows about one skill-declarable CLI.
 
@@ -312,6 +358,10 @@ class BinaryPolicy:
             ``<binary> [operands] [flags]`` with no subcommand step at all
             (``pytest tests/unit -k foo``, vs. ``gh issue list``). When set,
             every token in the invocation is validated against this one rule.
+        substitute: How a skill can still do its job when the binary is not on
+            ``PATH``. Empty (the default) means nothing substitutes, so the skill
+            is refused. Set means the skill loads without the grant and the
+            model is told this instead.
         single_dash_long: This CLI spells long options with ONE dash
             (Go's standard ``flag`` package: ``-exec``, ``-ldflags``), so a
             flag token must not be read as a short flag carrying an attached
@@ -335,6 +385,9 @@ class BinaryPolicy:
             a read-only floor predates the policy — ``git status`` has always
             been in the shell tool's whitelist, and this is where that floor
             now lives, so one table describes the binary instead of two.
+        setup: How GAIA can install and authenticate this CLI for the user.
+            ``None`` means it cannot, and the user is told to do it by hand
+            rather than offered something that will not work.
         python_module: The module that runs this CLI as ``python -m <module>``.
             That spelling is then judged as the binary itself — same grant,
             same policy — instead of as an ungranted ``python``.
@@ -346,6 +399,7 @@ class BinaryPolicy:
     subcommands: Mapping[str, Subcommand] = field(default_factory=dict)
     bare_flags: frozenset[str] = frozenset({"--version", "--help", "-h"})
     positional: Subcommand | None = None
+    substitute: str = ""
     single_dash_long: bool = False
     confirm_summary: str = "writes"
     refuse_note: str = (
@@ -354,7 +408,16 @@ class BinaryPolicy:
     )
     remote_operands: bool = False
     ungranted: frozenset[str] = frozenset()
+    setup: BinarySetup | None = None
     python_module: str | None = None
+
+    def unavailable_note(self) -> str:
+        """What the model is told when this binary is not on ``PATH``."""
+        return (
+            f"`{self.binary}` is not installed here (not on PATH), so a step that "
+            f"runs `{self.binary}` directly cannot run, and reloading a skill will "
+            f"not change that. {self.substitute or self.install_hint}"
+        )
 
     def __post_init__(self) -> None:
         if bool(self.subcommands) == bool(self.positional is not None):
@@ -1309,6 +1372,57 @@ BINARY_POLICIES: dict[str, BinaryPolicy] = {
             ),
             "api": _GH_API,
         },
+        setup=BinarySetup(
+            install_commands={
+                # Non-interactive flags are required, not tidiness: an agent's
+                # child has no terminal, so winget's agreement prompts would
+                # block forever rather than ask anyone.
+                "win32": (
+                    "winget",
+                    "install",
+                    "--id",
+                    "GitHub.cli",
+                    "--exact",
+                    "--source",
+                    "winget",
+                    "--accept-package-agreements",
+                    "--accept-source-agreements",
+                ),
+                "darwin": ("brew", "install", "gh"),
+                # Linux is deliberately absent. gh is not in the default Debian
+                # or Fedora repositories, so `apt install gh` installs nothing
+                # on a stock box, and the real path adds GitHub's apt/dnf repo
+                # — a root-level trust change that belongs to the user, not to
+                # an agent acting for them. Linux users get the URL instead.
+            },
+            install_docs_url="https://cli.github.com",
+            # --json makes gh report state as data. The text form is prose that
+            # changes between releases; parsing it is how a logged-in user gets
+            # told they are logged out.
+            auth_status_argv=("auth", "status", "--json", "hosts"),
+            # Verified to run with stdin closed: gh prints the one-time code and
+            # the device URL to stderr, then polls until the user finishes in a
+            # browser. --hostname is required non-interactively, and
+            # --git-protocol keeps it from asking a question nobody can answer.
+            auth_login_argv=(
+                "auth",
+                "login",
+                "--web",
+                "--hostname",
+                "github.com",
+                "--git-protocol",
+                "https",
+                "--scopes",
+                "repo,read:org",
+            ),
+            # `repo` covers reading and commenting on issues and PRs, including
+            # private repositories; `read:org` is what org-scoped reads need.
+            # Not `workflow`, not `gist`, not `delete_repo` — nothing the triage
+            # skill's own command table can reach. gh adds its own floor on top;
+            # verification checks that these are present, never that nothing
+            # else is, since the floor is gh's call and not a widening by GAIA.
+            required_scopes=frozenset({"repo", "read:org"}),
+        ),
     ),
     # `pytest` is NOT a read-only grant in the sense `gh` is — it EXECUTES the
     # project's own test code with consent from the loaded skill. The separate
@@ -1341,6 +1455,14 @@ BINARY_POLICIES: dict[str, BinaryPolicy] = {
             "Install pytest with 'pip install pytest' (already a dev "
             "dependency: 'uv pip install -e \".[dev]\"'). Verify with "
             "'pytest --version'."
+        ),
+        # pytest usually lives in a project's virtualenv, not on PATH, and the
+        # coding skill is still the right guide without the shortcut.
+        substitute=(
+            "`python -m pytest` is judged as `pytest`, so it is refused too. "
+            "Run the suite with execute_python_file and a script that calls "
+            "`import sys, pytest; sys.exit(pytest.main(['-q', 'tests/']))`, "
+            "which works wherever pytest is importable."
         ),
         positional=Subcommand(
             path_operands=True,
@@ -1653,8 +1775,10 @@ BINARY_POLICIES: dict[str, BinaryPolicy] = {
                 denied_flag_reasons={
                     "-c": "it runs code passed on the command line. That code "
                     "is in no file anyone reviewed, and it can run any other "
-                    "program — including the ones this table refuses. Write "
-                    "the code to a file and run the file",
+                    "program — including the ones this table refuses. For a "
+                    "snippet, use the run_python tool if you have it; a script "
+                    "you keep goes in a file, outside the repository unless it "
+                    "belongs there",
                     "-i": "it drops into an interactive prompt on a stdin that "
                     "is closed for an agent, so the command never returns",
                     "-X": "it toggles interpreter implementation options that "
@@ -2066,8 +2190,10 @@ def resolve_binary_policies(
 
     Raises:
         SkillPermissionError: the declared binary has no policy (so it cannot be
-            gated), or is not installed (so the skill would load with a silent
-            capability gap — the exact failure this bridge exists to prevent).
+            gated), or is not installed and nothing substitutes for it (so the
+            skill would load with a silent capability gap). A missing binary
+            that has a ``substitute`` is left out of the result instead; see
+            :func:`unavailable_binaries`.
     """
     refuse_unpoliced_binaries(permissions, skill_name=skill_name)
 
@@ -2075,16 +2201,53 @@ def resolve_binary_policies(
     for permission in binary_permissions(permissions):
         policy = BINARY_POLICIES[(permission.scope or "").lower()]
         if require_installed and shutil.which(policy.binary) is None:
+            if policy.substitute:
+                logger.warning(
+                    "Skill '%s' loaded without its '%s' grant: '%s' is not on "
+                    "PATH. The model is told to use the substitute instead.",
+                    skill_name,
+                    policy.binary,
+                    policy.binary,
+                )
+                continue
+            # Still a refusal — a half-loaded skill produces confident answers
+            # from no data. What changed is that it is no longer a dead end:
+            # the agent can install the CLI itself, so the message names that
+            # instead of handing the user a command and walking away.
+            remedy = (
+                f"Ask GAIA to set up {policy.binary} and it will install it for "
+                "you, after showing you the exact command and asking. "
+                if policy.setup is not None
+                else ""
+            )
             raise SkillPermissionError(
                 f"Skill '{skill_name}' needs the '{policy.binary}' command, which "
-                f"is not on PATH. {policy.summary} {policy.install_hint} "
+                f"is not on PATH. {policy.summary} {remedy}{policy.install_hint} "
                 "The skill is refused rather than loaded without the tool it "
-                "documents — a half-loaded skill produces confident answers from "
-                "no data."
+                "documents."
             )
         if policy not in policies:
             policies.append(policy)
     return policies
+
+
+def unavailable_binaries(permissions: Sequence["Permission"]) -> list[BinaryPolicy]:
+    """Declared binaries that are not on ``PATH`` but have a substitute.
+
+    The skill loaded without them; the model must be told, or it follows the
+    skill's own instructions into a command that cannot run.
+    """
+    missing: list[BinaryPolicy] = []
+    for permission in binary_permissions(permissions):
+        policy = BINARY_POLICIES.get((permission.scope or "").lower())
+        if (
+            policy is not None
+            and policy.substitute
+            and shutil.which(policy.binary) is None
+            and policy not in missing
+        ):
+            missing.append(policy)
+    return missing
 
 
 # ---------------------------------------------------------------------------

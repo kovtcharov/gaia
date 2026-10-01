@@ -19,7 +19,7 @@ import logging
 import os
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -55,7 +55,17 @@ def is_embedding_model_id(model_id: str) -> bool:
 # Hub agent ids `gaia init` installs for its profile. Everything else
 # (sd/vlm/email/...) owns its own install lifecycle; a generic "install the
 # profile's agent" would hard-fail on agents the hub index doesn't carry.
-HUB_INSTALL_AGENTS = frozenset({"chat", "gaia"})
+#
+# `chat` is NOT here: it is not a catalog agent, so there is nothing for the
+# Hub to install. Its wheel is source-install only (#2240).
+HUB_INSTALL_AGENTS = frozenset({"gaia"})
+
+# Agent ids a profile's quick-start commands need, whether or not `gaia init`
+# can fetch them. Wider than HUB_INSTALL_AGENTS by exactly `chat`: `--profile
+# chat` and `--profile npu` both lead with `gaia chat`, which resolves through
+# the `gaia-agent-chat` wheel, so reporting "initialization complete" without
+# it would be a false promise even though init cannot install it.
+PROFILE_REQUIRED_AGENTS = HUB_INSTALL_AGENTS | {"chat"}
 
 # Hub agent id -> the module a source/pip install of it makes importable. Every
 # `gaia-agent-<id>` distribution installs `gaia_agent_<id>` except the flagship:
@@ -77,7 +87,7 @@ INIT_PROFILES = {
         # still needs that wheel separately; the completion message says so.
         "agent": "gaia",
         "models": ["Gemma-4-E4B-it-GGUF", "user.embeddinggemma-300m-GGUF"],
-        "approx_size": "~4 GB",
+        "approx_size": "~6 GB",
         # EmbeddingGemma loads only on Lemonade v10.9.0+ (see the chat profile).
         "min_lemonade_version": "10.9.0",
         "min_context_size": 32768,
@@ -108,7 +118,7 @@ INIT_PROFILES = {
         "description": "Interactive chat with RAG and vision support",
         "agent": "chat",
         "models": ["Gemma-4-E4B-it-GGUF", "user.embeddinggemma-300m-GGUF"],
-        "approx_size": "~4 GB",
+        "approx_size": "~6 GB",
         # EmbeddingGemma is validated on Lemonade v10.9.0; older bundled
         # llama.cpp builds fail to load it. Floor the version so init fails
         # loudly instead of the embedder failing at first RAG index.
@@ -120,7 +130,7 @@ INIT_PROFILES = {
         "description": "Document Q&A with retrieval",
         "agent": "rag",
         "models": ["Gemma-4-E4B-it-GGUF", "user.embeddinggemma-300m-GGUF"],
-        "approx_size": "~4 GB",
+        "approx_size": "~6 GB",
         # EmbeddingGemma loads only on Lemonade v10.9.0+ (see chat profile).
         "min_lemonade_version": "10.9.0",
         "min_context_size": 32768,
@@ -202,6 +212,31 @@ class SetupStatus:
 
     ready: bool
     reasons: list
+    #: "setup" when `gaia init` still has work to do, "server" when the model
+    #: server is installed but will not answer, "load" when everything is
+    #: downloaded but a model would not load — which re-running setup cannot fix.
+    stage: Optional[str] = None
+    #: One ModelLoad per model the load check tried; empty unless ``load=True``.
+    models: list = field(default_factory=list)
+
+    def to_json(self) -> dict:
+        return {
+            "ready": self.ready,
+            "stage": self.stage,
+            "reasons": list(self.reasons),
+            "models": [m.__dict__ for m in self.models],
+        }
+
+
+@dataclass
+class ModelLoad:
+    """One model the `--check --load` probe loaded, or failed to."""
+
+    id: str
+    role: str  # "chat" or "embedding"
+    size_gb: Optional[float]
+    loaded: bool
+    error: Optional[str] = None
 
 
 @dataclass
@@ -362,6 +397,8 @@ def check_setup_status(
     profile: str = DEFAULT_INIT_PROFILE,
     skip_chat_model: bool = False,
     remote: bool = False,
+    load: bool = False,
+    chat_model: Optional[str] = None,
 ) -> SetupStatus:
     """Check whether `gaia init --profile <profile>` still has work to do.
 
@@ -380,6 +417,13 @@ def check_setup_status(
             backend): only the profile's embedding model(s) are required.
         remote: Check the server LEMONADE_BASE_URL names, which must be set.
             A configured URL is checked the same way without it.
+        load: Once everything is downloaded, load each model the way the agent
+            will — the chat model at its pinned ctx, the embedder with a
+            one-word embedding. "Downloaded" is not "works": a model llama.cpp
+            cannot load passes the presence check and fails on first use.
+        chat_model: The local chat model the session will use, when it is not
+            the profile default. It replaces the default in what ``load`` loads;
+            setup cannot download it, so it never becomes a download step.
 
     Returns:
         SetupStatus with ready=True iff nothing below would need to run.
@@ -415,6 +459,7 @@ def check_setup_status(
             return SetupStatus(
                 ready=False,
                 reasons=[f"GAIA's Lemonade Server could not be started: {e}"],
+                stage="server",
             )
         status = embedded.status()
         if status.unresponsive_pid:
@@ -424,15 +469,19 @@ def check_setup_status(
                     f"GAIA's Lemonade Server (pid {status.unresponsive_pid}) "
                     "is running but not answering"
                 ],
+                stage="server",
             )
         if not status.installed:
             return SetupStatus(
-                ready=False, reasons=["GAIA's Lemonade Server is not installed"]
+                ready=False,
+                reasons=["GAIA's Lemonade Server is not installed"],
+                stage="setup",
             )
         if not status.running:
             return SetupStatus(
                 ready=False,
                 reasons=["GAIA's Lemonade Server is installed but not running"],
+                stage="server",
             )
         if status.version != embedded.version:
             return SetupStatus(
@@ -441,6 +490,7 @@ def check_setup_status(
                     f"GAIA's Lemonade Server is v{status.version}; this GAIA "
                     f"needs v{embedded.version}"
                 ],
+                stage="setup",
             )
         base_url = status.base_url
 
@@ -451,11 +501,12 @@ def check_setup_status(
         return SetupStatus(
             ready=False,
             reasons=[f"Lemonade Server at {base_url} is not reachable: {e}"],
+            stage="server",
         )
     if configured:
         too_old = configured_server_too_old(health, profile, base_url)
         if too_old:
-            return SetupStatus(ready=False, reasons=[too_old])
+            return SetupStatus(ready=False, reasons=[too_old], stage="server")
 
     if profile_config["models"]:
         model_ids = list(profile_config["models"])
@@ -466,6 +517,7 @@ def check_setup_status(
             return SetupStatus(
                 ready=False,
                 reasons=[f"Could not list the models this profile needs: {e}"],
+                stage="server",
             )
 
     if not skip_chat_model:
@@ -490,7 +542,66 @@ def check_setup_status(
         if not available:
             reasons.append(f"Model '{model_id}' is not downloaded")
 
-    return SetupStatus(ready=not reasons, reasons=reasons)
+    if reasons:
+        # Sizes let a caller say what the download will cost before it starts.
+        models = [_describe_model(client, m) for m in model_ids] if load else []
+        return SetupStatus(ready=False, reasons=reasons, stage="setup", models=models)
+    if not load:
+        return SetupStatus(ready=True, reasons=[])
+
+    if chat_model and not skip_chat_model and not is_embedding_model_id(chat_model):
+        model_ids = [m for m in model_ids if is_embedding_model_id(m)] + [chat_model]
+    models = [_load_model_once(client, model_id) for model_id in model_ids]
+    failed = [m for m in models if not m.loaded]
+    if failed:
+        return SetupStatus(
+            ready=False,
+            reasons=[
+                f"Model '{m.id}' is downloaded but would not load: {m.error}"
+                for m in failed
+            ],
+            stage="load",
+            models=models,
+        )
+    return SetupStatus(ready=True, reasons=[], models=models)
+
+
+def _describe_model(client, model_id: str) -> "ModelLoad":
+    """A not-yet-downloaded model and its download size."""
+    from gaia.llm.lemonade_client import LemonadeClientError
+
+    role = "embedding" if is_embedding_model_id(model_id) else "chat"
+    try:
+        size_gb = client.get_model_info(model_id)["size_gb"]
+    except LemonadeClientError as e:
+        return ModelLoad(model_id, role, None, False, str(e))
+    return ModelLoad(model_id, role, size_gb, False)
+
+
+def _load_model_once(client, model_id: str) -> "ModelLoad":
+    """Load one model through the same call the agent's first turn makes."""
+    from gaia.llm.lemonade_client import LemonadeClientError
+
+    role = "embedding" if is_embedding_model_id(model_id) else "chat"
+    size_gb = None
+    try:
+        size_gb = client.get_model_info(model_id)["size_gb"]
+        if role == "embedding":
+            response = client.embeddings(["ok"], model=model_id, timeout=120)
+            data = response.get("data") if isinstance(response, dict) else None
+            if not data or not data[0].get("embedding"):
+                return ModelLoad(
+                    model_id, role, size_gb, False, "it returned no embedding"
+                )
+        else:
+            client._ensure_model_loaded(model_id)  # pylint: disable=protected-access
+    except LemonadeClientError as e:
+        return ModelLoad(model_id, role, size_gb, False, str(e))
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        # Reported as this model's failure, so the caller names it — never a
+        # bare traceback that leaves the check unanswered.
+        return ModelLoad(model_id, role, size_gb, False, f"{type(e).__name__}: {e}")
+    return ModelLoad(model_id, role, size_gb, True)
 
 
 class InitCommand:
@@ -811,12 +922,10 @@ class InitCommand:
 
         profile_config = INIT_PROFILES[self.profile]
         has_pip_extras = bool(profile_config.get("pip_extras"))
-        # Data-driven scope (#2358): "chat" and "npu" both declare
-        # `"agent": "chat"` (they resolve to the same standalone wheel), so
-        # keying off the declared agent -- not a hardcoded profile-name
-        # literal -- naturally covers both without a special case, and never
-        # touches profiles for other hub agents (gaia/email/...), each of
-        # which has its own, separately-owned install lifecycle.
+        # Data-driven scope (#2358): keyed off the declared agent, not a
+        # hardcoded profile-name literal, so it never touches profiles for
+        # agents outside the catalog (chat/sd/vlm/email/...), each of which
+        # has its own, separately-owned install lifecycle.
         has_hub_agent_check = profile_config.get("agent") in HUB_INSTALL_AGENTS
 
         _webui_src = Path(__file__).resolve().parent.parent / "apps" / "webui" / "src"
@@ -1736,8 +1845,8 @@ class InitCommand:
     def _is_hub_agent_available(agent_id: str) -> bool:
         """Whether this profile's hub agent is already present.
 
-        Two probes, because the hub ships two artifact shapes and only one of
-        them is importable. A wheel agent (``chat``) is there when
+        Two probes, because an agent ships in two artifact shapes and only one
+        of them is importable. A wheel agent (``chat``) is there when
         ``gaia_agent_<id>`` imports -- the naming convention
         ``install_hints._AGENT_SOURCE_SUBDIRS`` and every ``gaia-agent-*``
         wheel share, with the flagship's ``gaia_agent`` spelling read from
@@ -1771,13 +1880,15 @@ class InitCommand:
         return InitCommand._is_hub_agent_available("chat")
 
     def _profile_agent_available(self) -> bool:
-        """Whether the hub agent THIS profile installs is present.
+        """Whether the agent THIS profile's quick-start commands need is present.
 
-        True for profiles that install none (sd/vlm/minimal/...), so their
-        completion headline is never gated on someone else's agent.
+        True for profiles that need none (sd/vlm/minimal/...), so their
+        completion headline is never gated on someone else's agent. Keyed on
+        ``PROFILE_REQUIRED_AGENTS``, not ``HUB_INSTALL_AGENTS``: `chat` cannot
+        be hub-installed but `--profile chat`/`--profile npu` still need it.
         """
         agent_id = INIT_PROFILES[self.profile].get("agent")
-        if agent_id not in HUB_INSTALL_AGENTS:
+        if agent_id not in PROFILE_REQUIRED_AGENTS:
             return True
         return self._is_hub_agent_available(agent_id)
 
@@ -1786,17 +1897,15 @@ class InitCommand:
         isn't already available and the live catalog confirms it's published.
 
         Scoped by ``run()``'s ``has_hub_agent_check`` (profiles whose declared
-        ``"agent"`` is in ``HUB_INSTALL_AGENTS`` -- ``gaia``, plus ``chat`` and
-        ``npu``, which both declare ``"agent": "chat"``).
+        ``"agent"`` is in ``HUB_INSTALL_AGENTS``).
 
         Distinguishes two catalog states (#2358):
 
-        * Not yet published (today's state — only ``email`` is live on the
-          Hub): NOT an error. A blind "call install() and fail loud" would
-          turn today's soft success (``init`` completes, prints a
-          source-install hint) into a hard failure for every `gaia init
-          --profile chat` until the publish lands — a real regression this
-          method must not introduce. Silently returns; the existing
+        * Not yet published: NOT an error. A blind "call install() and fail
+          loud" would turn today's soft success (``init`` completes, prints a
+          source-install hint) into a hard failure for every profile whose
+          agent is still awaiting a publish — a real regression this method
+          must not introduce. Silently returns; the existing
           ``_print_completion()`` hint already tells the user how to
           source-install it in the meantime.
         * Published but the install itself genuinely fails: this method
@@ -1904,9 +2013,9 @@ class InitCommand:
         flagship_install_note = (
             "GAIA agent not installed yet -- run: gaia hub install gaia"
         )
-        # Scoped like run()'s has_hub_agent_check -- gating on the chat wheel
-        # alone would mark sd/vlm/minimal permanently "incomplete", and would
-        # call the flagship profile complete while its own wheel is missing.
+        # Scoped per profile -- gating on the chat wheel alone would mark
+        # sd/vlm/minimal permanently "incomplete", and would call the flagship
+        # profile complete while its own binary is missing.
         setup_incomplete = not self._profile_agent_available()
         headline = (
             "GAIA initialization incomplete - see below"

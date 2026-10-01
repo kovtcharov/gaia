@@ -40,18 +40,26 @@ from gaia.version import parse_version as _parse_version
 
 logger = get_logger(__name__)
 
-# Test-only hold on "model loaded" reporting (#2539): Lemonade lazily
-# reloads an unloaded model on the next inference request, which makes
-# "model unavailable" un-testable through this GET probe alone — by the time
-# a second check runs, a query elsewhere may have already triggered the
-# reload. Setting this env var to a comma-separated list of model ids (or
-# "*" for all) makes the probe report those ids as absent from
-# ``all_models_loaded`` regardless of what Lemonade actually answers, so the
+# Test-only hold on model reporting (#2539): Lemonade lazily reloads an
+# unloaded model on the next inference request, which makes "model unavailable"
+# un-testable through these probes alone — by the time a second check runs, a
+# query elsewhere may have already triggered the reload. Setting this env var to
+# a comma-separated list of model ids (or "*" for all) makes this module report
+# those ids as absent regardless of what Lemonade actually answers, so the
 # preflight gate's "model unavailable" messaging can be exercised on demand.
-# This never touches real inference: the only production caller of
-# ``probe_backend_health`` is the read-only ``GET /v1/<id>/init`` readiness
-# route (``gaia.agents.base.server``) — nothing in the actual chat/query path
-# reads this function's return value. Unset in every normal install/run.
+#
+# The hold covers BOTH halves of the readiness picture, because they drive
+# different rows and only one of them produces the failing gate: it strips the
+# ids from ``all_models_loaded`` (which feeds the ctx-size annotation) AND makes
+# ``probe_model_present`` report them absent (which is what actually fails the
+# gate). Holding only the first yields a green row with no ctx — the bug #3853
+# describes. A held id therefore also fails POST provisioning's post-pull verify,
+# which is the honest result: the hook says this model is not there.
+#
+# This never touches real inference: the production callers are the read-only
+# ``GET /v1/<id>/init`` readiness route and its POST provisioning counterpart
+# (``gaia.agents.base.server``) — nothing in the actual chat/query path reads
+# these return values. Unset in every normal install/run.
 INHIBIT_MODEL_ENV_VAR = "GAIA_TEST_INHIBIT_MODEL"
 
 
@@ -60,19 +68,28 @@ def _inhibited_model_ids() -> "set[str]":
     return {part.strip() for part in raw.split(",") if part.strip()}
 
 
-def _filter_inhibited_loaded_models(loaded_models: List[dict]) -> List[dict]:
+def _is_inhibited_model_id(model_id: Optional[str]) -> bool:
+    """Whether the test hook holds ``model_id`` down as absent."""
     inhibited = _inhibited_model_ids()
     if not inhibited:
-        return loaded_models
+        return False
+    if "*" in inhibited:
+        return True
+    if model_id is None:
+        return False
     from gaia.llm.lemonade_client import _model_ids_match
 
+    return any(_model_ids_match(model_id, want) for want in inhibited)
+
+
+def _filter_inhibited_loaded_models(loaded_models: List[dict]) -> List[dict]:
+    if not _inhibited_model_ids():
+        return loaded_models
+
     def _is_inhibited(entry: dict) -> bool:
-        if "*" in inhibited:
-            return True
-        candidates = (entry.get("model_name"), entry.get("checkpoint"))
         return any(
-            c is not None and any(_model_ids_match(c, want) for want in inhibited)
-            for c in candidates
+            _is_inhibited_model_id(c)
+            for c in (entry.get("model_name"), entry.get("checkpoint"))
         )
 
     return [m for m in loaded_models if not _is_inhibited(m)]
@@ -102,10 +119,13 @@ def start_advice() -> str:
     """
     from gaia.llm.lemonade_launcher import describe_start_hint
 
+    instruction = describe_start_hint().instruction.rstrip()
+    # Some hints end in a bare command; punctuate so appended prose stays readable.
+    if not instruction.endswith((".", "!", "?")):
+        instruction = f"{instruction}."
     return (
         "GAIA starts it automatically — run `gaia daemon start` if the "
-        f"background service is not running. Otherwise: "
-        f"{describe_start_hint().instruction}"
+        f"background service is not running. Otherwise: {instruction}"
     )
 
 
@@ -349,6 +369,15 @@ def probe_model_present(probe_base: str, model_id: str) -> bool:
     caller MUST distinguish that from "absent": they mean different things and
     have different remedies.
     """
+    if _is_inhibited_model_id(model_id):
+        logger.warning(
+            "%s is holding %r down as absent — this is a test hook, not a real "
+            "backend answer. Unset it to restore normal readiness reporting.",
+            INHIBIT_MODEL_ENV_VAR,
+            model_id,
+        )
+        return False
+
     import requests
 
     from gaia.llm.lemonade_client import (
@@ -383,33 +412,35 @@ def probe_model_present(probe_base: str, model_id: str) -> bool:
 
     if _probe_once():
         return True
-    # A gateway model missing from the catalog usually means Lemonade restarted
-    # and forgot its token, not that the model is gone — Lemonade discovers
+    # A cloud model missing from the catalog usually means Lemonade restarted
+    # and forgot its key, not that the model is gone — Lemonade discovers
     # nothing until it can authenticate. Every front-end funnels through here,
-    # so this is the one place that makes a remembered token survive a restart.
-    if _replay_gateway_token(model_id):
+    # so this is the one place that makes a remembered key survive a restart.
+    if _replay_cloud_key(model_id):
         return _probe_once()
     return False
 
 
-def _replay_gateway_token(model_id: str) -> bool:
-    """Give Lemonade its remembered gateway token back. True if that changed anything.
+def _replay_cloud_key(model_id: str) -> bool:
+    """Give Lemonade its remembered cloud key back. True if that changed anything.
 
     Returns False for a local model, when nothing is stored, or when the stored
-    token is rejected — all cases where re-probing would just repeat itself.
+    key is rejected — all cases where re-probing would just repeat itself.
     """
     import requests
 
-    from gaia.llm.gateway import GATEWAY_PROVIDER, GatewayError, GatewayManager
+    from gaia.llm.cloud_keys import PROVIDERS, CloudKeyError, ensure_authenticated
+    from gaia.llm.gateway import GatewayError
 
-    if not str(model_id or "").lower().startswith(f"{GATEWAY_PROVIDER}."):
+    provider = str(model_id or "").lower().split(".", 1)[0]
+    if "." not in str(model_id or "") or provider not in PROVIDERS:
         return False
     try:
-        return GatewayManager().ensure_authenticated()
-    except (GatewayError, requests.RequestException) as e:
+        return ensure_authenticated(provider)
+    except (CloudKeyError, GatewayError, requests.RequestException) as e:
         # Never fatal: the model may simply be absent, and the caller's own
         # "not found" message is the actionable one.
-        logger.debug(f"Could not replay the remembered gateway token: {e}")
+        logger.debug(f"Could not replay the remembered {provider} key: {e}")
         return False
 
 
@@ -462,9 +493,26 @@ def version_meets_min(found: Optional[str], minimum: Optional[str]) -> Optional[
 def pull_model(probe_base: str, model_id: str) -> None:
     """Tell a RUNNING backend to download ``model_id``.
 
-    Posts ONLY ``model_name`` — sending ``recipe`` for a built-in Lemonade model
-    makes it 400 (#1655), and that failure only reproduces on a cold cache, so
-    it survives every warm-machine test. Raises ``requests.RequestException`` on
+    Lemonade wants opposite payloads for its two kinds of model, and sending the
+    wrong one fails on a COLD cache only — so both directions survive every
+    warm-machine test:
+
+    * **Built-in** (``Gemma-4-E4B-it-GGUF``, the ``*-FLM`` models) — name only.
+      Passing ``recipe`` makes Lemonade treat the call as a *new* registration,
+      which requires a ``user.`` prefix, and it 400s (#1655).
+    * **Custom, ``user.``-prefixed** (the EmbeddingGemma embedder) — these are
+      not registered yet, so the first pull must carry ``checkpoint`` +
+      ``recipe`` (+ ``embedding`` for an embedder). Name only returns HTTP 500
+      ``not registered with Lemonade Server``.
+
+    Sending name only for everything is what this used to do, which made the
+    embedder unpullable: the TUI's setup gate offered "press f to fix" and the
+    fix could not succeed. Found on a machine whose chat model already worked.
+
+    A gateway-hosted model has no weights at all and raises ``RuntimeError``
+    before any request goes out.
+
+    Raises ``requests.RequestException``, ``ValueError`` or ``RuntimeError`` on
     failure; the caller surfaces it as a loud ``✗`` line.
 
     This is the ONLY provisioning an agent process can do. It cannot install the
@@ -473,6 +521,7 @@ def pull_model(probe_base: str, model_id: str) -> None:
     import requests
 
     from gaia.llm.lemonade_client import (
+        MODELS,
         is_cloud_model,
         lemonade_auth_headers,
         resolve_lemonade_api_key,
@@ -487,9 +536,25 @@ def pull_model(probe_base: str, model_id: str) -> None:
             f"with `gaia gateway status`."
         )
 
+    payload = {"model_name": model_id}
+    if model_id.startswith("user."):
+        requirement = next((m for m in MODELS.values() if m.model_id == model_id), None)
+        if requirement is None:
+            raise ValueError(
+                f"Cannot pull custom model '{model_id}': it is not in GAIA's "
+                "model registry, so its checkpoint and recipe are unknown. "
+                "Add it to MODELS in gaia.llm.lemonade_client, or run "
+                "`gaia init`."
+            )
+        payload.update(
+            checkpoint=requirement.checkpoint,
+            recipe=requirement.recipe,
+            embedding=requirement.embedding,
+        )
+
     resp = requests.post(
         f"{probe_base}/pull",
-        json={"model_name": model_id},
+        json=payload,
         headers=lemonade_auth_headers(resolve_lemonade_api_key(base_url=probe_base)),
         timeout=PULL_TIMEOUT,
     )
@@ -683,7 +748,13 @@ def provision_progress(
     yield line(f"→ Pulling {model_id} — a first download can take several minutes…")
     try:
         pull_model(probe_base, model_id)
-    except requests.exceptions.RequestException as exc:
+    except (
+        requests.exceptions.RequestException,
+        ValueError,
+        RuntimeError,
+    ) as exc:
+        # ValueError: an undeclared `user.` id. RuntimeError: a gateway-hosted
+        # model with nothing to download. This generator promises a ✗ line.
         yield line(f"✗ Provisioning failed: {type(exc).__name__}: {exc}")
         yield line(
             "✗ The model was not downloaded. Check the Lemonade Server logs, "

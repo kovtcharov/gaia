@@ -131,6 +131,28 @@ DOC_BUNDLES = [
         description="Run shell commands, wait on a condition, and query the system.",
     ),
     ToolBundle(
+        name="shell_session",
+        members=frozenset({"get_shell_state", "reset_shell_session"}),
+        description=(
+            "Read the directory earlier shell commands left the session in, "
+            "or return it to where the task started."
+        ),
+    ),
+    ToolBundle(
+        name="cli_setup",
+        members=frozenset(
+            {
+                "check_cli_setup",
+                "install_cli",
+                "sign_in_cli",
+            }
+        ),
+        description=(
+            "Check whether a command-line tool a skill needs (e.g. the GitHub "
+            "CLI 'gh') is installed and signed in, install it, and sign in to it."
+        ),
+    ),
+    ToolBundle(
         name="clipboard",
         members=frozenset({"read_clipboard", "write_clipboard"}),
         description="Read from and write to the system clipboard.",
@@ -328,6 +350,38 @@ FULL_BUNDLES = [
         ),
         description="Search the web, fetch pages, and download files.",
     ),
+    # Separate from "web" on purpose. These carry a live Chromium — seconds
+    # and hundreds of MB of RAM — where the "web" bundle is one HTTP GET, and
+    # a turn that only needs to read an article must not drag a browser in.
+    ToolBundle(
+        name="browser_use",
+        members=frozenset(
+            {
+                "browser_open",
+                "browser_snapshot",
+                "browser_click",
+                "browser_type",
+                "browser_login",
+                "browser_sessions",
+            }
+        ),
+        description=(
+            "Drive a real browser: open pages that need JavaScript, click and "
+            "type, and sign in to sites."
+        ),
+    ),
+    # Second bundle rather than growing the first past MAX_BUNDLE_MEMBERS: one
+    # pull-in must not be able to exhaust the dynamic slots. These two are the
+    # navigation half — needed only when a path dead-ends or the page is longer
+    # than a snapshot shows.
+    ToolBundle(
+        name="browser_nav",
+        members=frozenset({"browser_back", "browser_find"}),
+        description=(
+            "Go back from a dead end or a new tab, and search a long page for "
+            "text a snapshot did not show."
+        ),
+    ),
     ToolBundle(
         name="code_index",
         members=frozenset(
@@ -386,6 +440,28 @@ FULL_BUNDLES = [
         description=(
             "Run shell commands and Python scripts, wait on a condition, and "
             "query the system."
+        ),
+    ),
+    ToolBundle(
+        name="shell_session",
+        members=frozenset({"get_shell_state", "reset_shell_session"}),
+        description=(
+            "Read the directory earlier shell commands left the session in, "
+            "or return it to where the task started."
+        ),
+    ),
+    ToolBundle(
+        name="cli_setup",
+        members=frozenset(
+            {
+                "check_cli_setup",
+                "install_cli",
+                "sign_in_cli",
+            }
+        ),
+        description=(
+            "Check whether a command-line tool a skill needs (e.g. the GitHub "
+            "CLI 'gh') is installed and signed in, install it, and sign in to it."
         ),
     ),
     ToolBundle(
@@ -505,6 +581,16 @@ FULL_BUNDLES = [
 FULL_OPTIONAL_TOOLS = frozenset(
     {
         "search_documentation",
+        # Browser-use: registered only when the [browser] extra is installed,
+        # so a core install legitimately has none of these.
+        "browser_open",
+        "browser_snapshot",
+        "browser_click",
+        "browser_type",
+        "browser_login",
+        "browser_sessions",
+        "browser_back",
+        "browser_find",
         "remember",
         "recall",
         "update_memory",

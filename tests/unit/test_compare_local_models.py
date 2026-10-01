@@ -168,7 +168,7 @@ class TestCompare:
         client = _client(memory_gb=16.0)
         with mock.patch.object(cm, "LemonadeClient", return_value=client):
             results = cm.compare(
-                [cm.LARGE_DEFAULT_MODEL_NAME], 65536, None, False, tmp_path
+                [cm.FLASH_OPTION_MODEL_NAME], 65536, None, False, tmp_path
             )
 
         assert results[0].fits is False
@@ -179,7 +179,7 @@ class TestCompare:
         client = _client()
         with mock.patch.object(cm, "LemonadeClient", return_value=client):
             results = cm.compare(
-                [cm.QWEN3_30B_MODEL_NAME], 65536, None, False, tmp_path
+                [cm.LARGE_DEFAULT_MODEL_NAME], 65536, None, False, tmp_path
             )
 
         r = results[0]
@@ -219,7 +219,7 @@ class TestCompare:
         client.health_check.side_effect = LemonadeClientError("refused")
         with mock.patch.object(cm, "LemonadeClient", return_value=client):
             with pytest.raises(SystemExit, match="gaia init"):
-                cm.compare([cm.QWEN3_30B_MODEL_NAME], 65536, None, False, tmp_path)
+                cm.compare([cm.LARGE_DEFAULT_MODEL_NAME], 65536, None, False, tmp_path)
 
 
 class TestExitCode:
@@ -228,7 +228,7 @@ class TestExitCode:
         client.get_stats.side_effect = LemonadeClientError("Compute error.")
         with mock.patch.object(cm, "LemonadeClient", return_value=client):
             code = cm.main(
-                ["--models", cm.QWEN3_30B_MODEL_NAME, "--out", str(tmp_path)]
+                ["--models", cm.LARGE_DEFAULT_MODEL_NAME, "--out", str(tmp_path)]
             )
 
         assert code == 1
@@ -244,7 +244,7 @@ class TestExitCode:
             code = cm.main(
                 [
                     "--models",
-                    cm.QWEN3_30B_MODEL_NAME,
+                    cm.LARGE_DEFAULT_MODEL_NAME,
                     "--tasks",
                     "core",
                     "--out",
@@ -261,7 +261,7 @@ class TestExitCode:
         client = _client()
         with mock.patch.object(cm, "LemonadeClient", return_value=client):
             code = cm.main(
-                ["--models", cm.QWEN3_30B_MODEL_NAME, "--out", str(tmp_path)]
+                ["--models", cm.LARGE_DEFAULT_MODEL_NAME, "--out", str(tmp_path)]
             )
 
         assert code == 0

@@ -16,11 +16,12 @@ import platform
 import re
 import shutil
 import stat
-import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, List, Optional, Set, Tuple
+
+from gaia.utils.terminal import stdin_is_interactive
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,9 @@ def ensure_audit_log_handler(cache_dir: Optional[Path] = None) -> None:
 
     from logging.handlers import RotatingFileHandler
 
-    cache_dir = cache_dir or (Path.home() / ".gaia" / "cache")
+    from gaia.config import gaia_home
+
+    cache_dir = cache_dir or (gaia_home() / "cache")
     cache_dir.mkdir(parents=True, exist_ok=True)
     handler = RotatingFileHandler(
         str(cache_dir / "file_audit.log"),
@@ -501,7 +504,9 @@ class PathValidator:
                 self.allowed_paths.add(Path(p).resolve())
 
         # Setup cache directory
-        self.cache_dir = Path.home() / ".gaia" / "cache"
+        from gaia.config import gaia_home
+
+        self.cache_dir = gaia_home() / "cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.config_file = self.cache_dir / "allowed_paths.json"
 
@@ -1111,7 +1116,9 @@ def backup_file(path: str, cache_dir: Optional[Path] = None) -> Optional[str]:
     if not real_path.exists():
         return None
 
-    root = (cache_dir or Path.home() / ".gaia" / "cache") / "backups"
+    from gaia.config import gaia_home
+
+    root = (cache_dir or (gaia_home() / "cache")) / "backups"
     stamp_time = datetime.datetime.now()
     # A drive or UNC share becomes one plain folder name under backups/.
     drive = re.sub(r"[:\\/]+", "_", real_path.drive).strip("_")
@@ -1175,11 +1182,7 @@ def _is_interactive() -> bool:
     Used to suppress blocking ``input()`` prompts when the validator runs
     inside the Agent UI server, API server, or any non-TTY context (CI, pipe).
     """
-    try:
-        return bool(sys.stdin.isatty())
-    except (AttributeError, ValueError):
-        # sys.stdin may be replaced or closed in some embedded contexts
-        return False
+    return stdin_is_interactive()
 
 
 def _format_size(size_bytes: int) -> str:

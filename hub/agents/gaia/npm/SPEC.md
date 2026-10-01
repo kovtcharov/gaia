@@ -320,9 +320,12 @@ directory shape, entry points, installed commands and platform quirks, present
 whenever the agent's working directory resolves to a code repository (a VCS
 directory or a recognised manifest at its root). `GAIA_PROJECT_ROOT=<path>`
 picks the project when the working directory is not it. If that repository has
-no code index, the first turn starts one in a background thread;
-`GAIA_PROJECT_MAP_AUTO_INDEX=0` disables that. Neither affects the wire
-contract — they change what the agent knows and what the first turn costs.
+no code index, the first `search_code_index` builds one;
+`GAIA_PROJECT_MAP_AUTO_INDEX=1` builds it in a background thread at task start
+instead. The same repository check also
+makes `run_shell_command` always-on for the session instead of semantically
+selected. Neither affects the wire contract — they change what the agent
+knows, what tools it is offered, and what the first turn costs.
 
 A second `/query` for a `session_id` that already has a turn in flight gets
 `409 Conflict` — cancel the running turn or wait for it, then retry. A
@@ -419,16 +422,16 @@ the HTTP surface above instead (§6.1).
 
 It emits the identical canonical event vocabulary, but its input channel accepts
 a JSON line carrying a `gaia_control` key: a back-channel that answers a
-confirmation prompt *while* a turn is in flight, toggles bypass, and stops a turn
-(`cancel`) without ending the process — so loaded skills, "always" grants,
-history and the bypass mode survive a cancel.
+confirmation prompt *while* a turn is in flight, toggles full access, and stops
+a turn (`cancel`) without ending the process — so loaded skills, "always"
+grants, history and full access survive a cancel.
 
 Contract 2.14 gave the HTTP surface the same three capabilities per run and per
-session — `/tool_decision`, `/sessions/{id}/bypass`, and `provider: "claude"`.
-What remains stdio-only is the *launch* form of those switches:
-`--bypass-permissions` starts a process with gating already off, and
-`--use-claude` / `--claude-model` pin the backend for the life of the process
-(embeddings stay on Lemonade either way).
+session — `/tool_decision`, `/sessions/{id}/bypass` (the route keeps its
+original spelling), and `provider: "claude"`. What remains stdio-only is the
+*launch* form of those switches: `--full-access` starts a process with gating
+already off, and `--use-claude` / `--claude-model` pin the backend for the life
+of the process (embeddings stay on Lemonade either way).
 
 The stdio TUI also supports Local, Fireworks AI, and AMD LLM Gateway through
 Lemonade. `/model` lists downloaded local and discovered cloud chat models;
@@ -649,3 +652,24 @@ yourself, which no lock describes, and `{ lock }` to reuse an already-loaded loc
 `DEBUG=gaia` (or `DEBUG=*`) enables debug output. **Everything goes to stderr** —
 stdout belongs to the TUI once it is exec'd, and to machine-readable JSON for
 `fetch` / `version`.
+
+## Developer engineering mode
+
+- **Opt-in.** The agent enables it with `--developer-mode` or `GAIA_DEVELOPER_MODE=1`
+  in the host process. `gaia engineering` and the engineering MCP server accept only
+  the explicit `--developer-mode` flag. It is separate from diagnostic `--dev`.
+- **Surface.** Only in that mode does the agent load the `gaia-harness-engineering`
+  skill and the `share_engineering_context`, `append_engineering_context`,
+  `approve_engineering_code`, `engineering_status`, `open_engineering_app` and
+  `revoke_engineering_context` tools. Sessions without it have none of them.
+- **Consent.** Sharing, appending and code approval each ask for a fresh approval of
+  the exact content or scope shown. None of them can be remembered or auto-approved.
+  Snapshots are recipient-bound and expire; revoking stops future reads.
+- **Pairing.** Configure the coding app's MCP connection from a Python GAIA install
+  with the `[mcp]` extra. The frozen binary this package ships can reuse that
+  configuration but cannot launch the Python MCP server itself.
+- **Code.** Fixes happen in the coding app, in worktrees from GAIA's managed source
+  cache. Preview results are reported by that app, not verified by GAIA. Nothing
+  self-assesses or updates the installed GAIA.
+
+See the [usage guide](https://amd-gaia.ai/docs/guides/harness-engineering).

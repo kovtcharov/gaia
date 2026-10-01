@@ -454,6 +454,9 @@ def classify_lemonade_exception(exc: BaseException) -> Optional[LemonadeError]:
 class LemonadeProvider(LLMClient):
     """Lemonade provider - local AMD-optimized inference."""
 
+    # llama.cpp ignores unknown message fields; a proxied model that rejects one 400s by name.
+    accepts_reasoning_history = True
+
     def __init__(
         self,
         model: Optional[str] = None,
@@ -487,6 +490,7 @@ class LemonadeProvider(LLMClient):
         # ``usage`` field, captured here since ``chat()`` itself returns
         # just the message content/tool-call envelope as ``str``.
         self._last_usage: Optional[dict] = None
+        self._last_reasoning: Optional[str] = None
         self._last_finish_reason: Optional[str] = None
         self._last_ttft_seconds: Optional[float] = None
         self._last_streamed = False
@@ -500,11 +504,25 @@ class LemonadeProvider(LLMClient):
 
         Goes through the backend, which carries the catalog metadata, so a
         provider discovered at runtime is recognised as well as the two whose
-        id prefixes are known up front.
+        id prefixes are known up front. Answers ``None`` for a runtime-
+        discovered provider until ``refresh_model_catalog`` (or any call that
+        reads ``list_models``) has populated that metadata at least once.
         """
         return self._backend.cloud_model_provider(
             model or self._last_model or self._model or DEFAULT_MODEL_NAME
         )
+
+    def refresh_model_catalog(self, show_all: bool = True) -> None:
+        """Read the Lemonade catalog once so ``cloud_model_provider`` can
+        recognise a runtime-discovered provider right away.
+
+        A freshly constructed client has no catalog metadata yet —
+        ``cloud_model_provider`` only reads what ``list_models`` has cached —
+        so anything composed from it immediately after construction (a
+        switch message, a rebuilt system prompt) would call a runtime-
+        discovered cloud model local (#4365).
+        """
+        self._backend.list_models(show_all=show_all)
 
     def generate(
         self,
@@ -532,6 +550,7 @@ class LemonadeProvider(LLMClient):
     ) -> Union[str, dict, Iterator[str]]:
         # Reset from any previous call — these are per-call, not cumulative.
         self._last_usage = None
+        self._last_reasoning = None
         self._last_finish_reason = None
         self._last_ttft_seconds = None
         self._last_streamed = stream
@@ -548,14 +567,13 @@ class LemonadeProvider(LLMClient):
                 messages
             )
 
-        # Default to low temperature for deterministic responses (matches old LLMClient behavior)
-        kwargs.setdefault("temperature", 0.1)
-
-        # Stops local models looping on tables and paragraphs. Cloud models get
-        # none: the penalties hit their reasoning tokens and the thinking runs away.
-        # repeat_penalty / repeat_last_n are llama.cpp-native (sent via extra_body
-        # when streaming).
+        # Low temperature and penalties stop local models looping on tables and
+        # paragraphs. Cloud models get neither: near-greedy sampling and the
+        # penalties both send a reasoning model's thinking into a runaway, so
+        # they get the client's standard 0.7. repeat_penalty / repeat_last_n
+        # are llama.cpp-native (sent via extra_body when streaming).
         if not self._backend.cloud_model_provider(effective_model):
+            kwargs.setdefault("temperature", 0.1)
             kwargs.setdefault("frequency_penalty", 0.3)
             kwargs.setdefault("presence_penalty", 0.1)
             kwargs.setdefault("repeat_penalty", 1.1)
@@ -633,6 +651,7 @@ class LemonadeProvider(LLMClient):
         finish_reason = choice.get("finish_reason", "")
         self._last_finish_reason = finish_reason or None
         tool_calls = message.get("tool_calls")
+        self._last_reasoning = message.get("reasoning_content") or None
 
         if tool_calls:
             logger.debug(
@@ -651,11 +670,6 @@ class LemonadeProvider(LLMClient):
             # unchanged so callers can distinguish "no content" from "empty
             # string content".
             tc_content = message.get("content")
-            if tc_content is None:
-                # Some llama.cpp builds put text in ``reasoning_content``
-                # instead of ``content`` when the model emits a thought
-                # before a tool call. Treat that as content too.
-                tc_content = message.get("reasoning_content")
             # Encode as JSON string so callers can keep treating responses as str.
             return json.dumps(
                 {
@@ -665,7 +679,19 @@ class LemonadeProvider(LLMClient):
                 }
             )
 
-        content = message.get("content") or message.get("reasoning_content") or ""
+        content = message.get("content") or ""
+        if not content and finish_reason == "stop" and self._last_reasoning:
+            # Some llama.cpp builds route a completed answer into
+            # ``reasoning_content``. A reply cut off by the token limit
+            # (``finish_reason="length"``) is left empty on purpose — that text
+            # is an unfinished thought, not an answer.
+            logger.warning(
+                "Lemonade returned empty 'content' with finish_reason=stop; "
+                "treating 'reasoning_content' as the answer (model=%s)",
+                effective_model,
+            )
+            content = self._last_reasoning
+            self._last_reasoning = None
         logger.debug(
             "tool_call_path=%s model_id=%s tool_calling_flag=%s finish_reason=%s",
             "plain_text",
@@ -736,6 +762,9 @@ class LemonadeProvider(LLMClient):
         when the server sent none."""
         return self._last_usage
 
+    def get_last_reasoning(self) -> Optional[str]:
+        return self._last_reasoning
+
     def get_last_finish_reason(self) -> Optional[str]:
         return self._last_finish_reason
 
@@ -765,6 +794,7 @@ class LemonadeProvider(LLMClient):
         tool_calls: dict[int, dict] = {}
         finish_reason = ""
         text_seen: list[str] = []
+        reasoning_seen: list[str] = []
 
         def close_thinking():
             nonlocal in_thinking, thought
@@ -803,6 +833,7 @@ class LemonadeProvider(LLMClient):
                     # display it in a collapsible section.
                     reasoning = delta.get("reasoning_content")
                     if reasoning:
+                        reasoning_seen.append(reasoning)
                         if not in_thinking:
                             yield "<think>"
                             in_thinking = True
@@ -822,6 +853,7 @@ class LemonadeProvider(LLMClient):
                                 yield close_thinking()
                             text_seen.append(text)
                             yield text
+        self._last_reasoning = "".join(reasoning_seen) or None
         self._last_finish_reason = finish_reason or None
         # Close any unclosed thinking block at end of stream
         if in_thinking:

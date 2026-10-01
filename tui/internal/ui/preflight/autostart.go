@@ -24,6 +24,9 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/amd/gaia/tui/internal/gaiainit"
+	"github.com/amd/gaia/tui/internal/lemonade"
 )
 
 // autoStartWindow bounds the whole attempt: spawn, then wait for the server to
@@ -87,11 +90,20 @@ func startLemonade(ctx context.Context, l launcher, probe func(context.Context) 
 // the `systemctl` client process would change nothing while looking like it did.
 // Same reasoning as ctxPrefix, which is that decision's display half.
 func startEnv(l launcher) []string {
-	if l.ServiceManaged || l.CtxSize <= 0 {
+	if l.ServiceManaged {
 		return os.Environ()
 	}
-	return append(os.Environ(), fmt.Sprintf("%s=%d", ctxSizeEnv, l.CtxSize))
+	env := append(os.Environ(), vulkanCoopmatEnv)
+	if l.CtxSize <= 0 {
+		return env
+	}
+	return append(env, fmt.Sprintf("%s=%d", ctxSizeEnv, l.CtxSize))
 }
+
+// vulkanCoopmatEnv matches LLAMACPP_ENV in gaia/llm/lemonade_launcher.py:
+// llama.cpp's Vulkan cooperative-matrix path crashes llama-server as it loads
+// an embedding model on AMD Radeon iGPUs, so memory and RAG never come up.
+const vulkanCoopmatEnv = "GGML_VK_DISABLE_COOPMAT=1"
 
 // waitForLemonade polls until the server answers or the window closes.
 func waitForLemonade(ctx context.Context, probe func(context.Context) bool) bool {
@@ -126,7 +138,18 @@ func waitForLemonade(ctx context.Context, probe func(context.Context) bool) bool
 var tryAutoStartLemonade = func(ctx context.Context) (bool, string, string) {
 	l := resolveLemonade()
 	if !canAutoStart(l) {
-		return false, "", ""
+		// Only when no system server is installed: starting GAIA's own beside
+		// one the user runs would leave two answering.
+		if l.Found || l.BadOverride != "" || !lemonade.EmbeddedInstalled() {
+			return false, "", ""
+		}
+		// GAIA's own server: installed, stopped, and started the way GAIA
+		// starts it, so it comes up with GAIA's launch settings.
+		bin, err := gaiainit.Binary()
+		if err != nil {
+			return false, "", "auto-start: " + err.Error()
+		}
+		l = launcher{Argv: []string{bin, "lemonade", "embedded", "start"}, Found: true}
 	}
 
 	probe := func(c context.Context) bool {

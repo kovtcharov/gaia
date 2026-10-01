@@ -11,8 +11,9 @@ import shutil
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar, Dict, List, Optional
+from typing import Any, ClassVar, Dict, FrozenSet, List, Optional
 
+from gaia.config import gaia_home
 from gaia.logger import get_logger
 
 logger = get_logger(__name__)
@@ -36,6 +37,11 @@ from gaia.agents.base.checks import (
     snippet_target,
 )
 from gaia.agents.base.console import AgentConsole
+from gaia.agents.base.context_eviction import (
+    DEFAULT_EVICT_KEEP_STEPS,
+    DEFAULT_EVICT_MIN_BATCH_TOKENS,
+    DEFAULT_EVICT_THRESHOLD_TOKENS,
+)
 from gaia.agents.base.memory import MemoryMixin
 from gaia.agents.base.project_map import resolve_project_root
 
@@ -51,6 +57,8 @@ from gaia.agents.tools import ScratchpadToolsMixin  # Structured data analysis
 from gaia.agents.tools import (  # Web browsing and search; Shared tools
     AudioToolsMixin,
     BrowserToolsMixin,
+    BrowserUseToolsMixin,
+    CliSetupToolsMixin,
     FileIOToolsMixin,
     FileSearchToolsMixin,
     FileToolsMixin,
@@ -164,6 +172,17 @@ class ChatAgentConfig:
     # None = per-model default (larger for Lemonade cloud models).
     max_output_tokens: Optional[int] = None
 
+    # Evict tool results older than ``keep_steps`` from the context sent to
+    # the model (never from the log) once the measured prompt is over the
+    # threshold and the batch is worth a cache break; each stays readable via
+    # read_tool_output. "auto" is on only for a cloud model whose cached-input
+    # price ratio (gaia.llm.cache_pricing) makes it pay. GAIA_CONTEXT_EVICTION,
+    # GAIA_EVICT_THRESHOLD, GAIA_EVICT_KEEP and GAIA_EVICT_MIN_BATCH win.
+    context_eviction: str = "off"
+    context_eviction_threshold_tokens: int = DEFAULT_EVICT_THRESHOLD_TOKENS
+    context_eviction_keep_steps: int = DEFAULT_EVICT_KEEP_STEPS
+    context_eviction_min_batch_tokens: int = DEFAULT_EVICT_MIN_BATCH_TOKENS
+
     # Debug/output settings
     debug: bool = False
     debug_prompts: bool = False  # Backward compatibility
@@ -198,8 +217,12 @@ class ChatAgentConfig:
     enable_scratchpad: bool = (
         False  # Data scratchpad for analysis (disabled until agent split)
     )
-    filesystem_index_path: str = "~/.gaia/file_index.db"
-    scratchpad_db_path: str = "~/.gaia/scratchpad.db"
+    filesystem_index_path: str = field(
+        default_factory=lambda: str(gaia_home() / "file_index.db")
+    )
+    scratchpad_db_path: str = field(
+        default_factory=lambda: str(gaia_home() / "scratchpad.db")
+    )
     filesystem_scan_depth: int = 3  # Default scan depth (conservative)
     filesystem_exclude_patterns: List[str] = field(default_factory=list)
 
@@ -260,9 +283,11 @@ class ChatAgent(
     RAGToolsMixin,
     FileToolsMixin,
     ShellToolsMixin,
+    CliSetupToolsMixin,
     FileSystemToolsMixin,
     ScratchpadToolsMixin,
     BrowserToolsMixin,
+    BrowserUseToolsMixin,
     FileSearchToolsMixin,
     FileIOToolsMixin,
     VLMToolsMixin,
@@ -363,7 +388,7 @@ class ChatAgent(
         # Embedder is device-scoped: the NPU profile uses the FLM-native
         # embedder so chat and embeddings stay co-resident on the NPU backend
         # (a GGUF embedder runs on Vulkan and evicts the FLM chat model every
-        # turn — #1744). GPU/CPU keep the GGUF nomic embedder.
+        # turn — #1744). GPU/CPU use the GGUF embedder `gaia init` downloads.
         effective_embedding_model = get_embedding_model_for_device(config.device)
 
         # RAG (#2323 Increment 3): ``RAGConfig`` is cheap (no I/O) and built
@@ -517,6 +542,10 @@ class ChatAgent(
                 else 32768
             ),
             max_output_tokens=config.max_output_tokens,
+            context_eviction=config.context_eviction,
+            context_eviction_threshold_tokens=config.context_eviction_threshold_tokens,
+            context_eviction_keep_steps=config.context_eviction_keep_steps,
+            context_eviction_min_batch_tokens=config.context_eviction_min_batch_tokens,
         )
 
         # Without this, throwaway scripts land in the user's project. One path
@@ -714,7 +743,7 @@ class ChatAgent(
         if profile_config is None:
             return None
         return ToolLoader(
-            core_tools=profile_config.core,
+            core_tools=profile_config.core | self._workspace_core_tools(),
             bundles=profile_config.bundles,
             optional_tools=profile_config.optional,
             embed_fn=self._embed_text,
@@ -722,6 +751,14 @@ class ChatAgent(
             threshold=self._resolve_dynamic_tools_threshold(),
             max_tools=self._resolve_dynamic_tools_max(),
         )
+
+    def _workspace_core_tools(self) -> FrozenSet[str]:
+        """Tools the session's workspace makes always-on, beyond the profile CORE.
+
+        Fixed when the loader is built, so the offered prefix is stable from the
+        first turn. Default: none.
+        """
+        return frozenset()
 
     def _resolve_dynamic_tools_enabled(self) -> bool:
         """Toggle: ``GAIA_DYNAMIC_TOOLS`` (truthy) wins over the config field."""
@@ -743,10 +780,16 @@ class ChatAgent(
             ) from e
 
     def _resolve_dynamic_tools_max(self) -> int:
-        """Cap: ``GAIA_DYNAMIC_TOOLS_MAX`` wins; malformed value fails loudly."""
+        """Cap: ``GAIA_DYNAMIC_TOOLS_MAX`` wins; malformed value fails loudly.
+
+        Grown by any workspace-added CORE tools (e.g. the shell in a repo
+        session) so they don't eat into the dynamic selection budget.
+        """
         raw = os.getenv("GAIA_DYNAMIC_TOOLS_MAX")
         if raw is None:
-            return int(self.config.dynamic_tools_max)
+            return int(self.config.dynamic_tools_max) + len(
+                self._workspace_core_tools()
+            )
         try:
             return int(raw)
         except ValueError as e:
@@ -815,6 +858,16 @@ class ChatAgent(
         return self.tool_loader.select(
             query, self._tools_registry, skill_tools=skill_tools
         )
+
+    def _admit_skill_tools(self, names: List[str]) -> None:
+        """Admit a just-loaded skill's tools into the loader (no-op when inactive).
+
+        Keeps the loader's loaded set and ``_active_tool_filter`` in step, so the
+        next turn's selection still carries them and calling one doesn't register
+        as an escape hatch.
+        """
+        if self.tool_loader is not None:
+            self.tool_loader.admit_tools(names, self._tools_registry)
 
     def _on_tool_invoked(self, tool_name: str) -> None:
         """Record tool-use recency for the loader's LRU (no-op when inactive)."""
@@ -1504,11 +1557,16 @@ No documents are currently indexed.
         if spec.early_return:
             # Minimal: only shell for system queries
             self.register_shell_tools()
+            # Registered on every profile, this one included: "can you install
+            # the GitHub CLI?" is a conversational question, and the answer has
+            # to be yes before any skill needing that CLI can even load.
+            self.register_cli_setup_tools()
             self._register_external_tools_conditional()
             return
 
         # All other profiles get at least shell tools
         self.register_shell_tools()
+        self.register_cli_setup_tools()
         self.register_memory_tools()  # Persistent memory tools
 
         for _group_name in spec.tool_groups:
@@ -1698,7 +1756,8 @@ No documents are currently indexed.
                 files. Report numbers from its output — do not work them
                 out in your head.
 
-                No access to your tools: `from gaia import <tool>` fails.
+                No access to your tools: `from gaia import <tool>` fails —
+                call it directly as a tool instead.
 
                 Args:
                     code: Python source to run; print() whatever you need back.
@@ -2736,6 +2795,10 @@ No documents are currently indexed.
                 self._inline_web.close()
         except Exception as e:
             logger.error(f"Error closing inline web client during cleanup: {e}")
+        try:
+            self.cleanup_browser_use()
+        except Exception as e:
+            logger.error(f"Error closing browser during cleanup: {e}")
         try:
             if self._fs_index:
                 self._fs_index.close_db()

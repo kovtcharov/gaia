@@ -274,16 +274,20 @@ def lemonade_auth_headers(api_key: Optional[str]) -> Dict[str, str]:
 # ui/routers/system.py.
 DEFAULT_MODEL_NAME = "Gemma-4-E4B-it-GGUF"
 
-# The default on machines with the memory for it (a 128 GB Strix Halo): a 125B
-# MoE with 6B active. Not a Lemonade built-in — registered as a ``user.`` model
-# on first pull (see its MODELS entry). ``gaia init`` picks it only when
-# gaia.llm.model_fit says it fits, and records the pick as ``default_model``.
-LARGE_DEFAULT_MODEL_NAME = "user.Qwen3.8-Flash-Next-GGUF"
+# The default on any machine with the memory for it — at 17.4 GB this fits far
+# more than the 128 GB Strix Halo class that Qwen3.8 Flash needed (a 24 GB dGPU
+# or a 32 GB CPU-only box qualifies too). A Lemonade built-in, 2-5x faster
+# decode than Flash on Strix Halo, but text-only. ``gaia init`` picks it only
+# when gaia.llm.model_fit says it fits, and records the pick as
+# ``default_model``.
+LARGE_DEFAULT_MODEL_NAME = "Qwen3-30B-A3B-Instruct-2507-GGUF"
 
-# The other big-PC candidate: a Lemonade built-in, reported 2-5x faster decode
-# than Flash on Strix Halo, but text-only. Supported and switchable; which one is the
-# default is settled by `util/compare_local_models.py` on real hardware.
-QWEN3_30B_MODEL_NAME = "Qwen3-30B-A3B-Instruct-2507-GGUF"
+# The multimodal big-PC alternative: a 125B MoE with 6B active. Not a
+# Lemonade built-in — registered as a ``user.`` model on first pull (see its
+# MODELS entry). Not auto-selected by ``gaia init`` — switch to it explicitly
+# with `gaia config set default_model` when vision/reasoning matters more
+# than decode speed.
+FLASH_OPTION_MODEL_NAME = "user.Qwen3.8-Flash-Next-GGUF"
 
 
 def resolve_default_chat_model() -> str:
@@ -298,10 +302,9 @@ def resolve_default_chat_model() -> str:
     return GaiaConfig.load().resolve_model(None, DEFAULT_MODEL_NAME)
 
 
-# Default embedding model. EmbeddingGemma 300M (768-dim) replaces
-# nomic-embed-text-v2-moe, which the current llama.cpp server cannot load.
-# Not a Lemonade built-in — registered as a ``user.`` custom model on first
-# pull via checkpoint + recipe + the ``embedding`` label (see MODELS entry).
+# Default embedding model: EmbeddingGemma 300M (768-dim). Not a Lemonade
+# built-in — registered as a ``user.`` custom model on first pull via
+# checkpoint + recipe + the ``embedding`` label (see MODELS entry).
 DEFAULT_EMBEDDING_MODEL = "user.embeddinggemma-300m-GGUF"
 DEFAULT_EMBEDDING_CHECKPOINT = "ggml-org/embeddinggemma-300M-GGUF:Q8_0"
 
@@ -665,10 +668,8 @@ class ModelRequirement:
     mmproj: Optional[str] = None
     vision: bool = False
     reasoning: bool = False
-    # Download size in GB, for the fit check (gaia.llm.model_fit). A built-in
-    # may leave it None, since Lemonade's catalog reports its size; set it to
-    # judge fit without a running server (the default ladder, the model
-    # comparison script).
+    # Download size in GB, for the fit check (gaia.llm.model_fit). Built-ins
+    # leave it None — Lemonade's catalog reports their size.
     size_gb: Optional[float] = None
     # Oldest Lemonade whose bundled llama.cpp can load the model.
     min_lemonade_version: Optional[str] = None
@@ -731,15 +732,17 @@ MODELS = {
         min_ctx_size=GPU_CTX_SIZE,
         tool_calling=True,
     ),
-    # --- Qwen3.8-Flash-Next: the default where it fits (Strix Halo 128 GB) ---
+    # --- Qwen3.8-Flash-Next: the multimodal big-PC option (Strix Halo 128 GB) ---
     # 125B MoE (6B active) + 51B n-gram embedding; needs llama.cpp's qwen4exp
     # support, first bundled in Lemonade v2026.39.1. UD-IQ3_XXS (82 GB, three
     # shards in one repo folder) is the largest quant that fits a 96 GB GPU
     # carve-out with room for the 64K window — its KV cache is ~25 KB/token,
-    # since only 12 of 48 layers carry attention.
+    # since only 12 of 48 layers carry attention. Not the default (see
+    # LARGE_DEFAULT_MODEL_NAME) — switch to it with `gaia config set
+    # default_model` when vision/reasoning matters more than decode speed.
     "qwen3.8-flash": ModelRequirement(
         model_type=ModelType.LLM,
-        model_id=LARGE_DEFAULT_MODEL_NAME,
+        model_id=FLASH_OPTION_MODEL_NAME,
         display_name="Qwen3.8 Flash Next (Multimodal)",
         min_ctx_size=GPU_CTX_SIZE,
         tool_calling=True,
@@ -752,13 +755,13 @@ MODELS = {
         size_gb=82.86,
         min_lemonade_version="2026.39.1",
     ),
-    # --- Qwen3 30B A3B Instruct 2507: the fast big-PC alternative ---
+    # --- Qwen3 30B A3B Instruct 2507: the default where it fits (Strix Halo 128 GB) ---
     # 30.5B MoE (3.3B active), a Lemonade built-in on llama.cpp (Q4_0).
     # Native tool calls, no vision and no thinking mode. The "-HRX" build of the
     # same weights is Linux-only and experimental, so it is not listed here.
     "qwen3-30b-a3b-instruct": ModelRequirement(
         model_type=ModelType.LLM,
-        model_id=QWEN3_30B_MODEL_NAME,
+        model_id=LARGE_DEFAULT_MODEL_NAME,
         display_name="Qwen3 30B A3B Instruct 2507",
         min_ctx_size=GPU_CTX_SIZE,
         tool_calling=True,
@@ -827,8 +830,7 @@ MODELS = {
     ),
     # Embedding Models
     # EmbeddingGemma 300M (768-dim). Custom user-model: registered on first pull
-    # from the HF checkpoint with the ``embedding`` label. Replaced nomic-embed,
-    # which the current llama.cpp server cannot load.
+    # from the HF checkpoint with the ``embedding`` label.
     "embeddinggemma": ModelRequirement(
         model_type=ModelType.EMBEDDING,
         model_id=DEFAULT_EMBEDDING_MODEL,
@@ -841,7 +843,7 @@ MODELS = {
     ),
     # --- NPU-native FLM embedder for the NPU profile (#1744) ---
     # EmbeddingGemma 300M built for the FastFlowLM/NPU backend. On a shared-
-    # memory Ryzen AI APU the GGUF nomic embedder runs on Vulkan/llama.cpp and
+    # memory Ryzen AI APU a GGUF embedder runs on Vulkan/llama.cpp and
     # reclaims the memory the FLM chat model holds, so loading it evicts the
     # chat model — every chat turn then thrashes NPU<->Vulkan (#1676). Keeping
     # the embedder on the same FLM/NPU backend as the chat model lets both stay
@@ -1223,6 +1225,22 @@ def _validate_profile_model_registry() -> None:
 
 
 _validate_profile_model_registry()
+
+
+def backend_crash_remedy(model: str) -> str:
+    """What to do when Lemonade is up but llama-server dies loading ``model``."""
+    return (
+        f"Lemonade is running, but llama.cpp exited while loading '{model}'. "
+        "On an AMD Radeon GPU with the Vulkan backend, the likely cause is "
+        "llama.cpp's cooperative-matrix crash: Lemonade must start with "
+        "GGML_VK_DISABLE_COOPMAT=1. GAIA sets it on servers it starts, so run "
+        "`gaia lemonade embedded stop`, then `gaia lemonade embedded start`. "
+        "A Lemonade you run yourself needs it set before it starts (for the "
+        "systemd service: `systemctl --user edit lemond`, add "
+        "`Environment=GGML_VK_DISABLE_COOPMAT=1` under [Service], then "
+        "`systemctl --user restart lemond`). Otherwise, Lemonade's server log "
+        "has llama-server's own output."
+    )
 
 
 class LemonadeClientError(Exception):
@@ -2196,7 +2214,7 @@ class LemonadeClient:
             return 2.0  # ~2GB for 3B models
         elif "1b" in model_lower or "0.5b" in model_lower or "0.6b" in model_lower:
             return 1.0  # ~1GB for small models
-        elif "embed" in model_lower or "nomic" in model_lower:
+        elif "embed" in model_lower:
             return 0.5  # Embedding models are usually small
         else:
             return 10.0  # Conservative default
@@ -4585,7 +4603,8 @@ class LemonadeClient:
         try:
             from rich.console import Console
 
-            console = Console()
+            # Progress, not output: stdout stays clean for `gaia chat -q` pipes.
+            console = Console(stderr=True)
             if is_downloaded is False:
                 console.print(
                     f"[bold yellow]📥 Downloading model:[/bold yellow] "
@@ -4601,10 +4620,11 @@ class LemonadeClient:
             if is_downloaded is False:
                 print(
                     f"📥 Downloading model: {model} (first run — this can "
-                    f"take several minutes)..."
+                    f"take several minutes)...",
+                    file=sys.stderr,
                 )
             else:
-                print(f"🔄 Loading model: {model}...")
+                print(f"🔄 Loading model: {model}...", file=sys.stderr)
 
         # The actual load failure is the one this method must NOT swallow
         # (#2053): a model that is present but fails to load (bad recipe, OOM,
@@ -4639,7 +4659,7 @@ class LemonadeClient:
                     f"[bold green]✅ Model loaded:[/bold green] [cyan]{model}[/cyan]"
                 )
             else:
-                print(f"✅ Model loaded: {model}")
+                print(f"✅ Model loaded: {model}", file=sys.stderr)
         except Exception as exc:
             get_logger(__name__).warning(
                 "Could not display model load confirmation: %s", exc
@@ -4905,6 +4925,12 @@ class LemonadeClient:
             if not (auto_download and self._is_model_error(e)):
                 # Not a model error or auto_download disabled - re-raise
                 self.log.error(f"Failed to load {model_name}: {original_error}")
+                if self._is_transient_load_error(e):
+                    # Outlived any retries, so name the likely cause.
+                    raise LemonadeClientError(
+                        f"Failed to load {model_name}: {original_error}. "
+                        f"{backend_crash_remedy(model_name)}"
+                    ) from e
                 if isinstance(e, LemonadeClientError):
                     raise
                 raise LemonadeClientError(

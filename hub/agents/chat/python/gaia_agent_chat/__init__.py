@@ -1,9 +1,16 @@
 # Copyright(C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: MIT
-"""GAIA Chat agent — standalone hub package.
+"""GAIA Chat agent — the flagship's base class, no longer a product of its own.
 
-Ships the conversational ChatAgent under three prompt profiles, each registered
-as its own agent id via the ``gaia.agent`` entry-point group:
+``ChatAgent`` is what ``GaiaAgent`` subclasses, so this package remains a hard
+dependency of ``gaia-agent`` and is fully supported as a library. What it is no
+longer is a *selectable agent*: the flagship supersedes all three profiles, and
+all three registrations carry ``hidden=True`` so they are absent from the Agent
+UI picker and the Hub catalog.
+
+They stay registered — ``registry.get("doc")`` still resolves — because stored
+sessions, the ``*-lite`` id aliases, and the eval scenarios address them by id.
+Hidden removes the *choice*, not the *route*:
 
 * ``chat`` — general conversation (lean prompt, no document tools)
 * ``doc``  — document Q&A with RAG
@@ -72,6 +79,8 @@ def build_chat():
         name="Chat",
         description="General conversation — fast, personality-first, no document tools",
         source="installed",
+        # Retired as a choice; still resolvable by id for stored sessions.
+        hidden=True,
         conversation_starters=[
             "What can you help me with?",
             "Tell me about yourself",
@@ -88,9 +97,9 @@ def build_chat():
         category="conversation",
         tags=["chat", "general", "personality"],
         icon="message-circle",
-        # Introspected registry size for prompt_profile="chat" (shell tools
-        # only) — drift-guarded by tests/unit/test_chat_fix_contracts.py.
-        tools_count=2,
+        # Introspected registry size for prompt_profile="chat" (shell plus
+        # CLI-setup tools) — drift-guarded by tests/unit/test_chat_fix_contracts.py.
+        tools_count=7,
         model_tiers=tiers,
     )
 
@@ -105,6 +114,8 @@ def build_doc():
         name="Doc Agent",
         description="Document Q&A with RAG — ask questions about PDFs, reports, and manuals",
         source="installed",
+        # Retired as a choice; still resolvable by id for stored sessions and evals.
+        hidden=True,
         conversation_starters=[
             "Search my documents for...",
             "Summarize this document",
@@ -119,7 +130,7 @@ def build_doc():
         icon="file-text",
         # Introspected registry size for prompt_profile="doc" — drift-guarded
         # by tests/unit/test_chat_fix_contracts.py.
-        tools_count=39,
+        tools_count=44,
         model_tiers=tiers,
     )
 
@@ -134,6 +145,8 @@ def build_file():
         name="File Agent",
         description="File system navigation, search, and analysis",
         source="installed",
+        # Retired as a choice; still resolvable by id for stored sessions.
+        hidden=True,
         conversation_starters=[
             "Find files related to...",
             "What's in my Documents folder?",
@@ -149,6 +162,6 @@ def build_file():
         # Introspected registry size for prompt_profile="file" (with
         # enable_filesystem=True, matching this factory's extra kwarg) —
         # drift-guarded by tests/unit/test_chat_fix_contracts.py.
-        tools_count=36,
+        tools_count=41,
         model_tiers=tiers,
     )
