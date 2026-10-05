@@ -1020,9 +1020,8 @@ class SSEOutputHandler(OutputHandler):
                 }
             )
             logger.info("Scripted eval user declined '%s'", tool_name)
-            self._last_denial = (
-                tool_name,
-                f"Tool '{tool_name}' was denied by the user.",
+            self._last_denial = Denial(
+                tool_name, f"Tool '{tool_name}' was denied by the user."
             )
             return False
 
