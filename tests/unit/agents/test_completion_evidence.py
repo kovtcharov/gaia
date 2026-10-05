@@ -17,6 +17,7 @@ from gaia.agents.base.completion import (
     save_obligations,
 )
 from gaia.agents.base.tools import _TOOL_REGISTRY, tool
+from gaia.agents.base.turn_scope import TurnScopeGuard
 
 
 @pytest.fixture
@@ -1068,3 +1069,19 @@ def test_loop_still_rejects_a_false_save_after_a_denied_write(agent, tmp_path):
     assert "[check:completion]" in correction
     assert "Use `write_file`" not in correction
     assert "Do not retry that write" in correction
+
+
+def test_a_declined_write_does_not_widen_the_turn_scope(agent, tmp_path):
+    _deny_writes(agent)
+    target = str(tmp_path / "Documents" / "ui_notes.txt")
+    lie = {"answer": "Saved! `ui_notes.txt` is in your Documents folder."}
+    script(
+        agent,
+        call("write_file", file_path=target, content="hello from the agent ui"),
+        lie,
+        lie,
+    )
+    widened = []
+    with patch.object(TurnScopeGuard, "widen", lambda _, text: widened.append(text)):
+        agent.process_query(_DOCUMENTS_REQUEST, max_steps=10)
+    assert widened == []
