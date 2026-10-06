@@ -23,9 +23,9 @@ const RECENT_RELEASES = releaseStats.releases.slice(0, 4);
 
 // Only what the shipped agent does today.
 const WORK = [
-  { title: 'Reads your documents', body: 'PDFs and notes, indexed on your PC. Answers cite the page.' },
-  { title: 'Works your spreadsheets', body: 'CSV and Excel load into a local table it can query.' },
-  { title: 'Asks before it acts', body: 'Writing a file or running a command waits for your yes.' },
+  { glyph: 'doc', title: 'Reads your documents', body: 'PDFs and notes, indexed on your PC. Answers cite the page.' },
+  { glyph: 'sheet', title: 'Works your spreadsheets', body: 'CSV and Excel load into a local table it can query.' },
+  { glyph: 'ask', title: 'Asks before it acts', body: 'Writing a file or running a command waits for your yes.' },
 ];
 
 const DEV = [
@@ -140,12 +140,39 @@ const PINS = Array.from({ length: 11 }, (_, i) => 50 + i * 30);
     <section id="features" class="g-shell scroll-mt-[66px] pb-24 sm:pb-32" data-reveal>
       <p class="eyebrow">What it does</p>
       <h2 class="section-type mt-5">Give it a task.<br /><span class="text-g-faint">Keep your data.</span></h2>
-      <ol class="mt-14 grid gap-5 md:grid-cols-3">
-        {WORK.map((w, i) => (
-          <li class="tile" style={`--i:${i}`}>
-            <span class="font-mono text-[12px] text-g-accent-text">0{i + 1}</span>
-            <h3 class="mt-10 font-display text-[22px] font-semibold tracking-[-0.02em] text-g-text">{w.title}</h3>
-            <p class="g-body mt-2.5 max-w-[32ch] text-[15px]">{w.body}</p>
+      <ol class="bus-row mt-16 grid gap-14 md:grid-cols-3 md:gap-10">
+        {WORK.map((w) => (
+          <li class="bus-item">
+            <span class="via" aria-hidden="true"></span>
+            <svg class="work-glyph" viewBox="0 0 96 72" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              {w.glyph === 'doc' && (
+                <>
+                  <path d="M20 4h38l14 14v50H20z" />
+                  <path d="M58 4v14h14" />
+                  <path d="M30 28h30M30 36h34M30 52h24" />
+                  <rect class="hot fill" x="27" y="40" width="40" height="7" rx="2" />
+                  <text class="hot" x="74" y="62" font-family="JetBrains Mono, monospace" font-size="9" fill="currentColor" stroke="none">p.29</text>
+                </>
+              )}
+              {w.glyph === 'sheet' && (
+                <>
+                  <rect x="10" y="8" width="76" height="56" rx="6" />
+                  <path d="M10 22h76M10 36h76M10 50h76M34 8v56M60 8v56" />
+                  <rect class="hot fill" x="61" y="37" width="24" height="12" rx="1.5" />
+                </>
+              )}
+              {w.glyph === 'ask' && (
+                <>
+                  <rect class="hot" x="14" y="18" width="30" height="30" rx="7" />
+                  <text class="hot" x="25" y="38" font-family="JetBrains Mono, monospace" font-size="14" fill="currentColor" stroke="none">y</text>
+                  <rect x="52" y="18" width="30" height="30" rx="7" />
+                  <text x="63" y="38" font-family="JetBrains Mono, monospace" font-size="14" fill="currentColor" stroke="none">n</text>
+                  <path d="M14 58h68" stroke-dasharray="2 4" />
+                </>
+              )}
+            </svg>
+            <h3 class="mt-7 font-display text-[22px] font-semibold tracking-[-0.02em] text-g-text">{w.title}</h3>
+            <p class="g-body mt-2.5 max-w-[30ch] text-[15px]">{w.body}</p>
           </li>
         ))}
       </ol>
@@ -294,18 +321,72 @@ const PINS = Array.from({ length: 11 }, (_, i) => 50 + i * 30);
     color: rgb(var(--g-code-text));
   }
 
-  .tile {
-    border-radius: 18px;
-    padding: 28px;
-    background: var(--g-surface);
-    border: 1px solid var(--g-border);
-    transition:
-      transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
-      border-color 0.3s;
+  /* A copper trace runs under the three items; each hangs from a via on it. */
+  .bus-row {
+    position: relative;
   }
-  .tile:hover {
-    transform: translateY(-4px);
-    border-color: var(--g-accent-dim);
+  .bus-row::before {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgb(var(--g-accent) / 0.35);
+  }
+  .bus-item {
+    position: relative;
+    padding-left: 36px;
+  }
+  .via {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    border: 1.5px solid rgb(var(--g-accent));
+    background: rgb(var(--g-bg));
+  }
+  @media (min-width: 768px) {
+    .bus-row {
+      padding-top: 44px;
+    }
+    .bus-row::before {
+      left: 0;
+      right: 0;
+      top: 5px;
+      bottom: auto;
+      width: auto;
+      height: 1px;
+    }
+    .bus-item {
+      padding-left: 0;
+    }
+    .via {
+      top: -44px;
+    }
+  }
+  .work-glyph {
+    height: 72px;
+    width: auto;
+    color: rgb(var(--g-faint));
+    transition:
+      color 0.3s,
+      transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .work-glyph .hot {
+    color: rgb(var(--g-accent));
+  }
+  .work-glyph .fill {
+    fill: rgb(var(--g-accent) / 0.18);
+  }
+  .bus-item:hover .work-glyph {
+    color: rgb(var(--g-muted));
+    transform: translateY(-3px);
+  }
+  .bus-item:hover .via {
+    background: rgb(var(--g-accent));
   }
 
   .dev {
@@ -402,7 +483,7 @@ const PINS = Array.from({ length: 11 }, (_, i) => 50 + i * 30);
       animation: none;
     }
     .chip:hover svg,
-    .tile:hover {
+    .bus-item:hover .work-glyph {
       transform: none;
     }
     :global(html.js) [data-reveal],
