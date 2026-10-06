@@ -2,355 +2,487 @@
 // Copyright(C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// GAIA is an agent factory, and the page serves its two audiences equally:
-// people who want to use an agent harness (install the GAIA agent, top of the
-// page) and people who want to build one (skills, evals, the SDK). Everything
-// below the fold is what the GAIA agent does and how it is built, then the
-// open-source project behind it.
+// One job: get a visitor to install the GAIA agent. One download up top (on
+// Windows, the setup that offers the desktop app, the terminal or both), the
+// agent at work, then a developer section with the scripted installs.
 
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
-import InstallCommand from '../components/InstallCommand.astro';
 import Downloads from '../components/Downloads.astro';
-import Feature from '../components/Feature.astro';
-import StatBlock from '../components/StatBlock.astro';
 import ReleaseStream from '../components/ReleaseStream.astro';
 import ReleaseCandidate from '../components/ReleaseCandidate.astro';
-import {
-  formatCount,
-  getNpmDownloadStats,
-  getReleaseCandidate,
-  getReleaseStats,
-  getRepoStats,
-} from '../data/github';
+import { formatCount, getReleaseCandidate, getReleaseStats, getRepoStats } from '../data/github';
 
 const DOCS = 'https://amd-gaia.ai/docs';
 
 const repoStats = await getRepoStats();
 const releaseStats = await getReleaseStats();
 const releaseCandidate = await getReleaseCandidate();
-const npmStats = await getNpmDownloadStats();
+const RECENT_RELEASES = releaseStats.releases.slice(0, 4);
 
-// Labels are deliberately specific ("GitHub release downloads", "npm
-// downloads") rather than a bare "downloads" — the site's own install button
-// downloads from an R2 bucket with no tracking at all, so a number here that
-// implied "everyone who's ever installed GAIA" would overclaim. See
-// docs/plans/website-admin-dashboard.md for the real, all-source count.
-const STATS = [
-  { value: formatCount(repoStats.stars), label: 'GitHub stars' },
-  { value: formatCount(repoStats.forks), label: 'GitHub forks' },
-  { value: formatCount(releaseStats.totalDownloadCount), label: 'GitHub release downloads' },
-  { value: String(releaseStats.totalReleaseCount), label: 'Releases' },
-  { value: formatCount(npmStats.weekly), label: 'npm downloads / week' },
-  { value: formatCount(npmStats.lifetime), label: 'npm downloads total' },
+// Only what the shipped agent does today.
+const WORK = [
+  { title: 'Reads your documents', body: 'PDFs and notes, indexed on your PC. Answers cite the page.' },
+  { title: 'Works your spreadsheets', body: 'CSV and Excel load into a local table it can query.' },
+  { title: 'Asks before it acts', body: 'Writing a file or running a command waits for your yes.' },
 ];
 
-// Five is enough to show the cadence; the full list is one link away.
-const RECENT_RELEASES = releaseStats.releases.slice(0, 5);
-
-// The two audiences, side by side and equally weighted: people who want to use
-// an agent harness, and people who want to build one. Every command here is a
-// real entry point (`gaia skill create` is in src/gaia/skills/cli.py, `--fix`
-// in the eval CLI), and every href is a live docs page.
-interface Path {
-  title: string;
-  body: string;
-  href: string;
-  code?: string;
-}
-
-const AUDIENCES: { id: string; title: string; lede: string; paths: Path[] }[] = [
-  {
-    id: 'use',
-    title: 'Use GAIA',
-    lede: 'Install the GAIA agent and give it work over your files, data and code.',
-    paths: [
-      {
-        title: 'Desktop app',
-        body: 'Chat, documents and files in a window, with every tool call shown as it runs.',
-        href: `${DOCS}/guides/agent-ui`,
-      },
-      {
-        title: 'Terminal',
-        body: 'The same agent in your shell, on every platform GAIA builds for.',
-        code: 'gaia-tui',
-        href: `${DOCS}/guides/terminal-hub`,
-      },
-      {
-        title: 'Inside your own app',
-        body: 'Run the agent as a local sidecar from Node.',
-        code: 'npm install @amd-gaia/gaia',
-        href: 'https://www.npmjs.com/package/@amd-gaia/gaia',
-      },
-    ],
-  },
-  {
-    id: 'build',
-    title: 'Build with GAIA',
-    lede: 'Make your own agent harness with the same tools that built the GAIA agent.',
-    paths: [
-      {
-        title: 'Skills',
-        body: 'Teach an agent a new task with a SKILL.md file. No code required.',
-        code: 'gaia skill create <name>',
-        href: `${DOCS}/guides/composing-skills`,
-      },
-      {
-        title: 'Evals and auto-fix',
-        body: 'Score an agent on multi-turn scenarios. With --fix, Claude Code patches the failures and re-runs them.',
-        code: 'gaia eval agent --fix',
-        href: `${DOCS}/guides/eval`,
-      },
-      {
-        title: 'Python SDK',
-        body: 'A base agent class with tool calling, state and error recovery. A minimal harness is a prompt and some tools.',
-        code: 'pip install amd-gaia',
-        href: `${DOCS}/sdk`,
-      },
-    ],
-  },
+const DEV = [
+  { id: 'sh', tab: 'macOS · Linux', cmd: 'curl -fsSL https://amd-gaia.ai/install.sh | sh', note: 'Installs the gaia CLI and the terminal agent, checksum-verified.', href: `${DOCS}/quickstart` },
+  { id: 'ps', tab: 'Windows', cmd: 'irm https://amd-gaia.ai/install.ps1 | iex', note: 'The same install from PowerShell.', href: `${DOCS}/quickstart` },
+  { id: 'py', tab: 'Python', cmd: 'pip install amd-gaia', note: 'The SDK: build your own agent with tools, memory and skills.', href: `${DOCS}/sdk` },
+  { id: 'npm', tab: 'Node', cmd: 'npm install @amd-gaia/gaia', note: 'Run the GAIA agent inside your app as a local sidecar.', href: 'https://www.npmjs.com/package/@amd-gaia/gaia' },
 ];
 
-// Only what the flagship agent actually exposes through the TUI today. Its
-// config is prompt_profile="full" — doc_rag + file_fs + data_scratch +
-// web_browse — plus the code index and the skill library. Writes, edits,
-// commands and code go through the approval gate; reads do not. Voice and
-// image generation are NOT in this list on purpose: neither ships in the TUI,
-// and `enable_sd_tools` is off by design (a second resident model would evict
-// the chat model).
-const CAPABILITIES = [
-  {
-    title: 'Answers from your documents',
-    body: 'PDFs and notes indexed on the machine, never uploaded.',
-  },
-  {
-    title: 'Reads and edits your files',
-    body: 'Scoped to your home folder, with the rest of the disk off limits.',
-  },
-  {
-    title: 'Searches code by meaning',
-    body: 'A semantic index of the repository, not a grep.',
-  },
-  {
-    title: 'Works your spreadsheets',
-    body: 'CSV and Excel loaded into a local SQL scratchpad it can query.',
-  },
-  {
-    title: 'Looks things up on the web',
-    body: 'Searches and reads pages when a task needs something it does not have.',
-  },
-  {
-    title: 'Asks before it acts',
-    body: 'Writing a file, editing one, running a command or running code waits for your yes until you decide otherwise.',
-  },
+// Lines of the example conversation, typed in order once it scrolls into view.
+const CHAT = [
+  { kind: 'you', text: 'Which region grew fastest last quarter? It’s in sales_2025.csv.' },
+  { kind: 'tool', text: '● analyze_data_file · sales_2025.csv · 1.2s' },
+  { kind: 'gaia', text: 'West. Revenue rose 18% quarter over quarter, to $412K.' },
+  { kind: 'you', text: 'Save that as a note on my desktop.' },
+  { kind: 'ask', text: 'Allow GAIA to write Desktop\\west-q3.md?' },
 ];
 
-// Why it is built this way. Every line is a real property of the system: the
-// NPU path through Lemonade, the single resident model and its per-device
-// context window, memory plus retrieval instead of compaction, runtime-loaded
-// signed skills, the shared tool-mixin registry, and opt-in-only remote models.
-const ARCHITECTURE = [
-  {
-    title: 'The AI chip in your PC does the work',
-    body: 'Models run on the NPU and integrated graphics of a Ryzen™ AI machine, served locally by',
-    link: { label: 'Lemonade', href: 'https://lemonade-server.ai/', emoji: '🍋' },
-  },
-  {
-    title: 'One model stays loaded',
-    body: 'Every agent and skill shares it, so switching between them costs nothing.',
-  },
-  {
-    title: 'It remembers instead of forgetting',
-    body: 'Memory and a local index of your files — not a summary of your history.',
-  },
-  {
-    title: 'Skills, not more installs',
-    body: 'Small signed packages the agent picks up and puts down while it runs.',
-  },
-  {
-    title: 'Tools snap together',
-    body: 'Files, web, SQL and search — one set every agent composes by name.',
-  },
-  {
-    title: 'No silent cloud fallback',
-    body: 'A cloud model is something you pick, never a default and never a fallback.',
-  },
-];
+// Die plot in a 400×400 box: CPU cores, GPU, memory, and the NPU, lit.
+const CORES = Array.from({ length: 8 }, (_, i) => ({ x: 70 + (i % 4) * 34, y: 78 + Math.floor(i / 4) * 40 }));
+const PINS = Array.from({ length: 11 }, (_, i) => 50 + i * 30);
 ---
 
 <Layout
-  title="GAIA — the open agent factory for AI PCs"
-  description="GAIA is AMD's open-source agent factory. Install the GAIA agent to work over your files, data and code locally on your PC, or build your own agent harness with skills, evals and an auto-fix loop."
+  title="GAIA — the agent for AI PCs"
+  description="GAIA is AMD's open-source AI agent for AI PCs. It runs on your own hardware, so your data stays on the machine."
 >
   <Header />
   <main id="main-content">
-    <!-- 1. Hero — what GAIA is, then the one install. -->
-    <section id="install" class="g-shell flex scroll-mt-[66px] flex-col items-center pb-20 pt-[128px] text-center sm:pb-28 sm:pt-[168px]">
-      <p class="g-eyebrow animate-g-rise">Open source · from AMD</p>
-
-      <h1 class="g-h-hero animate-g-rise mt-5 text-balance" style="animation-delay:0.04s">
-        <span class="sm:whitespace-nowrap">The agent factory</span>
-        for <span class="whitespace-nowrap text-g-accent-text">AI PCs.</span>
-      </h1>
-
-      <p class="g-lede animate-g-rise mt-6 max-w-[600px] text-center" style="animation-delay:0.08s">
-        GAIA uses coding-agent skills, evals and an auto-fix loop to build and improve
-        agent harnesses. The GAIA agent is the one it built to show what that can do.
-        Install it below, or <a href="#build" class="prose-link whitespace-nowrap">build your own&nbsp;<span aria-hidden="true">↓</span></a>
-      </p>
-
-      <Downloads class="animate-g-rise mt-10 [animation-delay:0.14s]" />
-      <ReleaseCandidate candidate={releaseCandidate} class="mt-6" />
-
-      <!-- What the install does to the machine, said before anyone downloads. -->
-      <ul class="mx-auto mt-10 grid w-full max-w-[720px] gap-x-8 gap-y-5 border-t border-g-border pt-8 text-left sm:grid-cols-3">
-        <li>
-          <h3 class="g-label">Runs locally</h3>
-          <p class="g-body mt-1.5 text-[13.5px]">
-            By default, on the NPU and GPU of an AMD Ryzen™ AI PC. It also runs on other
-            Windows, macOS and Linux machines.
+    <!-- 1. Hero. -->
+    <section id="install" class="hero relative scroll-mt-[66px] overflow-hidden">
+            <div class="g-shell relative grid items-center gap-x-16 gap-y-12 pb-24 pt-[120px] sm:pt-[156px] lg:grid-cols-[1.1fr_0.9fr] lg:pb-32">
+        <div class="min-w-0">
+          <p class="eyebrow animate-g-rise">Open source · from AMD</p>
+          <h1 class="hero-type animate-g-rise mt-6" style="animation-delay:0.05s">
+            The agent<br />for <span class="text-g-accent-text">AI&nbsp;PCs.</span>
+          </h1>
+          <p class="g-lede animate-g-rise mt-7" style="animation-delay:0.1s">
+            Runs on your own hardware. Your data stays on the machine, and there are no
+            token costs.
           </p>
-        </li>
-        <li>
-          <h3 class="g-label">First launch</h3>
-          <p class="g-body mt-1.5 text-[13.5px]">
-            Downloads a ~6&nbsp;GB model (~23&nbsp;GB on Ryzen&nbsp;AI&nbsp;Max, which runs the larger Qwen3.6).
-          </p>
-        </li>
-        <li>
-          <h3 class="g-label">Cloud is opt-in</h3>
-          <p class="g-body mt-1.5 text-[13.5px]">
-            Choose Fireworks AI with your own key and your chat goes to that provider.
-            Documents are still indexed on your PC.
-            <a href={`${DOCS}/guides/ai-providers`} target="_blank" rel="noopener noreferrer" class="prose-link whitespace-nowrap">How providers work</a>
-          </p>
-        </li>
-      </ul>
-    </section>
-
-    <!-- 2. The two audiences, equally weighted. -->
-    <section id="use-or-build" class="g-shell g-section scroll-mt-[66px] border-t border-g-border">
-      <h2 class="g-h-section max-w-[22ch] text-balance">Use the GAIA agent, or build your own.</h2>
-      <p class="g-lede-sm mt-4 max-w-[640px]">
-        Anyone can build an agent harness with GAIA. The GAIA agent is the one the project
-        ships, made with the same skills, evals and SDK you get.
-      </p>
-
-      <div class="mt-10 grid gap-[18px] md:grid-cols-2">
-        {AUDIENCES.map((a) => (
-          <section id={a.id} aria-labelledby={`${a.id}-title`} class="g-card scroll-mt-[86px] p-[22px] sm:p-[26px]">
-            <h3 id={`${a.id}-title`} class="g-h-card">{a.title}</h3>
-            <p class="g-body mt-2">{a.lede}</p>
-
-            <ul class="mt-6 divide-y divide-g-border border-t border-g-border">
-              {a.paths.map((p) => (
-                <li class="py-4 last:pb-0">
-                  <a
-                    href={p.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="group inline-flex items-baseline gap-2 text-[15px] font-semibold text-g-text transition-colors hover:text-g-accent-text"
-                  >
-                    {p.title}
-                    <span class="text-[13px] text-g-faint transition-colors group-hover:text-g-accent-text" aria-hidden="true">→</span>
-                  </a>
-                  <p class="g-body mt-1">{p.body}</p>
-                  {p.code && (
-                    /* Focusable: the command overflows at narrow widths, and a
-                       scroll region no keyboard user can reach hides its tail. */
-                    <div tabindex="0" role="region" aria-label={`Command: ${p.code}`} class="g-cmd-plain mt-3 overflow-x-auto text-[12px]">
-                      <span class="text-g-code-accent" aria-hidden="true">$</span>
-                      <code class="whitespace-nowrap bg-transparent p-0">{p.code}</code>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
-    </section>
-
-    <!-- 3. What the GAIA agent can do, and why it is built that way. One bullet
-         shape for both, so the page reads as one list, twice. -->
-    <section id="features" class="g-shell g-section scroll-mt-[66px] border-t border-g-border">
-      <h2 class="g-label mb-8">What the GAIA agent can do</h2>
-      <ul class="grid gap-x-12 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
-        {CAPABILITIES.map((f) => <Feature {...f} />)}
-      </ul>
-    </section>
-
-    <section id="architecture" class="g-shell g-section scroll-mt-[66px] border-t border-g-border">
-      <h2 class="g-label mb-8">Under the hood</h2>
-      <ul class="grid gap-x-12 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
-        {ARCHITECTURE.map((f) => <Feature {...f} />)}
-      </ul>
-    </section>
-
-    <!-- 4. The terminal install, for people who would rather not click a
-         download at all. -->
-    <section id="terminal-install" class="scroll-mt-[66px] border-t border-g-border">
-      <div class="g-shell py-16 text-center sm:py-[88px]">
-        <h2 class="g-h-cta mx-auto max-w-[720px]">Or install it from the terminal.</h2>
-        <p class="g-body mx-auto mt-4 max-w-[520px] text-[14.5px]">
-          Installs the <code class="mono text-g-text">gaia</code> CLI and the terminal agent,
-          <code class="mono text-g-text">gaia-tui</code>, checksum-verified.
-        </p>
-        <InstallCommand align="center" class="mt-8" />
-      </div>
-    </section>
-
-    <!-- 5. The open-source project: the ask to contribute, with the live
-         numbers and shipping cadence as its evidence. Stats come from GitHub
-         and npm at build time (website/src/data/github.ts); no bundled fixture. -->
-    <section id="contribute" class="border-t border-g-border bg-g-bg2">
-      <div class="g-shell grid gap-12 py-16 sm:py-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)] lg:gap-16">
-        <div>
-          <h2 class="g-h-band">Built in the open.</h2>
-          <p class="g-body mt-4 max-w-[520px] text-[14.5px] leading-[1.7]">
-            GAIA is MIT-licensed and developed on GitHub. Skills, evals, bug reports and
-            fixes are all welcome, and some issues are tagged for first-time contributors.
-          </p>
-
-          <div class="mt-7 flex flex-wrap items-center gap-4">
-            <a
-              href="https://github.com/amd/gaia"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="g-btn g-btn-secondary whitespace-nowrap"
-            >
-              <svg class="h-[17px] w-[17px] flex-none" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.341-3.369-1.341-.454-1.155-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
-              </svg>
-              Contribute on GitHub
-            </a>
-            <a
-              href="https://github.com/amd/gaia/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="g-cta-link"
-            >Good first issues<span aria-hidden="true">&rarr;</span></a>
-          </div>
-
-          <div id="stats" class="mt-12">
-            <h3 class="g-label mb-5">Live from GitHub &amp; npm</h3>
-            <StatBlock stats={STATS} />
-          </div>
         </div>
 
-        <div id="releases">
-          <h3 class="g-label mb-3">Recent releases</h3>
+        <figure class="chip animate-g-rise mx-auto w-full max-w-[440px] [animation-delay:0.24s]">
+          <svg viewBox="0 0 400 400" class="h-auto w-full overflow-visible" fill="none" role="img" aria-labelledby="chip-title">
+            <title id="chip-title">GAIA runs on the NPU of an AI PC</title>
+            <g class="text-g-border2" stroke="currentColor" stroke-linecap="round">
+              {PINS.map((p) => (
+                <>
+                  <line x1={p} y1="16" x2={p} y2="30" />
+                  <line x1={p} y1="370" x2={p} y2="384" />
+                  <line x1="16" y1={p} x2="30" y2={p} />
+                  <line x1="370" y1={p} x2="384" y2={p} />
+                </>
+              ))}
+            </g>
+            <rect x="30" y="30" width="340" height="340" rx="22" class="text-g-border2" stroke="currentColor" />
+            <g class="text-g-border2" stroke="currentColor">
+              {CORES.map((c) => <rect x={c.x} y={c.y} width="26" height="32" rx="4" />)}
+              <rect x="220" y="78" width="110" height="112" rx="8" />
+              <rect x="70" y="300" width="260" height="30" rx="8" />
+            </g>
+            <g class="text-g-faint" fill="currentColor" font-family="JetBrains Mono, monospace" font-size="9" letter-spacing="1.6">
+              <text x="70" y="68">CPU</text>
+              <text x="220" y="68">GPU</text>
+              <text x="70" y="293">MEMORY</text>
+            </g>
+            <g class="text-g-accent" stroke="currentColor" stroke-linecap="round">
+              <path class="trace" d="M160 236 H200 V214 H275 V190" />
+              <path class="trace" d="M115 272 V300" />
+              <path class="trace" d="M200 236 V255 H330 V300" />
+            </g>
+            <rect class="npu text-g-accent" x="70" y="200" width="90" height="72" rx="8" stroke="currentColor" fill="currentColor" />
+            <g class="text-g-accent-text" fill="currentColor" font-family="JetBrains Mono, monospace">
+              <text x="82" y="222" font-size="9" letter-spacing="1.6">NPU</text>
+              <text x="82" y="258" font-size="12">gaia</text>
+            </g>
+          </svg>
+          <figcaption class="eyebrow mt-4 text-center text-g-faint">GAIA runs here</figcaption>
+        </figure>
+
+        <div class="min-w-0 max-w-[720px] lg:col-span-2">
+          <Downloads class="animate-g-rise [animation-delay:0.16s]" />
+          <ReleaseCandidate candidate={releaseCandidate} class="mt-6" />
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. The agent at work. Illustrative, and labelled so. -->
+    <section class="g-shell pb-24 sm:pb-32" aria-label="Example" data-reveal>
+      <figure class="window mx-auto max-w-[880px]" data-typer>
+        <div class="flex items-center gap-2 px-5 py-3.5 text-g-code-faint">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="ml-3 font-mono text-[11px] uppercase tracking-[0.14em]">gaia</span>
+          <span class="ml-auto font-mono text-[11px] uppercase tracking-[0.14em]">Illustrative example</span>
+        </div>
+        <div class="flex min-h-[236px] flex-col gap-4 px-5 pb-7 pt-2 font-mono text-[13.5px] leading-[1.75] text-g-code-text sm:px-8">
+          {CHAT.map((l) => (
+            <p class:list={['line', `line-${l.kind}`]} data-line>
+              {l.kind === 'you' && <span class="text-g-code-accent">▶  </span>}
+              <span data-text>{l.text}</span>
+              {l.kind === 'ask' && (
+                <span class="ml-2 whitespace-nowrap"><span class="key">y</span> once &nbsp;<span class="key">n</span> deny</span>
+              )}
+            </p>
+          ))}
+        </div>
+      </figure>
+    </section>
+
+    <!-- 3. What it does. -->
+    <section id="features" class="g-shell scroll-mt-[66px] pb-24 sm:pb-32" data-reveal>
+      <p class="eyebrow">What it does</p>
+      <h2 class="section-type mt-5">Give it a task.<br /><span class="text-g-faint">Keep your data.</span></h2>
+      <ol class="mt-14 grid gap-5 md:grid-cols-3">
+        {WORK.map((w, i) => (
+          <li class="tile" style={`--i:${i}`}>
+            <span class="font-mono text-[12px] text-g-accent-text">0{i + 1}</span>
+            <h3 class="mt-10 font-display text-[22px] font-semibold tracking-[-0.02em] text-g-text">{w.title}</h3>
+            <p class="g-body mt-2.5 max-w-[32ch] text-[15px]">{w.body}</p>
+          </li>
+        ))}
+      </ol>
+    </section>
+
+    <!-- 4. For developers. Every command renders without JS; JS turns them into tabs. -->
+    <section id="developers" class="dev scroll-mt-[66px] py-24 sm:py-32" data-reveal>
+      <div class="g-shell grid items-start gap-14 lg:grid-cols-[0.9fr_1.1fr]">
+        <div>
+          <p class="eyebrow">For developers</p>
+          <h2 class="section-type mt-5">Script it.<br /><span class="text-g-faint">Build on it.</span></h2>
+          <p class="g-lede-sm mt-6 max-w-[420px]">Install from a terminal, add the SDK to your project, or run the agent inside your own app.</p>
+          <a href={`${DOCS}/guides/custom-agent`} target="_blank" rel="noopener noreferrer" class="g-cta-link mt-7 inline-flex">
+            Build your own agent<span aria-hidden="true">&rarr;</span>
+          </a>
+        </div>
+
+        <div class="window min-w-0" data-tabs>
+          <div class="flex gap-1 overflow-x-auto px-3 pt-3" role="tablist" aria-label="Install method">
+            {DEV.map((d, i) => (
+              <button type="button" role="tab" id={`tab-${d.id}`} aria-controls={`panel-${d.id}`} aria-selected={i === 0 ? 'true' : 'false'} class="tab" data-tab={d.id}>
+                {d.tab}
+              </button>
+            ))}
+          </div>
+          {DEV.map((d) => (
+            <div role="tabpanel" id={`panel-${d.id}`} aria-labelledby={`tab-${d.id}`} class="panel px-5 pb-6 pt-5 sm:px-7" data-panel={d.id}>
+              <p class="tab-fallback font-mono text-[11px] uppercase tracking-[0.14em] text-g-code-faint">{d.tab}</p>
+              <div class="flex items-center gap-3">
+                <div tabindex="0" class="min-w-0 flex-1 overflow-x-auto font-mono text-[14px] text-g-code-text">
+                  <span class="text-g-code-accent" aria-hidden="true">$ </span><code class="whitespace-nowrap bg-transparent p-0">{d.cmd}</code>
+                </div>
+                <button type="button" class="copy" data-copy={d.cmd} aria-label={`Copy: ${d.cmd}`}>Copy</button>
+              </div>
+              <p class="mt-4 text-[13.5px] leading-[1.6] text-g-code-faint">
+                {d.note} <a href={d.href} target="_blank" rel="noopener noreferrer" class="text-g-code-accent hover:underline">Docs ↗</a>
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Built in the open. -->
+    <section id="contribute" class="g-shell scroll-mt-[66px] py-24 sm:py-32" data-reveal>
+      <div class="grid gap-14 md:grid-cols-[1.1fr_0.9fr]">
+        <div>
+          <p class="eyebrow">Built in the open</p>
+          <p class="stars mt-6 font-display text-g-text" data-count={repoStats.stars}>{formatCount(repoStats.stars)}</p>
+          <p class="mt-1 font-mono text-[12px] uppercase tracking-[0.14em] text-g-faint">GitHub stars</p>
+          <p class="g-lede-sm mt-6 max-w-[420px]">MIT-licensed and developed on GitHub. Skills, fixes and bug reports are welcome.</p>
+          <a href="https://github.com/amd/gaia" target="_blank" rel="noopener noreferrer" class="g-btn g-btn-secondary mt-8 whitespace-nowrap">
+            Contribute on GitHub
+          </a>
+        </div>
+        <div>
+          <p class="eyebrow mb-4 text-g-faint">Recent releases</p>
           <ReleaseStream releases={RECENT_RELEASES} />
-          <a
-            href="https://github.com/amd/gaia/releases"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="g-cta-link mt-5"
-          >All releases on GitHub<span aria-hidden="true">&rarr;</span></a>
         </div>
       </div>
     </section>
   </main>
   <Footer />
 </Layout>
+
+<style>
+  .eyebrow {
+    font-family: 'JetBrains Mono', Consolas, monospace;
+    font-size: 11.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgb(var(--g-accent-text));
+  }
+
+  .hero-type {
+    font-family: 'Space Grotesk', Inter, system-ui, sans-serif;
+    font-size: clamp(3.1rem, 1.4rem + 7.2vw, 116px);
+    font-weight: 600;
+    line-height: 0.9;
+    letter-spacing: -0.05em;
+    color: rgb(var(--g-text));
+  }
+
+  .section-type {
+    font-family: 'Space Grotesk', Inter, system-ui, sans-serif;
+    font-size: clamp(2.3rem, 1.2rem + 4.2vw, 76px);
+    font-weight: 600;
+    line-height: 0.96;
+    letter-spacing: -0.045em;
+    color: rgb(var(--g-text));
+    text-wrap: balance;
+  }
+
+  .stars {
+    font-size: clamp(4rem, 2rem + 7vw, 128px);
+    font-weight: 600;
+    line-height: 0.9;
+    letter-spacing: -0.05em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .chip svg {
+    transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .chip:hover svg {
+    transform: perspective(900px) rotateX(6deg) rotateY(-8deg) scale(1.02);
+  }
+  .trace {
+    stroke-dasharray: 3 7;
+    animation: flow 1.4s linear infinite;
+  }
+  .npu {
+    fill-opacity: 0.14;
+    filter: drop-shadow(0 0 0 rgb(var(--g-accent) / 0));
+    animation: npu 2.6s ease-in-out infinite;
+  }
+
+  /* Windows: the example and the developer panel. Dark in both themes. */
+  .window {
+    border-radius: 18px;
+    background: rgb(var(--g-code-bg));
+    box-shadow:
+      0 0 0 1px rgb(var(--g-code-text) / 0.08),
+      0 40px 90px -40px rgb(var(--g-accent) / 0.45);
+  }
+  .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: rgb(var(--g-code-text) / 0.16);
+  }
+  .key {
+    display: inline-block;
+    min-width: 1.5em;
+    padding: 0 0.35em;
+    border-radius: 5px;
+    border: 1px solid rgb(var(--g-code-accent) / 0.5);
+    color: rgb(var(--g-code-accent));
+    text-align: center;
+  }
+  .line-tool,
+  .line-ask {
+    color: rgb(var(--g-code-faint));
+  }
+  .line-gaia {
+    color: rgb(var(--g-code-text));
+  }
+
+  .tile {
+    border-radius: 18px;
+    padding: 28px;
+    background: var(--g-surface);
+    border: 1px solid var(--g-border);
+    transition:
+      transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
+      border-color 0.3s;
+  }
+  .tile:hover {
+    transform: translateY(-4px);
+    border-color: var(--g-accent-dim);
+  }
+
+  .dev {
+    background: rgb(var(--g-bg2));
+  }
+  .tab {
+    border-radius: 9px;
+    padding: 7px 12px;
+    font-family: 'JetBrains Mono', Consolas, monospace;
+    font-size: 12px;
+    white-space: nowrap;
+    color: rgb(var(--g-code-faint));
+    transition:
+      background 0.2s,
+      color 0.2s;
+  }
+  .tab:hover {
+    color: rgb(var(--g-code-text));
+  }
+  .tab[aria-selected='true'] {
+    background: rgb(var(--g-code-text) / 0.08);
+    color: rgb(var(--g-code-text));
+  }
+  .copy {
+    flex: none;
+    border-radius: 8px;
+    border: 1px solid rgb(var(--g-code-text) / 0.16);
+    padding: 6px 12px;
+    font-family: 'JetBrains Mono', Consolas, monospace;
+    font-size: 12px;
+    color: rgb(var(--g-code-faint));
+    transition:
+      color 0.2s,
+      border-color 0.2s;
+  }
+  .copy:hover {
+    color: rgb(var(--g-code-text));
+    border-color: rgb(var(--g-code-accent) / 0.5);
+  }
+
+  /* Without JS every panel shows, labelled; with it, the tabs take over. */
+  [data-tabs] [role='tablist'] {
+    display: none;
+  }
+  :global(html.js) [data-tabs] [role='tablist'] {
+    display: flex;
+  }
+  :global(html.js) [data-tabs] .tab-fallback {
+    display: none;
+  }
+  :global(html.js) [data-tabs] .panel[hidden] {
+    display: none;
+  }
+
+  /* Scroll reveal, only once JS has marked the page; content is visible without it. */
+  :global(html.js) [data-reveal] {
+    opacity: 0;
+    transform: translateY(28px);
+    transition:
+      opacity 0.9s cubic-bezier(0.2, 0.7, 0.2, 1),
+      transform 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  :global(html.js) [data-reveal].in {
+    opacity: 1;
+    transform: none;
+  }
+  :global(html.js) [data-typer] .line {
+    opacity: 0;
+    transform: translateY(6px);
+    transition:
+      opacity 0.4s,
+      transform 0.4s;
+  }
+  :global(html.js) [data-typer] .line.on {
+    opacity: 1;
+    transform: none;
+  }
+
+  @keyframes flow {
+    to {
+      stroke-dashoffset: -20;
+    }
+  }
+  @keyframes npu {
+    50% {
+      fill-opacity: 0.3;
+      filter: drop-shadow(0 0 14px rgb(var(--g-accent) / 0.55));
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .trace,
+    .npu {
+      animation: none;
+    }
+    .chip:hover svg,
+    .tile:hover {
+      transform: none;
+    }
+    :global(html.js) [data-reveal],
+    :global(html.js) [data-typer] .line {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+  }
+</style>
+
+<script>
+  import { detectOs } from '../scripts/download-target';
+
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.documentElement.classList.add('js');
+
+  // Tabs.
+  document.querySelectorAll<HTMLElement>('[data-tabs]').forEach((root) => {
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>('[data-tab]')];
+    const panels = [...root.querySelectorAll<HTMLElement>('[data-panel]')];
+    const show = (id: string) => {
+      tabs.forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === id)));
+      panels.forEach((p) => (p.hidden = p.dataset.panel !== id));
+    };
+    tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.tab || '')));
+    root.querySelector('[role="tablist"]')?.addEventListener('keydown', (e) => {
+      const ev = e as KeyboardEvent;
+      if (ev.key !== 'ArrowRight' && ev.key !== 'ArrowLeft') return;
+      const i = tabs.findIndex((t) => t.getAttribute('aria-selected') === 'true');
+      const next = tabs[(i + (ev.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+      show(next.dataset.tab || '');
+      next.focus();
+    });
+    // A Mac or Linux visitor starts on the shell tab, Windows on PowerShell.
+    show(detectOs(navigator.userAgent) === 'win' ? 'ps' : tabs[0]?.dataset.tab || '');
+  });
+
+  // Copy buttons.
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(btn.dataset.copy || '');
+        btn.textContent = 'Copied';
+      } catch {
+        const code = btn.parentElement?.querySelector('code');
+        if (code) window.getSelection()?.selectAllChildren(code);
+        btn.textContent = 'Selected';
+      }
+      setTimeout(() => (btn.textContent = 'Copy'), 1600);
+    });
+  });
+
+  // The example conversation plays line by line when it comes into view.
+  const play = (root: Element) => {
+    const lines = [...root.querySelectorAll<HTMLElement>('[data-line]')];
+    lines.forEach((l, i) => setTimeout(() => l.classList.add('on'), reduce ? 0 : 350 + i * 650));
+  };
+
+  const reveal = (el: Element) => {
+    el.classList.add('in');
+    const typer = el.querySelector('[data-typer]');
+    if (typer) play(typer);
+  };
+  const targets = document.querySelectorAll('[data-reveal]');
+  // A page loaded where nothing is painted (a background tab, a link preview)
+  // shows everything rather than waiting for a scroll that never comes.
+  if ('IntersectionObserver' in window && document.visibilityState === 'visible') {
+    const io = new IntersectionObserver(
+      (entries) =>
+        entries.forEach((en) => {
+          if (en.isIntersecting) {
+            reveal(en.target);
+            io.unobserve(en.target);
+          }
+        }),
+      { threshold: 0, rootMargin: '0px 0px -12% 0px' },
+    );
+    targets.forEach((t) => io.observe(t));
+  } else {
+    targets.forEach(reveal);
+  }
+</script>
