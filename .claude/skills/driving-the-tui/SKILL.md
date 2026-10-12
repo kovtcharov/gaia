@@ -302,7 +302,8 @@ where `ask` types, submits, and blocks on `gone streaming`.
 - **Look at the picture, not just the text.** Render `screen?format=svg` in a
   browser and screenshot it; a doubled cursor, a leaked label, or a repeated line
   is invisible in a grep. A focused input must report exactly one entry in
-  `cursors`, with no bar glyph (`┃`, `│`) in its `left`.
+  `cursors`, with no bar glyph (`┃`, `│`) in its `left`. The cursor blinks, so
+  an empty `cursors` can be the off phase: poll briefly before calling it absent.
 - **`format=plain` strips ANSI** — but `format=ansi` does not, and it is the
   fastest way to settle a colour question. Count `\x1b` in the result: a styled
   frame returns dozens (a healthy header is
