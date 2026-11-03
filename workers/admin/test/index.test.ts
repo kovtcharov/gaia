@@ -1,6 +1,7 @@
 // Copyright(C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+import { memoryD1 } from "./d1";
 import { describe, expect, it } from "vitest";
 import worker from "../src/index";
 
@@ -42,13 +43,13 @@ describe("routing", () => {
 
 describe("maintainer accounts", () => {
   it("are read from MAINTAINER_LOGINS and offered as a Hide maintainers button", async () => {
-    const res = await worker.fetch(new Request("http://localhost:8787/admin/developers"), { ...env, MAINTAINER_LOGINS: "ann, bob-2" });
-    expect(await res.text()).toContain('var MINE=["ann","bob-2"];');
+    const res = await worker.fetch(new Request("http://localhost:8787/admin/developers"), { ...env, DB: memoryD1(), MAINTAINER_LOGINS: "ann, bob-2" });
+    expect(await res.text()).toContain('var MINE=["ann","bob-2"],CORE="ann,bob-2"');
   });
 
   it("default to none, so no personal account is baked into the page", async () => {
-    const html = await (await worker.fetch(new Request("http://localhost:8787/admin/developers"), env)).text();
-    expect(html).toContain("var MINE=[];");
+    const html = await (await worker.fetch(new Request("http://localhost:8787/admin/developers"), { ...env, DB: memoryD1() })).text();
+    expect(html).toContain('var MINE=[],CORE=""');
   });
 
   it("refuse anything that is not a GitHub login (nothing can be injected into the page)", async () => {
@@ -59,6 +60,16 @@ describe("maintainer accounts", () => {
 });
 
 describe("collect origin check", () => {
+  it("lets the dashboard's own Refresh button through, with or without a port in Origin", async () => {
+    const send = (origin: string) =>
+      worker.fetch(
+        new Request("http://localhost:8787/admin/api/collect?only=nope", { method: "POST", headers: { "x-admin-action": "collect", origin } }),
+        env,
+      );
+    expect((await send("http://localhost:8787")).status).toBe(400);
+    expect((await send("http://localhost")).status).toBe(400);
+  });
+
   it("answers 403, not 500, for Origin: null", async () => {
     expect((await post({ "x-admin-action": "collect", origin: "null" })).status).toBe(403);
   });

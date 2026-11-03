@@ -117,6 +117,12 @@ on:
         type: number
         default: 420
     secrets:
+      ADMIN_ACCESS_CLIENT_ID:
+        description: 'Cloudflare Access service token id for the admin dashboard. Optional: without it, results are not pushed.'
+        required: false
+      ADMIN_ACCESS_CLIENT_SECRET:
+        description: 'Cloudflare Access service token secret for the admin dashboard. Optional.'
+        required: false
       CLAUDE_CODE_OAUTH_TOKEN:
         description: 'Driver and judge credential. This or ANTHROPIC_API_KEY is required; the preflight fails without one.'
         required: false
@@ -1001,3 +1007,13 @@ jobs:
           path: eval-out
           if-no-files-found: warn
           retention-days: 14
+
+      # Its own step so the credential is never in the environment the agent ran in.
+      # Not a gate: the artifact above stays the record if the dashboard is down.
+      - name: Push this lane's results to the admin dashboard
+        if: always()
+        continue-on-error: true
+        env:
+          ADMIN_ACCESS_CLIENT_ID: ${{ secrets.ADMIN_ACCESS_CLIENT_ID }}
+          ADMIN_ACCESS_CLIENT_SECRET: ${{ secrets.ADMIN_ACCESS_CLIENT_SECRET }}
+        run: python util/push_eval_results.py --lane ${{ inputs.lane }}

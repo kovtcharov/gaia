@@ -10,13 +10,22 @@ The GAIA admin dashboard at `amd-gaia.ai/admin`, in five pages:
   `BENCHMARKS` in `src/growthpage.ts`).
 - **Developers** (`/admin/developers`): issues, pull requests, time to merge and close (median
   and P90), commits, lines of code, contributors (with a filter to hide chosen people or
-  bots), stars and forks.
+  bots), stars and forks, a sortable issue list (oldest, newest, most commented, recently
+  updated; third parties or core team; open or closed; no replies), and the core team editor.
 - **CI** (`/admin/ci`): run outcomes, unit-test counts, where CI time goes, per-workflow health.
 - **Evals** (`/admin/evals`): agent-eval pass rate per run and tier, tied to the commit, tag
   or branch measured; per-category and per-scenario results with regressions; SWE-bench.
 
 Headline numbers are coloured green, amber or red against thresholds stated in each
 card's info text, and amber or red ones are listed at the top of the page.
+
+**Refresh data**, top right on every page, reads every source now instead of waiting for
+the nightly job. It sends one request per source, so a slow source cannot time the others
+out, and any source that fails shows as a banner.
+
+The look is the website's own system (`docs/spec/gaia-design-language.mdx`, "The
+website"): dark-only, Antonio, Titillium Web and JetBrains Mono, black and AMD red. The
+one shape motif, a 45-degree cut, marks a number that is off target.
 
 Plan: [`docs/plans/admin-console.md`](../../docs/plans/admin-console.md); issue:
 [#1821](https://github.com/amd/gaia/issues/1821). No client telemetry: everything comes
@@ -93,11 +102,12 @@ npx wrangler secret put GITHUB_TOKEN        # paste the token when asked
 npx wrangler secret put MAINTAINER_LOGINS   # comma-separated, + joins one person's accounts: alice+alice-amd,bob
 ```
 
-`MAINTAINER_LOGINS` drives the Developers page's "Hide maintainers" button, so the
-team's own work can be set aside to see outside contributions, and defines the core team
-on the Growth page (with GitHub organisation members and collaborators). It is kept out of the
-repo on purpose; leave it unset and the button does not appear, and anyone outside the
-organisation counts as an outside contributor.
+The core team is edited on the Developers page, and `MAINTAINER_LOGINS` is optional:
+its entries are shown there as fixed, so move them to the page and delete the secret to
+manage everyone in one place. The list drives the "Hide maintainers" button and, with
+GitHub organisation members and collaborators, decides who is a third party. Accounts
+joined with `+` count as one developer everywhere: bus factor, commit authors and the
+contributor list.
 
 ### 4. Set up the email-code sign-in
 
@@ -136,6 +146,22 @@ ACCESS_AUD = "<the AUD tag>"
 
 Until both are set, the Worker answers 500 to every request rather than serving the
 dashboard unauthenticated. Neither value is a secret.
+
+### 4b. Let CI push eval results
+
+Eval lanes push their results as they finish (`util/push_eval_results.py`), so a run
+appears while it is going and does not depend on the nightly artifact read. They sign in
+with the same service token as step 4.5, so `POST /admin/api/ingest/evals` needs no key of
+its own. Add it to the repository as two Actions secrets:
+
+```bash
+gh secret set ADMIN_ACCESS_CLIENT_ID -R amd/gaia
+gh secret set ADMIN_ACCESS_CLIENT_SECRET -R amd/gaia
+```
+
+Without them the step prints a notice and the run carries on. Only scores and timings are
+sent; transcripts stay in the artifact. A pushed run shows as "running" until the next
+collection reads its artifacts and records how it finished.
 
 ### 5. Deploy
 
@@ -194,6 +220,7 @@ shows the last result of each source.
 | The page loads without asking to sign in | The Access application does not cover the path; check both `admin` and `admin/*` |
 | 403 "send the header 'x-admin-action: collect'" | The collect call is missing that header |
 | Collection fails with HTTP 403/429 from GitHub | `GITHUB_TOKEN` missing, expired, or lacking Actions read |
+| `evals` or `tests` fail with HTTP 403 while everything else works | Listing runs needs no special access, but artifacts and job logs need Actions read. A fine-grained token on an organisation repository must also be approved by the organisation; replace it with `wrangler secret put GITHUB_TOKEN` |
 
 ## Things to know
 
@@ -225,7 +252,8 @@ shows the last result of each source.
   that finished. A re-run of failed lanes keeps the run id; the collector re-reads it when
   GitHub reports a newer attempt.
 - Each collection downloads at most 40 new or changed eval runs, newest first across the
-  workflows; the rest wait for the next night (artifacts last 14 days, so the nightly job
+  workflows with pull-request runs last, so SWE-bench's per-PR runs cannot crowd out
+  flagship results; the rest wait for the next night (artifacts last 14 days, so the nightly job
   catches up well within that). With `full=1` every run is re-read, the ones read longest ago
   first, so repeating the call works through all of them. A stored run whose artifacts have
   since expired keeps its stored results and is not reported as a failure.

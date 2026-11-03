@@ -177,6 +177,15 @@ jobs:
           path: ${{ env.OUT }}
           if-no-files-found: warn
 
+      # Pull-request smoke runs stay out: three tasks on every PR would only add noise.
+      - name: Push the results to the admin dashboard
+        if: always() && steps.model.outputs.ready == 'true' && github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          ADMIN_ACCESS_CLIENT_ID: ${{ secrets.ADMIN_ACCESS_CLIENT_ID }}
+          ADMIN_ACCESS_CLIENT_SECRET: ${{ secrets.ADMIN_ACCESS_CLIENT_SECRET }}
+        run: python util/push_eval_results.py --lane swebench --results-dir "${{ env.OUT }}"
+
       - name: Stop Lemonade
         # Only once a start was attempted: an earlier failure (no key, no install)
         # leaves no `gaia` on PATH, and a second red step buries the real cause.

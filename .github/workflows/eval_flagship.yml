@@ -2429,6 +2429,16 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      # Its own step so the credential is never in the environment the agent ran in.
+      # Not a gate: the artifact above stays the record if the dashboard is down.
+      - name: Push this lane's results to the admin dashboard
+        if: always()
+        continue-on-error: true
+        env:
+          ADMIN_ACCESS_CLIENT_ID: ${{ secrets.ADMIN_ACCESS_CLIENT_ID }}
+          ADMIN_ACCESS_CLIENT_SECRET: ${{ secrets.ADMIN_ACCESS_CLIENT_SECRET }}
+        run: python util/push_eval_results.py --lane ${{ matrix.lane }}
+
   # Nothing else sees the whole run. Each lane knows only its own categories, and
   # a lane whose machine died reports nothing at all - which on the Actions page
   # is a red X easy to read as "one flaky lane" rather than "those categories

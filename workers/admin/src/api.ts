@@ -31,6 +31,7 @@ import {
   type EvalScenarioRow,
 } from "./evalstats";
 import { activity, isExternal, downloadPeriods, downloadWindows, growthPeriods, growthWindow, newcomerRetention, per30, RETURN_DAYS, type DownloadDay } from "./growth";
+import { issueList, parseIssueQuery, type IssueRow } from "./issues";
 import { ciStats, dailyDeltas, releaseDownloads, type AssetRow, type ReleaseRow, type RunRow } from "./stats";
 
 const json = (body: unknown, status = 200): Response =>
@@ -181,13 +182,25 @@ export async function handleApi(db: D1Database, path: string, url: URL): Promise
   if (path === "/api/momentum") {
     const people = parsePeople(url.searchParams);
     const keep = keepAuthor(people);
-    const allItems = await all<ItemRow>("SELECT kind, created_at, closed_at, merged_at, assoc, author FROM items");
-    const allCommits = await all<CommitRow>("SELECT day, at, author FROM commits");
-    const weekly = await all<{ author: string; week: string; commits: number; additions: number; deletions: number }>(
+    // core=alice+alice-work,bob: accounts joined with + count as one developer in every number below.
+    const alias = new Map((url.searchParams.get("core") ?? "").split(",").flatMap((g) => {
+      const accounts = g.split("+").map((x) => x.trim()).filter(Boolean);
+      return accounts.map((l) => [l.toLowerCase(), accounts[0]!] as [string, string]);
+    }));
+    const person = <T extends { author?: string | null }>(r: T): T => {
+      const to = r.author ? alias.get(r.author.toLowerCase()) : undefined;
+      return to ? { ...r, author: to } : r;
+    };
+    const rawItems = await all<ItemRow>("SELECT kind, created_at, closed_at, merged_at, assoc, author FROM items");
+    const rawCommits = await all<CommitRow>("SELECT day, at, author FROM commits");
+    const rawWeekly = await all<{ author: string; week: string; commits: number; additions: number; deletions: number }>(
       "SELECT author, week, commits, additions, deletions FROM contributor_weekly",
     );
-    const items = allItems.filter((i) => keep(i.author));
-    const commits = allCommits.filter((c) => keep(c.author));
+    const allItems = rawItems.map(person);
+    const allCommits = rawCommits.map(person);
+    const weekly = rawWeekly.map(person);
+    const items = rawItems.filter((i) => keep(i.author)).map(person);
+    const commits = rawCommits.filter((c) => keep(c.author)).map(person);
     base = (await collectedAt("issues", "commits")) ?? base;
     const until = new Date(base).toISOString();
     const since = sinceIso(days);
@@ -197,7 +210,7 @@ export async function handleApi(db: D1Database, path: string, url: URL): Promise
     // Lines per week: GitHub's repository total, or the sum over the people kept when anyone is filtered out.
     const filtered = people.exclude.size > 0 || !people.bots;
     const loc = filtered
-      ? [...weekly.filter((w) => keep(w.author)).reduce((m, w) => {
+      ? [...rawWeekly.filter((w) => keep(w.author)).reduce((m, w) => {
           const v = m.get(w.week) ?? { week: w.week, additions: 0, deletions: 0 };
           v.additions += w.additions;
           v.deletions += w.deletions;
@@ -231,6 +244,18 @@ export async function handleApi(db: D1Database, path: string, url: URL): Promise
     });
   }
 
+
+  if (path === "/api/issues") {
+    let q;
+    try {
+      q = parseIssueQuery(url.searchParams);
+    } catch (e) {
+      return json({ error: (e as Error).message }, 400);
+    }
+    const core = new Set((url.searchParams.get("core") ?? "").split(/[,+]/).map((x) => x.trim().toLowerCase()).filter(Boolean));
+    const rows = await all<IssueRow>("SELECT number, created_at, closed_at, updated_at, assoc, author, title, comments, labels FROM items WHERE kind = 'issue'");
+    return json(issueList(rows, q, core));
+  }
 
   if (path === "/api/ci") {
     base = (await collectedAt("runs")) ?? base;

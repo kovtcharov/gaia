@@ -62,8 +62,12 @@ interface GhItem {
   number: number;
   user: { login: string } | null;
   created_at: string;
+  updated_at: string;
   closed_at: string | null;
   author_association: string;
+  title: string;
+  comments: number;
+  labels: (string | { name?: string })[];
   pull_request?: { merged_at: string | null };
 }
 
@@ -79,8 +83,9 @@ export async function collectItems(env: CollectEnv, f: Fetcher, sinceDay?: strin
   );
   await writeAtomic(
     env.DB,
-    insertMany(env.DB, "items", ["number", "kind", "created_at", "closed_at", "merged_at", "assoc", "author"],
-      list.map((i) => [i.number, i.pull_request ? "pr" : "issue", i.created_at, i.closed_at, i.pull_request?.merged_at ?? null, i.author_association, i.user?.login ?? null])),
+    insertMany(env.DB, "items", ["number", "kind", "created_at", "closed_at", "merged_at", "assoc", "author", "title", "comments", "updated_at", "labels"],
+      list.map((i) => [i.number, i.pull_request ? "pr" : "issue", i.created_at, i.closed_at, i.pull_request?.merged_at ?? null, i.author_association, i.user?.login ?? null,
+        i.title, i.comments, i.updated_at, JSON.stringify((i.labels ?? []).map((l) => (typeof l === "string" ? l : l.name)).filter(Boolean))])),
   );
   return `${list.length} issues and PRs${sinceDay ? ` updated since ${sinceDay}` : " (full history)"}`;
 }

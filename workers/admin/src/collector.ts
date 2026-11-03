@@ -273,7 +273,8 @@ export async function collectAll(
     ["repo", () => collectRepo(env, f, day)],
     ["stars", () => collectStars(env, f)],
     ["forks", () => collectForks(env, f)],
-    ["issues", async () => collectItems(env, f, opts.fullHistory ? undefined : await sinceLastSuccess(env.DB, "issues"))],
+    // Rows stored before titles and comments were collected need one full read.
+    ["issues", async () => collectItems(env, f, opts.fullHistory || (await env.DB.prepare("SELECT 1 FROM items WHERE updated_at IS NULL LIMIT 1").first()) ? undefined : await sinceLastSuccess(env.DB, "issues"))],
     ["commits", async () => collectCommits(env, f, opts.fullHistory ? undefined : await sinceLastSuccess(env.DB, "commits"))],
     ["code stats", () => collectCodeStats(env, f)],
     ["package history", () => collectPackageHistory(env, f, now)],

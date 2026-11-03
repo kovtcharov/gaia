@@ -17,7 +17,7 @@ import { getJson, ghHeaders, githubDownload, insertMany, writeAtomic, type Colle
 import { listZip, readText } from "./zip";
 
 /** Workflows whose artifacts carry eval scorecards, by workflow file. */
-export const EVAL_WORKFLOWS = ["eval_flagship.yml", "test_gaia_agent_eval.yml", "eval_swebench.yml"];
+export const EVAL_WORKFLOWS = ["eval_flagship.yml", "eval_flagship_gemma_stx.yml", "test_gaia_agent_eval.yml", "eval_swebench.yml"];
 
 const WANTED = /(^|\/)(scorecard\.json|lane-status\.json|lane-timing\.json|tier\.json)$/;
 // Well under the Worker's 128 MB memory limit: the zip and its inflated files are both held in memory.
@@ -91,7 +91,7 @@ export function parseAgentScorecard(sc: AgentScorecard, dirCategory: string, lan
       input_tokens: num(perf.total_input_tokens),
       output_tokens: num(perf.total_output_tokens),
       tool_calls: num(perf.total_tool_calls) ?? num(tools.total_tool_calls),
-      turns: Array.isArray(s.turns) ? s.turns.length : null,
+      turns: Array.isArray(s.turns) ? s.turns.length : num(s.turns),
       root_cause: short(s.root_cause),
       kind: "scenario",
     };
@@ -186,6 +186,16 @@ export const EVAL_ARTIFACT_DAYS = 14;
 /** New or changed runs downloaded per invocation; the rest wait for the next run (artifacts last 14 days). */
 const MAX_RUNS_PER_INVOCATION = 40;
 
+/** GitHub lets any token list runs but needs Actions read to download from them. */
+export class TokenError extends Error {
+  constructor() {
+    super(
+      "GitHub refused to download eval artifacts (HTTP 403). GITHUB_TOKEN needs Actions read on the repository: replace it " +
+        "with wrangler secret put GITHUB_TOKEN (see workers/admin/README.md). Results pushed from CI still arrive.",
+    );
+  }
+}
+
 export async function collectEvals(env: CollectEnv, f: Fetcher, days: number, today: Date, refresh = false): Promise<string> {
   const since = new Date(today.getTime() - days * 86_400_000).toISOString().slice(0, 10);
   // Stored attempt per run: a re-run of failed lanes keeps the run id but bumps the attempt.
@@ -211,9 +221,11 @@ export async function collectEvals(env: CollectEnv, f: Fetcher, days: number, to
     }
     todo.push(...runs.filter((r) => r.conclusion !== "skipped" && (refresh || known.get(r.id) !== r.run_attempt)));
   }
-  // Newest first across all workflows, so the cap never holds recent results back for old ones.
+  // Pull-request runs go last: SWE-bench runs on nearly every PR and would otherwise fill the cap
+  // night after night while flagship results expire. Within that, newest first.
   // A refresh starts with the runs read longest ago, so repeated refreshes work through every run.
-  todo.sort((a, b) => (refresh ? (readAt.get(a.id) ?? "").localeCompare(readAt.get(b.id) ?? "") : 0) || b.created_at.localeCompare(a.created_at));
+  const prLast = (r: GhRun) => (r.event === "pull_request" ? 1 : 0);
+  todo.sort((a, b) => (refresh ? (readAt.get(a.id) ?? "").localeCompare(readAt.get(b.id) ?? "") : prLast(a) - prLast(b)) || b.created_at.localeCompare(a.created_at));
   for (const run of todo) {
     if (attempted >= MAX_RUNS_PER_INVOCATION) {
       deferred++;
@@ -227,7 +239,7 @@ export async function collectEvals(env: CollectEnv, f: Fetcher, days: number, to
         { headers: ghHeaders(env) },
       );
       const unusable = arts.artifacts.filter((a) => a.expired || a.size_in_bytes > MAX_ARTIFACT_BYTES);
-      if (unusable.length && known.get(run.id) === run.run_attempt) {
+      if (unusable.length && (known.get(run.id) === run.run_attempt || known.get(run.id) === 0)) {
         // Already stored from when its artifacts were readable; a refresh keeps that data.
         kept++;
         continue;
@@ -242,6 +254,7 @@ export async function collectEvals(env: CollectEnv, f: Fetcher, days: number, to
       const parsed: ParsedArtifact[] = [];
       for (const a of arts.artifacts) {
         const res = await githubDownload(env, f, `https://api.github.com/repos/${env.GITHUB_REPO}/actions/artifacts/${a.id}/zip`);
+        if (res.status === 403) throw new TokenError();
         if (!res.ok) throw new Error(`Downloading artifact "${a.name}" of run ${run.id} returned HTTP ${res.status}.`);
         try {
           parsed.push(await parseArtifact(new Uint8Array(await res.arrayBuffer())));
@@ -281,6 +294,8 @@ export async function collectEvals(env: CollectEnv, f: Fetcher, days: number, to
       runsRead++;
       scenarios += rows.length;
     } catch (e) {
+      // A token problem fails every run the same way, so say it once and stop spending the night's requests.
+      if (e instanceof TokenError) throw e;
       // One unreadable run must not stop the others; it is retried next night and reported below.
       failures.push((e as Error).message);
     }
