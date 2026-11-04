@@ -12,6 +12,8 @@
  * Must run before `remarkSoftBreaks`, whose split text nodes carry no source position.
  */
 
+import { findWindowsPaths, type PathSpan } from './windowsPaths';
+
 interface MdNode {
     type: string;
     value?: string;
@@ -23,15 +25,34 @@ interface MdNode {
  * A drive or UNC path in markdown source, up to whitespace, a quote, backtick,
  * `]`, a char Windows forbids, or a `)` that closes no `(` inside the path.
  * An escaped `\*` stays in, so a glob like `C:\logs\*.txt` keeps its backslash;
- * a bare `*` ends the path so emphasis around it still parses.
+ * a bare `*` ends the path so emphasis around it still parses. A path with spaces
+ * is extended past the first space by `findWindowsPaths`.
  */
 const RAW_WIN_PATH_RE = /(?:(?<![A-Za-z0-9])[A-Za-z]:\\|\\\\[A-Za-z0-9_.$-]+\\)(?:\\\*|[^\s"`()\]<>|*]|\((?:\\\*|[^\s"`()\]<>|*])*\))*/g;
 
 const ESCAPE_RE = /\\([!-/:-@[-`{-~])/g;
 
+/** Escaped chars that end a path segment; masked (same length) so the spaced-path scan reads past them. */
+const SEGMENT_ENDING_ESCAPE_RE = /\\[*\]]/g;
+
 /** What CommonMark makes of a path's source text: each `\` + punctuation becomes the punctuation. */
 function unescaped(raw: string): string {
     return raw.replace(ESCAPE_RE, '$1');
+}
+
+/** Path spans in markdown source: the escape-aware regex merged with the spaced-path scan. */
+function rawPathSpans(raw: string): PathSpan[] {
+    const spans: PathSpan[] = [
+        ...Array.from(raw.matchAll(RAW_WIN_PATH_RE), (m) => ({ start: m.index, end: m.index + m[0].length })),
+        ...findWindowsPaths(raw.replace(SEGMENT_ENDING_ESCAPE_RE, '\\x')),
+    ].sort((a, b) => a.start - b.start);
+    const merged: PathSpan[] = [];
+    for (const span of spans) {
+        const last = merged[merged.length - 1];
+        if (last && span.start < last.end) last.end = Math.max(last.end, span.end);
+        else merged.push({ ...span });
+    }
+    return merged;
 }
 
 function restorePaths(node: MdNode, source: string): void {
@@ -44,8 +65,8 @@ function restorePaths(node: MdNode, source: string): void {
 
         let value = node.value;
         let cursor = 0;
-        for (const match of raw.matchAll(RAW_WIN_PATH_RE)) {
-            const token = match[0];
+        for (const { start: from, end: to } of rawPathSpans(raw)) {
+            const token = raw.slice(from, to);
             const shown = unescaped(token);
             if (shown === token) {
                 // Step past it, or a later path's display form could match here instead.

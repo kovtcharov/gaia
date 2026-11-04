@@ -84,3 +84,39 @@ describe('prose after a path', () => {
         expect(chips()).toEqual(['C:\\a\\Q3 report.txt', 'C:\\b\\Q4 report.txt']);
     });
 });
+
+describe('markdown escapes inside a path', () => {
+    it.each([
+        ['an underscore after a spaced folder', 'C:\\My Docs\\_drafts\\plan.md'],
+        ['an asterisk after a spaced folder', 'C:\\My Docs\\*.txt'],
+        ['a bracket after a spaced folder', 'C:\\My Docs\\[old]\\plan.md'],
+        ['an underscore without a space', 'C:\\Docs\\_drafts\\plan.md'],
+        ['an asterisk without a space', 'C:\\logs\\*.txt'],
+        ['a bracket without a space', 'C:\\Docs\\[old]\\plan.md'],
+        ['an underscore in a spaced UNC path', '\\\\nas\\team share\\_drafts\\Q3 report.pdf'],
+    ])('keeps %s', (_label, path) => {
+        for (const role of ['user', 'assistant'] as const) {
+            const { unmount } = renderMessage(`Open ${path} now.`, role);
+            expect(document.querySelector('.md-content')?.textContent).toBe(`Open ${path} now.`);
+            unmount();
+        }
+    });
+
+    it.each(['C:\\My Docs\\_drafts\\plan.md', 'C:\\My Docs\\*.txt', 'C:\\My Docs\\[old]\\plan.md'])(
+        'keeps backticked %s as typed',
+        (path) => {
+            renderMessage(`Saved to \`${path}\`.`);
+            expect(document.querySelector('.md-content')?.textContent).toBe(`Saved to ${path}.`);
+        },
+    );
+
+    it('links the whole spaced path with an underscore folder', () => {
+        renderMessage('Open C:\\My Docs\\_drafts\\plan.md now.');
+        expect(chips()).toEqual(['C:\\My Docs\\_drafts\\plan.md']);
+    });
+
+    it('still reads escapes outside a path', () => {
+        renderMessage('Use \\_name\\_ and C:\\My Docs\\_drafts\\plan.md here.');
+        expect(document.querySelector('.md-content')?.textContent).toBe('Use _name_ and C:\\My Docs\\_drafts\\plan.md here.');
+    });
+});
