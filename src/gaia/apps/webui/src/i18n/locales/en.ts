@@ -130,6 +130,7 @@ export const enMessages = {
     'composer.memoryOn': 'Memory on',
     'composer.memoryOff': 'Memory off',
     'composer.memoryUnknown': 'Memory unknown',
+    'modelPicker.useCloud': 'Use {name}',
     'composer.memoryOffTitle': 'Memory is off in Settings, so no chat is saved to memory',
     'composer.memoryUnknownTitle': "Couldn't read the memory setting. Turn on private chat to keep this chat out of memory either way.",
     'composer.privateOn': 'Turn on private chat',

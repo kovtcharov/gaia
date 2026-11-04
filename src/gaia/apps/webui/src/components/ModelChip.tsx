@@ -1,7 +1,7 @@
 // Copyright(C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { Fragment, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { AlertCircle, Check, ChevronDown, Cloud, Cpu, Download, HelpCircle, KeyRound, Link2, Loader2 } from 'lucide-react';
 import { Popover } from './Popover';
 import './ModelPicker.css';
@@ -12,6 +12,7 @@ import {
 } from '../stores/modelStore';
 import { STATE_LABELS, isDownloading, modelState, placementText } from './modelMeta';
 import { InfoBubble } from './InfoBubble';
+import { useT } from '../i18n/useT';
 import { formatPrice } from './settings/cloudPrice';
 import type { ProviderInfo, ProviderModel } from '../types';
 
@@ -112,6 +113,8 @@ export function ModelChip() {
     const close = useCallback(() => setOpen(false), []);
     // Set when a fresh list lands after opening, so focus moves to the current model once.
     const focusOnLoad = useRef(false);
+    const consent = useRef<HTMLDivElement>(null);
+    const t = useT();
 
     const load = useCallback(async (quiet = false) => {
         if (!quiet) {
@@ -159,11 +162,19 @@ export function ModelChip() {
         row.scrollIntoView?.({ block: 'nearest' });
     }, [open, groups]);
 
+    // The cloud notice opens under the clicked row; bring it into view and onto its Use button.
+    useEffect(() => {
+        if (!pendingCloud || !consent.current) return;
+        consent.current.scrollIntoView?.({ block: 'nearest' });
+        consent.current.querySelector<HTMLElement>('button')?.focus();
+    }, [pendingCloud]);
+
     const onListKey = (e: KeyboardEvent<HTMLDivElement>) => {
         if (e.altKey || e.ctrlKey || e.metaKey) return;
         const rows = Array.from(list.current?.querySelectorAll<HTMLElement>('[role="option"]:not(:disabled)') ?? []);
         if (!rows.length) return;
-        const at = rows.indexOf(document.activeElement as HTMLElement);
+        const inConsent = !!consent.current?.contains(document.activeElement);
+        const at = rows.findIndex((r) => (inConsent ? r.dataset.row === pendingCloud?.model : r === document.activeElement));
         let next: number;
         switch (e.key) {
             case 'ArrowDown': next = at < 0 ? 0 : Math.min(at + 1, rows.length - 1); break;
@@ -389,7 +400,8 @@ export function ModelChip() {
                             const details = modelDetails(m, provider.remote);
                             const infoId = `${listId}-info-${provider.id}-${m.id}`;
                             return (
-                                <div key={m.id} className="popover-row">
+                                <Fragment key={m.id}>
+                                <div className="popover-row">
                                     <button
                                         type="button"
                                         className="popover-item"
@@ -444,19 +456,20 @@ export function ModelChip() {
                                         )}
                                     </span>
                                 </div>
+                                {pendingCloud?.model === m.id && pendingCloud.provider.id === provider.id && (
+                                    <div ref={consent} className="popover-message" role="alert">
+                                        {pendingCloud.provider.privacy_notice}{' '}
+                                        <button type="button" className="link-btn" onClick={() => choose(pendingCloud.model, pendingCloud.provider)}>
+                                            {t('modelPicker.useCloud', { name: displayModelName(pendingCloud.model) })}
+                                        </button>
+                                    </div>
+                                )}
+                                </Fragment>
                             );
                         })}
                     </div>
                 ))}
                 </div>
-                )}
-                {pendingCloud && (
-                    <div className="popover-message" role="alert">
-                        {pendingCloud.provider.privacy_notice}{' '}
-                        <button type="button" className="link-btn" onClick={() => choose(pendingCloud.model, pendingCloud.provider)}>
-                            Use {displayModelName(pendingCloud.model)}
-                        </button>
-                    </div>
                 )}
                 {unavailable > 0 && (
                     <button

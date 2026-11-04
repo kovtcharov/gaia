@@ -130,6 +130,7 @@ const messages: Messages = {
     'composer.memoryOn': 'الذاكرة مفعّلة',
     'composer.memoryOff': 'الذاكرة متوقفة',
     'composer.memoryUnknown': 'حالة الذاكرة غير معروفة',
+    'modelPicker.useCloud': 'استخدم {name}',
     'composer.memoryOffTitle': 'الذاكرة متوقفة في الإعدادات، لذا لا تُحفظ أي محادثة في الذاكرة',
     'composer.memoryUnknownTitle': 'تعذّرت قراءة إعداد الذاكرة. فعّل المحادثة الخاصة لإبقاء هذه المحادثة خارج الذاكرة في كل الأحوال.',
     'composer.privateOn': 'تفعيل المحادثة الخاصة',

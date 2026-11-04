@@ -194,6 +194,34 @@ describe('ModelChip', () => {
         expect(screen.getByRole('button', { name: /kimi-k2 · Fireworks AI/ })).toBeInTheDocument();
     });
 
+    it('shows the cloud notice right under the clicked row, with its Use button focused', async () => {
+        const scroll = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+        try {
+            mockedApi.listProviderModels.mockImplementation(async (id) => ({
+                provider: id,
+                models: id === 'local'
+                    ? [model('Gemma-4-E4B-it-GGUF')]
+                    : ['kimi-k2', 'deepseek-v4p1-flash', 'glm-5'].map((m) => model(`fireworks.accounts/fireworks/models/${m}`)),
+            }));
+            render(<ModelChip />);
+            const dialog = await openPicker();
+            const row = await within(dialog).findByRole('option', { name: /^deepseek-v4p1-flash/ });
+            fireEvent.click(row);
+
+            const notice = within(dialog).getByRole('alert');
+            expect(row.closest('.popover-row')?.nextElementSibling).toBe(notice);
+            const use = within(notice).getByRole('button', { name: 'Use deepseek-v4p1-flash' });
+            await waitFor(() => expect(use).toHaveFocus());
+            expect(scroll.mock.contexts).toContain(notice);
+
+            // Arrow keys from the notice move back through the list from the clicked row.
+            fireEvent.keyDown(use, { key: 'ArrowUp' });
+            expect(within(dialog).getByRole('option', { name: /^kimi-k2/ })).toHaveFocus();
+        } finally {
+            scroll.mockRestore();
+        }
+    });
+
     it('switches between local models without a notice', async () => {
         mockedApi.listProviderModels.mockImplementation(async (id) => ({
             provider: id, models: id === 'local' ? [model('Gemma-4-E4B-it-GGUF'), model('Qwen3-8B-GGUF')] : [],
