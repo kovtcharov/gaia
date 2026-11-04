@@ -822,6 +822,34 @@ def test_a_cloud_models_own_window_comes_from_the_catalog(window, monkeypatch):
     assert usage["tokenizer"]["exact"] is False
 
 
+def test_a_cloud_model_missing_from_the_catalog_reports_an_unknown_window(
+    window, monkeypatch
+):
+    from gaia.llm import lemonade_client
+
+    monkeypatch.setattr(lemonade_client, "cloud_model_info", lambda m: None)
+    usage = turn_insights.measure_context(_agent(), TURNS, CLOUD)
+    assert "model_window" in usage and usage["model_window"] is None
+
+
+def test_a_turns_streamed_measurement_carries_the_cloud_models_window(monkeypatch):
+    from gaia.llm import lemonade_client
+
+    monkeypatch.setattr(
+        lemonade_client, "cloud_model_info", lambda m: {"ctx_size": 1048576}
+    )
+    database = ChatDatabase(":memory:")
+    sid = database.create_session()["id"]
+    emitted = []
+    agent = SimpleNamespace(model_id=CLOUD, system_prompt="small")
+    helpers._restore_model_history(
+        agent, database, sid, "q", SimpleNamespace(_emit=emitted.append)
+    )
+    database.close()
+    usage = next(e for e in emitted if e["type"] == "context_usage")
+    assert usage["model_window"] == 1048576
+
+
 def test_context_says_why_when_an_answered_chat_has_no_agent_in_memory(db):
     sid = db.create_session(model="Gemma-4-E4B-it-GGUF")["id"]
     db.add_message(sid, "user", "hi")

@@ -86,6 +86,13 @@ def cloud_model_window(model_id: Optional[str]) -> Optional[int]:
     return None
 
 
+def with_model_window(usage: Dict[str, Any], model_id: Optional[str]) -> Dict[str, Any]:
+    """Add a cloud model's own window to *usage*; ``None`` when the catalog lacks it."""
+    if where_model_runs(model_id) not in ("local", None):
+        usage["model_window"] = cloud_model_window(model_id)
+    return usage
+
+
 def _same_model(a: Optional[str], b: Optional[str]) -> bool:
     def bare(name: Optional[str]) -> str:
         name = (name or "").lower()
@@ -165,8 +172,7 @@ def measure_context(
 
     if where_model_runs(model_id) not in ("local", None):
         usage = estimate("The cloud model's tokenizer is not available here.")
-        usage["model_window"] = cloud_model_window(model_id)
-        return usage
+        return with_model_window(usage, model_id)
     base_url, headers = _lemonade()
     try:
         loaded = _loaded_chat_model(base_url, headers)

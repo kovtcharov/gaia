@@ -2321,9 +2321,11 @@ def _restore_model_history(
         )
 
     if sse_handler is not None:
-        sse_handler._emit(
-            {"type": "context_usage", **context_usage(agent, turns, query)}
-        )
+        from .turn_insights import with_model_window
+
+        usage = context_usage(agent, turns, query)
+        with_model_window(usage, getattr(agent, "model_id", None))
+        sse_handler._emit({"type": "context_usage", **usage})
     agent.conversation_history = select_history(
         turns,
         history_budget(agent, query),
