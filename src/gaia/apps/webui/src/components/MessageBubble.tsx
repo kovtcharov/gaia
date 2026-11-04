@@ -23,6 +23,7 @@ import { TurnChanges } from './TurnChanges';
 import { CODE_COLLAPSE_LINES, CODE_PREVIEW_LINES, ExpandToggle, countLines, isLongUserMessage, sizeLabel } from './LongContent';
 import { useT, type Translate } from '../i18n/useT';
 import { useChatStore } from '../stores/chatStore';
+import { findWindowsPaths, isWholeWindowsPath } from '../utils/windowsPaths';
 import {
     buildCitationIndex, docForToken, findCitations, findPages,
     type CitationIndex, type FoundPage, type LibraryDoc,
@@ -748,22 +749,10 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
 /** Markdown renderer using react-markdown with GFM support. */
 // ── File Path Linkification ──────────────────────────────────────────────
 
-/** Regex to detect Windows file paths like C:\Users\... or C:/Users/... */
-// Path separators are excluded from the segment class so each `(segment sep)`
-// repetition has exactly one parse — the ambiguity CodeQL flagged as
-// exponential-backtracking ReDoS (js/redos) on adversarial non-matching input.
-// Exactly one separator between segments, so a last segment without an
-// extension (`C:\Users\me\notes`) is kept as well as `...\a.txt` or `...\dir\`.
-const WIN_PATH_RE = /\b[A-Z]:[\\/][^\s*?"<>|,;)}\]\\/]+(?:[\\/][^\s*?"<>|,;)}\]\\/]+)*[\\/]?/gi;
-/** Sentence punctuation the path regex swallows: "see C:\a\b." ends at `b`. */
-const PATH_TRAILING_PUNCT_RE = /[.:!']+$/;
-/** An inline-code span that is one absolute path and nothing else, e.g. "Saved to `C:\out\answer.md`". */
-const WIN_PATH_ONLY_RE = new RegExp(`^(?:${WIN_PATH_RE.source})$`, 'i');
-
 function inlineCodePath(children: React.ReactNode): string | null {
     if (typeof children !== 'string') return null;
     const text = children.trim();
-    return WIN_PATH_ONLY_RE.test(text) ? text : null;
+    return isWholeWindowsPath(text) ? text : null;
 }
 
 function FilePathLink({ path }: { path: string }) {
@@ -791,29 +780,16 @@ function FilePathLink({ path }: { path: string }) {
 
 /** Split text into segments, replacing file paths with clickable links. */
 function linkifyFilePaths(text: string): React.ReactNode {
-    // Combine both regexes: match files first, then directories
-    const combined = new RegExp(WIN_PATH_RE.source, 'gi');
+    const spans = findWindowsPaths(text);
+    if (spans.length === 0) return text;
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
-    let match: RegExpExecArray | null;
-
-    while ((match = combined.exec(text)) !== null) {
-        // Add text before the match
-        if (match.index > lastIndex) {
-            parts.push(text.slice(lastIndex, match.index));
-        }
-        const path = match[0].replace(PATH_TRAILING_PUNCT_RE, '');
-        parts.push(<FilePathLink key={match.index} path={path} />);
-        lastIndex = match.index + path.length;
+    for (const { start, end } of spans) {
+        if (start > lastIndex) parts.push(text.slice(lastIndex, start));
+        parts.push(<FilePathLink key={start} path={text.slice(start, end)} />);
+        lastIndex = end;
     }
-
-    // No paths found — return original text
-    if (parts.length === 0) return text;
-
-    // Add remaining text
-    if (lastIndex < text.length) {
-        parts.push(text.slice(lastIndex));
-    }
+    if (lastIndex < text.length) parts.push(text.slice(lastIndex));
     return <>{parts}</>;
 }
 
