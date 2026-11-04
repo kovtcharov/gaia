@@ -201,6 +201,35 @@ test('finished answer', async ({ page }) => {
     expect(await audit(page)).toEqual([]);
 });
 
+const CLOUD_CONTEXT = {
+    available: true, window: 65536, model_window: 1048576, reply_reserve: 0, system: 12000, tools: 8000, documents: 0,
+    history: 1000, query: 0, used: 21000, history_budget: 32768, history_used: 1000, turns_in_view: 1, turns_hidden: 0,
+    at_risk: [], at_risk_tokens: 0,
+};
+
+for (const locale of ['ar', 'en']) {
+    test(`composer context meter on a cloud model (${locale})`, async ({ page }) => {
+        await open(page, `#${ANSWER_SESSION}`, locale, (p) =>
+            p.route(`**/api/chat/context/${ANSWER_SESSION}`, (route) => route.fulfill({ json: CLOUD_CONTEXT })));
+        await page.locator('button.context-meter').click();
+        const panel = page.locator('.context-meter-panel');
+        await expect(panel.locator('.context-meter-window')).toBeVisible();
+        await shot(page, `context-meter-${locale}-cloud`);
+        expect(await audit(page)).toEqual([]);
+        if (locale !== 'ar') return;
+        const english = await panel.evaluate((root) => {
+            const left: string[] = [];
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+                const text = n.textContent?.trim() ?? '';
+                if (/[A-Za-z]{3}/.test(text) && !/[؀-ۿ]/.test(text) && !n.parentElement?.closest('.i18n-gloss, bdi')) left.push(text);
+            }
+            return left;
+        });
+        expect(english).toEqual([]);
+    });
+}
+
 test('documents', async ({ page }) => {
     await open(page);
     await page.locator('.sb').getByRole('button', { name: /Documents/ }).click();

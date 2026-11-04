@@ -6,19 +6,23 @@ import { AlertTriangle } from 'lucide-react';
 import { Popover } from './Popover';
 import { ContextPanel } from './ContextPanel';
 import type { ContextUsage } from '../types';
+import { useT } from '../i18n/useT';
 import './ContextMeter.css';
 
 export function formatTokens(n: number): string {
     if (n < 1000) return String(n);
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
     return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}K`;
 }
 
+const Tokens = ({ n }: { n: number }) => <bdi dir="ltr">{formatTokens(n)}</bdi>;
+
 const PARTS = [
-    { key: 'system', label: 'System prompt' },
-    { key: 'tools', label: 'Tools' },
-    { key: 'documents', label: 'Documents' },
-    { key: 'history', label: 'Conversation' },
-    { key: 'query', label: 'Your message' },
+    { key: 'system', label: 'meter.system' },
+    { key: 'tools', label: 'meter.tools' },
+    { key: 'documents', label: 'meter.documents' },
+    { key: 'history', label: 'meter.history' },
+    { key: 'query', label: 'meter.query' },
 ] as const;
 
 interface ContextMeterProps {
@@ -34,6 +38,7 @@ interface ContextMeterProps {
 
 /** How full the model's context window is, with a breakdown on click. */
 export function ContextMeter({ usage, unavailable, sessionId, busy = false, onUsage, onDetails }: ContextMeterProps) {
+    const t = useT();
     const anchor = useRef<HTMLButtonElement>(null);
     const [open, setOpen] = useState(false);
     const [details, setDetails] = useState(false);
@@ -45,7 +50,7 @@ export function ContextMeter({ usage, unavailable, sessionId, busy = false, onUs
         return (
             <span className="context-meter is-empty" title={unavailable}>
                 <span className="context-meter-bar" aria-hidden="true"><span style={{ width: 0 }} /></span>
-                <span className="context-meter-label">Context</span>
+                <span className="context-meter-label">{t('ctx.context')}</span>
             </span>
         );
     }
@@ -60,17 +65,25 @@ export function ContextMeter({ usage, unavailable, sessionId, busy = false, onUs
                 className={`context-meter${warn ? ' is-warning' : ''}`}
                 onClick={() => setOpen((v) => !v)}
                 aria-expanded={open}
-                aria-label={`Context ${pct}% full: ${formatTokens(usage.used)} of ${formatTokens(usage.window)} tokens`}
-                title="How full the model's context window is"
+                aria-label={t('meter.aria', { pct, used: formatTokens(usage.used), window: formatTokens(usage.window) })}
+                title={t('meter.title')}
             >
                 <span className="context-meter-bar" aria-hidden="true"><span style={{ width: `${pct}%` }} /></span>
                 <span className="context-meter-label">{pct}%</span>
             </button>
-            <Popover open={open} onClose={() => setOpen(false)} anchor={anchor} label="Context window" align="end">
+            <Popover open={open} onClose={() => setOpen(false)} anchor={anchor} label={t('meter.popover')} align="end">
                 <div className="context-meter-panel">
                     <div className="context-meter-head">
-                        <strong>{formatTokens(usage.used)}</strong> of {formatTokens(usage.window)} tokens
+                        <strong><Tokens n={usage.used} /></strong> {t.bare('ctx.of')} <Tokens n={usage.window} /> {t.bare('ctx.tokensWord')}
                     </div>
+                    {usage.model_window !== undefined && (usage.model_window == null || usage.model_window > usage.window) && (
+                        <p className="context-meter-window" title={t('ctx.windowTitle')}>
+                            {t.bare('ctx.gaiaUses')} <Tokens n={usage.window} />
+                            {usage.model_window == null
+                                ? <>. {t('meter.windowUnknown')}</>
+                                : <> {t.bare('ctx.ofModel')} <Tokens n={usage.model_window} /></>}
+                        </p>
+                    )}
                     <div className="context-meter-stack" aria-hidden="true">
                         {PARTS.map(({ key }) => (
                             <span key={key} className={`part-${key}`} style={{ width: `${(usage[key] / usage.window) * 100}%` }} />
@@ -79,24 +92,24 @@ export function ContextMeter({ usage, unavailable, sessionId, busy = false, onUs
                     <dl className="context-meter-rows">
                         {PARTS.filter(({ key }) => key !== 'query' || usage.query > 0).map(({ key, label }) => (
                             <div key={key} className="context-meter-row">
-                                <dt><span className={`swatch part-${key}`} aria-hidden="true" />{label}</dt>
-                                <dd>{formatTokens(usage[key])}</dd>
+                                <dt><span className={`swatch part-${key}`} aria-hidden="true" />{t(label)}</dt>
+                                <dd><Tokens n={usage[key]} /></dd>
                             </div>
                         ))}
                         <div className="context-meter-row is-quiet">
-                            <dt>Kept free for the reply</dt>
-                            <dd>{formatTokens(usage.reply_reserve)}</dd>
+                            <dt>{t('meter.replyReserve')}</dt>
+                            <dd><Tokens n={usage.reply_reserve} /></dd>
                         </div>
                         <div className="context-meter-row is-quiet">
-                            <dt>Free</dt>
-                            <dd>{formatTokens(free)}</dd>
+                            <dt>{t('ctx.freeRow')}</dt>
+                            <dd><Tokens n={free} /></dd>
                         </div>
                     </dl>
                     <p className="context-meter-note">
-                        {usage.turns_in_view} earlier {usage.turns_in_view === 1 ? 'turn is' : 'turns are'} in view
-                        {usage.turns_hidden > 0 && `; ${usage.turns_hidden} older ${usage.turns_hidden === 1 ? 'is' : 'are'} out of view`}.
-                        {' '}{usage.tokenizer?.exact ? "Counted with the model's tokenizer." : 'Estimates.'}
-                        {' '}Older turns stay saved and can be recalled.
+                        {t.plural('meter.inView', usage.turns_in_view)}
+                        {usage.turns_hidden > 0 && <>{' '}{t.plural('meter.outOfView', usage.turns_hidden)}</>}
+                        {' '}{usage.tokenizer?.exact ? t('meter.exact') : t('meter.estimates')}
+                        {' '}{t('meter.recall')}
                     </p>
                     {sessionId && (
                         <button
@@ -108,7 +121,7 @@ export function ContextMeter({ usage, unavailable, sessionId, busy = false, onUs
                                 else setDetails(true);
                             }}
                         >
-                            Details: context &amp; performance
+                            {t('meter.details')}
                         </button>
                     )}
                 </div>
@@ -120,18 +133,18 @@ export function ContextMeter({ usage, unavailable, sessionId, busy = false, onUs
 
 /** Says which turns leave the model's view next, before they go. */
 export function ContextWarning({ usage }: { usage: ContextUsage | null }) {
+    const t = useT();
     if (!usage || usage.at_risk.length === 0) return null;
     const n = usage.at_risk.length;
     return (
         <div className="context-warning" role="status">
             <AlertTriangle size={13} aria-hidden="true" />
             <span>
-                The conversation is filling the model's context. The oldest
-                {n === 1 ? ' turn' : ` ${n} turns`} may drop out of the model's view next:{' '}
+                {t.plural('meter.warn', n)}{' '}
                 {usage.at_risk.map((q, i) => (
-                    <span key={i}>{i > 0 && ', '}<q>{q}</q></span>
+                    <span key={i}>{i > 0 && ', '}<q dir="auto">{q}</q></span>
                 ))}
-                . They stay saved, and you can ask GAIA to recall them.
+                . {t('meter.warnTail')}
             </span>
         </div>
     );

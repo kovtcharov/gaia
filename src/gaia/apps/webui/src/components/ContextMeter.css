@@ -35,7 +35,8 @@ button.context-meter:hover {
 
 .context-meter-bar > span {
     position: absolute;
-    inset: 0 auto 0 0;
+    inset-block: 0;
+    inset-inline-start: 0;
     background: var(--text-secondary);
     border-radius: inherit;
     transition: width var(--duration-fast) var(--ease);
@@ -63,6 +64,13 @@ button.context-meter:hover {
 
 .context-meter-head strong {
     color: var(--text-primary);
+}
+
+.context-meter-window {
+    margin: -4px 0 8px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.4;
 }
 
 .context-meter-stack {
