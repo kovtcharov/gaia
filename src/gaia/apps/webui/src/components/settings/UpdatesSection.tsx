@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { getUpdaterBridge, useUpdateStatus } from '../../hooks/useUpdateStatus';
 import type { GaiaUpdaterBridge, UpdateState } from '../../hooks/useUpdateStatus';
 import { useT, type Translate } from '../../i18n/useT';
-import { ref, type MessageKey } from '../../i18n/registry';
+import { ref, type MessageKey, type Param } from '../../i18n/registry';
 import { log } from '../../utils/logger';
 import { updateErrorReason } from '../../hooks/updateError';
 import { VersionPicker } from '../VersionPicker';
@@ -19,7 +19,8 @@ export function isReleaseCandidate(version: string | null): boolean {
 }
 
 /** One line saying where updates stand. */
-export function describeUpdateStatus(s: UpdateState, t: Translate): string {
+export function describeUpdateStatus(s: UpdateState & { readError?: Param | null }, t: Translate): string {
+    if (s.readError != null) return t('update.status.readFailed', { reason: s.readError });
     const version = s.version ?? '';
     switch (s.status) {
         case 'checking':
@@ -77,7 +78,8 @@ export function UpdatesSection() {
 
     const line = `${t('update.settings.running', { version: update.currentVersion ?? t('update.settings.unknownVersion') })} ${describeUpdateStatus(update, t)}`;
     const needsYou = ['available', 'downloaded', 'error'].includes(update.status)
-        || !!update.pinnedVersion || !!update.installFailed || !!update.configError || !!error;
+        || !!update.pinnedVersion || !!update.installFailed || !!update.configError || !!error
+        || update.readError != null;
 
     return (
         <SettingsDisclosure title={t('update.settings.title')} titleId="updates-label" hint={line} forceOpen={needsYou}>
@@ -167,14 +169,29 @@ export function UpdatesSection() {
                             {t('update.settings.restart')}
                         </button>
                     )}
-                    <button
-                        type="button"
-                        className="btn-secondary"
-                        disabled={working || disabled}
-                        onClick={() => void run('update.action.check', (b) => b.check())}
-                    >
-                        {t('update.settings.check')}
-                    </button>
+                    {update.readError != null ? (
+                        <button
+                            type="button"
+                            className="btn-secondary"
+                            disabled={busy}
+                            onClick={async () => {
+                                setBusy(true);
+                                await update.reload();
+                                setBusy(false);
+                            }}
+                        >
+                            {t('update.settings.retryRead')}
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            className="btn-secondary"
+                            disabled={working || disabled}
+                            onClick={() => void run('update.action.check', (b) => b.check())}
+                        >
+                            {t('update.settings.check')}
+                        </button>
+                    )}
                     <button
                         type="button"
                         className="btn-secondary"

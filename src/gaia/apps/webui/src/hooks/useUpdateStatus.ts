@@ -1,7 +1,10 @@
 // Copyright(C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Param } from '../i18n/registry';
+import { log } from '../utils/logger';
+import { updateErrorReason } from './updateError';
 
 /**
  * Auto-update status surfaced by the Electron main process via the
@@ -89,6 +92,14 @@ export const INITIAL_STATE: UpdateState = {
     includePrereleases: false,
 };
 
+/** What the hook returns: the updater's state, plus whether it could be read. */
+export interface UpdateView extends UpdateState {
+    /** Why the status request failed, or null once a status has been read. */
+    readError: Param | null;
+    /** Ask the updater for its status again. */
+    reload: () => Promise<void>;
+}
+
 /**
  * Subscribe to auto-update state from the Electron main process.
  *
@@ -97,40 +108,44 @@ export const INITIAL_STATE: UpdateState = {
  * so the indicator never renders. That's the desired behavior: web users
  * don't need a desktop-app update indicator.
  */
-export function useUpdateStatus(): UpdateState {
+export function useUpdateStatus(): UpdateView {
     const [state, setState] = useState<UpdateState>({ ...INITIAL_STATE });
+    const [readError, setReadError] = useState<Param | null>(null);
+    const mounted = useRef(true);
+
+    const reload = useCallback(async () => {
+        const updater = getUpdaterBridge();
+        if (!updater) return;
+        try {
+            const s = await updater.getStatus();
+            if (!mounted.current) return;
+            setState(s);
+            setReadError(null);
+        } catch (err) {
+            log.system.error('Reading the update status failed', err);
+            if (mounted.current) setReadError(updateErrorReason(err));
+        }
+    }, []);
 
     useEffect(() => {
         const updater = getUpdaterBridge();
         if (!updater) return;
 
-        let mounted = true;
-
-        // Fetch the current state immediately (covers the race where a
-        // status event fires before we mount).
-        updater
-            .getStatus()
-            .then((s) => {
-                if (mounted && s) setState(s);
-            })
-            .catch(() => {
-                // Swallow — the subscription below will still work and
-                // surface any actual update events.
-            });
+        mounted.current = true;
+        // Read once now: a status event may have fired before we subscribed.
+        void reload();
 
         const unsubscribe = updater.onStatusChange((s) => {
-            if (mounted && s) setState(s);
+            if (!mounted.current || !s) return;
+            setState(s);
+            setReadError(null);
         });
 
         return () => {
-            mounted = false;
-            try {
-                unsubscribe();
-            } catch {
-                // ignore
-            }
+            mounted.current = false;
+            unsubscribe();
         };
-    }, []);
+    }, [reload]);
 
-    return state;
+    return { ...state, readError, reload };
 }

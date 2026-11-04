@@ -154,6 +154,22 @@ describe('UpdatesSection', () => {
         await userEvent.click(await screen.findByRole('button', { name: /install a specific version/i }));
         expect(await screen.findByRole('dialog', { name: /install a specific version/i })).toBeInTheDocument();
     });
+
+    it('says it could not read the update status, and why, instead of claiming up to date', async () => {
+        bridge.getStatus.mockRejectedValueOnce(
+            new Error("Error invoking remote method 'gaia-updater:get-status': Error: No handler registered"));
+        render(<UpdatesSection />);
+        const line = await screen.findByText(/couldn't read the update status/i, { selector: '[role="status"]' });
+        expect(line).toHaveTextContent(/no handler registered/i);
+        expect(line).not.toHaveTextContent(/up to date/i);
+        expect(line).not.toHaveTextContent(/error invoking remote method/i);
+        expect(screen.queryByRole('button', { name: /check for updates/i })).not.toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: /try again/i }));
+        await waitFor(() => expect(screen.getByText(/up to date/i, { selector: '[role="status"]' })).toBeInTheDocument());
+        expect(bridge.getStatus).toHaveBeenCalledTimes(2);
+        expect(screen.getByRole('button', { name: /check for updates/i })).toBeEnabled();
+    });
 });
 
 describe('UpdateIndicator', () => {

@@ -125,6 +125,45 @@ describe('useUpdateStatus — with bridge', () => {
         expect(result.current.status).toBe('available');
         expect(result.current.version).toBe('0.22.0');
     });
+
+    it('reports a rejected status request instead of dropping it', async () => {
+        const bridge = makeUpdaterBridge({
+            getStatus: vi.fn(async () => { throw new Error('No handler registered'); }),
+        });
+        vi.stubGlobal('gaiaUpdater', bridge);
+
+        const { result } = renderHook(() => useUpdateStatus());
+
+        await act(async () => {
+            await new Promise((r) => setTimeout(r, 0));
+        });
+
+        expect(result.current.readError).toBe('No handler registered');
+    });
+
+    it('clears the read error once a status arrives', async () => {
+        let captured: ((s: UpdateState) => void) | null = null;
+        const bridge = makeUpdaterBridge({
+            getStatus: vi.fn(async () => { throw new Error('No handler registered'); }),
+            onStatusChange: vi.fn((cb) => {
+                captured = cb;
+                return () => {};
+            }),
+        });
+        vi.stubGlobal('gaiaUpdater', bridge);
+
+        const { result } = renderHook(() => useUpdateStatus());
+        await act(async () => {
+            await new Promise((r) => setTimeout(r, 0));
+        });
+        expect(result.current.readError).toBe('No handler registered');
+
+        await act(async () => {
+            captured!({ ...INITIAL_STATE, status: 'available', version: '0.22.0' });
+        });
+        expect(result.current.readError).toBeNull();
+        expect(result.current.status).toBe('available');
+    });
 });
 
 describe('INITIAL_STATE', () => {
