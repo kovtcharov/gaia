@@ -58,6 +58,15 @@ describe('UpdatesSection', () => {
         expect(autoSwitch()).not.toBeChecked();
     });
 
+    it('with updates turned off, shows the running version and never claims up to date', async () => {
+        state = { ...state, status: 'disabled' };
+        render(<UpdatesSection />);
+        const line = await screen.findByText(/running gaia 0\.25\.0/i, { selector: '[role="status"]' });
+        expect(line).toHaveTextContent(/updates are turned off/i);
+        expect(line).not.toHaveTextContent(/up to date/i);
+        expect(screen.getByRole('button', { name: /check for updates/i })).toBeDisabled();
+    });
+
     it('turning auto-update on saves it', async () => {
         render(<UpdatesSection />);
         await userEvent.click(autoSwitch());

@@ -1648,6 +1648,21 @@ function registerIpcHandlers() {
   ipcHandlersRegistered = true;
 }
 
+/** With updates off, Settings still reads the running version; nothing else is served. */
+function _serveDisabledStatus() {
+  if (ipcHandlersRegistered) return;
+  // eslint-disable-next-line global-require
+  const electron = require("electron");
+  if (!electron || !electron.app || !electron.ipcMain) {
+    log("warn", "Electron APIs unavailable — Settings can't read the update status");
+    return;
+  }
+  electronApi = { app: electron.app, ipcMain: electron.ipcMain };
+  state.currentVersion = electron.app.getVersion() || null;
+  electron.ipcMain.handle("gaia:update:get-status", () => getState());
+  ipcHandlersRegistered = true;
+}
+
 function unregisterIpcHandlers() {
   if (!ipcHandlersRegistered || !electronApi || !electronApi.ipcMain) return;
   const { ipcMain } = electronApi;
@@ -1705,12 +1720,11 @@ function init(mainWindow, options = {}) {
     isBackendPrefetchedRef = options.isBackendPrefetched;
   }
 
-  // Disabled path — short-circuit BEFORE touching any Electron APIs so
-  // this works in plain Node tests where require('electron') returns a
-  // string and the electron-updater singleton throws on access.
+  // Disabled path — never touches electron-updater, whose singleton throws on access outside Electron.
   if (isDisabled()) {
     setState({ status: STATES.DISABLED });
     log("info", "Auto-updater disabled via GAIA_DISABLE_UPDATE=1");
+    _serveDisabledStatus();
     return;
   }
 

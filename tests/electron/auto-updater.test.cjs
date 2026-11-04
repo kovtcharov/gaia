@@ -762,6 +762,28 @@ describe("getState() extended state", () => {
   });
 });
 
+describe("GAIA_DISABLE_UPDATE=1", () => {
+  test("Settings can still read the running version and that checks are off", async () => {
+    process.env.GAIA_DISABLE_UPDATE = "1";
+    electronMock.app.getVersion = jest.fn(() => "0.25.4");
+    const mod = loadModule();
+    mod.init(makeMockWindow(), INIT_OPTIONS);
+
+    const state = await electronMock.ipcMain.simulateInvoke("gaia:update:get-status");
+    expect(state).toMatchObject({ status: "disabled", currentVersion: "0.25.4" });
+  });
+
+  test("registers no handler that could check, download or install", () => {
+    process.env.GAIA_DISABLE_UPDATE = "1";
+    const mod = loadModule();
+    mod.init(makeMockWindow(), INIT_OPTIONS);
+
+    for (const ch of ["check", "download", "install-version", "revert", "restart", "set-auto-update"]) {
+      expect(electronMock.ipcMain._handlers.has(`gaia:update:${ch}`)).toBe(false);
+    }
+  });
+});
+
 // ── Tests: IPC handler registration ───────────────────────────────────────────
 
 describe("IPC handler registration", () => {
