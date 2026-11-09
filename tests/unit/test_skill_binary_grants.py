@@ -864,14 +864,14 @@ def test_anything_outside_the_grant_still_asks(command):
 
 def test_an_agent_with_no_grant_reads_gh_unasked_and_asks_for_everything_else():
     """A gh read changes nothing, so it needs no skill and no prompt; a gh
-    write, and every other command, is asked about exactly as before."""
+    write, and every command that is not a plain read, is asked about."""
     host = _Gated()  # no binaries granted
     assert _needs_modal(host, "gh issue list") is False
     assert _needs_modal(host, "gh api repos/amd/gaia/commits/main") is False
     assert _needs_modal(host, "gh issue comment 1 --body hi") is True
     assert _needs_modal(host, "gh pr merge 1") is True
     assert _needs_modal(host, "gh issue list | head -5") is True
-    assert _needs_modal(host, "ls -la") is True
+    assert _needs_modal(host, "rm notes.txt") is True
     assert host._tool_requires_confirmation("run_shell_command") is True
     assert host._tool_requires_confirmation("write_file") is True
     assert host._tool_requires_confirmation("search_web") is False
@@ -1082,7 +1082,7 @@ def test_a_call_outside_the_policy_is_asked_with_its_risk_note():
 def test_a_permitted_ungranted_call_still_reaches_the_prompt():
     """The reordering must not swallow the modal for calls that can run."""
     agent = _ExecutingAgent()
-    agent._execute_tool("run_shell_command", {"command": "pwd"})
+    agent._execute_tool("run_shell_command", {"command": "git status"})
     assert [name for name, _ in agent.console.asked] == ["run_shell_command"]
 
 
@@ -2510,12 +2510,12 @@ def test_a_discord_trigger_or_watch_is_never_offered_always():
         assert grant_scope("run_shell_command", {"command": command}) is None
 
 
-def test_a_git_read_still_asks_without_a_skill():
-    """git loads the folder's own repository settings even for a read, and
-    those can name programs for it to run, so no git call skips the prompt
-    on the strength of looking read-only."""
+def test_a_git_call_that_can_run_a_repo_program_still_asks():
+    """`git status` runs core.fsmonitor and a diff can run diff.external, both
+    named by the folder's own repository settings, so these always ask. Plain
+    reads in a repo with plain settings: test_shell_read_only_unasked.py."""
     assert _needs_modal(_Gated(), "git status") is True
-    assert _needs_modal(_Gated(), "git log -3 --oneline") is True
+    assert _needs_modal(_Gated(), "git log -p") is True
 
 
 @pytest.mark.parametrize(
