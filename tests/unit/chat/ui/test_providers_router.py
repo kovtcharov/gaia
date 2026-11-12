@@ -2389,3 +2389,22 @@ def test_only_fireworks_falls_back_to_known_models(client, lemonade, keys, model
     assert model_list["keys_checked"] == []
     assert model_list["restarts"] == []
     assert KEY not in resp.text
+
+
+# ── A model server that answers, but not with a model list ─────────────────
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"object": "list", "data": "x"}, {"data": ["Qwen3-4B-GGUF"]}, {"data": None}],
+)
+@pytest.mark.parametrize("provider", ["local", "fireworks"])
+def test_a_malformed_model_list_is_named_not_a_server_error(
+    client, lemonade, keys, body, provider
+):
+    lemonade.answers[("GET", "models?show_all=true")] = (200, body)
+    resp = client.get(f"/api/providers/{provider}/models")
+    assert resp.status_code == 502
+    detail = resp.json()["detail"]
+    assert "model list came back in an unexpected shape" in detail
+    assert "Settings > Advanced > Model server" in detail
