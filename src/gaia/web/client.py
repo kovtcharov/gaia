@@ -808,6 +808,7 @@ class WebClient:
         self._user_agent = user_agent or self.DEFAULT_USER_AGENT
         self._rate_limit = rate_limit or self.MIN_REQUEST_INTERVAL
         self._domain_last_request: dict = {}  # Per-domain rate limiting
+        self._domain_lock = threading.Lock()
         self._session = requests.Session()
         # Mount PinnedIPAdapter to close the DNS-rebind TOCTOU window
         # between validate_url() and the actual TCP connect.
@@ -894,12 +895,15 @@ class WebClient:
         adjustments and DST transitions cannot produce negative elapsed
         values or accidentally disable throttling.
         """
-        now = time.monotonic()
-        last = self._domain_last_request.get(domain, 0)
-        elapsed = now - last
-        if elapsed < self._rate_limit:
-            time.sleep(self._rate_limit - elapsed)
-        self._domain_last_request[domain] = time.monotonic()
+        # Reserve the slot under the lock: threads sharing this client (web
+        # helpers) would otherwise all read the same last time and go at once.
+        with self._domain_lock:
+            now = time.monotonic()
+            last = self._domain_last_request.get(domain)
+            slot = now if last is None else max(now, last + self._rate_limit)
+            self._domain_last_request[domain] = slot
+        if slot > now:
+            time.sleep(slot - now)
 
     # -- Deadlines -----------------------------------------------------------
 

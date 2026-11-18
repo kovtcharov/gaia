@@ -11,19 +11,40 @@ the result through :func:`helpers_view`.
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit
 
 DELEGATE_TOOL = "delegate_task"
 #: ``result_data["type"]`` of the view, beside ``file_list`` and ``search_results``.
 HELPERS_RESULT_TYPE = "helpers"
 #: Most helpers one call runs (``MAX_HELPER_TASKS`` in delegate_tools.py).
 MAX_SHOWN_HELPERS = 16
+#: Most sources shown per helper, and characters of each (as delegate_tools.py).
+MAX_SHOWN_SOURCES = 8
+SOURCE_CHARS = 300
 
 _RUN_STATUSES = frozenset({"success", "partial", "error"})
 _HELPER_STATUSES = frozenset({"ok", "partial", "failed"})
+_KINDS = frozenset({"read", "web"})
 
 
 def _number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _web_url(value: Any) -> bool:
+    if not isinstance(value, str) or len(value) > SOURCE_CHARS:
+        return False
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return False
+    return parts.scheme in ("http", "https") and bool(parts.netloc)
+
+
+def _sources(raw: Any) -> List[str]:
+    if not isinstance(raw, list):
+        return []
+    return [url for url in raw if _web_url(url)][:MAX_SHOWN_SOURCES]
 
 
 def _helper(raw: Any) -> Optional[Dict[str, Any]]:
@@ -43,6 +64,8 @@ def _helper(raw: Any) -> Optional[Dict[str, Any]]:
         item["steps"] = raw["steps"]
     if _number(raw.get("wall_s")):
         item["wall_s"] = raw["wall_s"]
+    if "sources" in raw:
+        item["sources"] = _sources(raw["sources"])
     return item
 
 
@@ -68,6 +91,8 @@ def helpers_view(data: Any) -> Optional[Dict[str, Any]]:
         "summary": summary,
         "helpers": helpers[:MAX_SHOWN_HELPERS],
     }
+    if data.get("kind") in _KINDS:
+        view["kind"] = data["kind"]
     if len(helpers) > MAX_SHOWN_HELPERS:
         view["hidden"] = len(helpers) - MAX_SHOWN_HELPERS
     if isinstance(data.get("width"), int) and not isinstance(data.get("width"), bool):
