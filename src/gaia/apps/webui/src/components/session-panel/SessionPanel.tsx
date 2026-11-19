@@ -26,6 +26,7 @@ import { PanelSection } from './PanelSection';
 import { EnvironmentSection } from './EnvironmentSection';
 import { OutputsSection } from './OutputsSection';
 import { ChangesSection } from './ChangesSection';
+import { SlidePreview } from './SlidePreview';
 import { BrowserPaneToggle } from '../browser-pane/BrowserPane';
 import { AgentInfoSection } from './AgentInfoSection';
 import { SkillsSection } from './SkillsSection';
@@ -119,6 +120,7 @@ export function SessionPanel({ sessionId, messages, busy, onUsage, onJumpToMessa
                     </button>
                 </header>
                 <div className="sp-body">
+                    <SlidePreview sessionId={sessionId} />
                     {answer && (
                         <PanelSection id="answer" title={t('sp.section.answer')}>
                             <ThisAnswer messages={messages} busy={busy} />

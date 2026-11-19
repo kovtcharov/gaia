@@ -171,6 +171,7 @@ from gaia.agents.base.tools import (
     _TOOL_REGISTRY,
     bare_tool_name,
     describe_registry,
+    partial_json_string,
     tool_build,
     tool_call_progress_message,
 )
@@ -881,6 +882,9 @@ COMPUTATION_FAILED = (
     "computed. Do not report computed figures (totals, sums, counts, averages). "
     "Fix the error and run it again, or tell the user what is needed."
 )
+
+#: How many user messages and tool results an agent keeps for fact checks.
+SEEN_SOURCES_MAX = 200
 
 # Tools whose result is nothing but a receipt for what the agent itself just
 # did. EVERY other tool is treated as bringing in content the user did not type
@@ -3704,6 +3708,8 @@ Do NOT wrap conversational replies in JSON.
         self.conversation_history = (
             []
         )  # Store conversation history for session persistence
+        # User messages and tool results, for skill tools that check facts (note_seen).
+        self._seen_sources: List[Tuple[str, Dict[str, Any], str]] = []
         self.max_steps = max_steps if max_steps is not None else default_max_steps()
         self.debug_prompts = debug_prompts
         self.show_prompts = show_prompts  # Separate flag for displaying prompts
@@ -6549,6 +6555,8 @@ Do NOT wrap conversational replies in JSON.
         provider = getattr(getattr(self, "chat", None), "llm_client", None)
         if provider is not None and hasattr(provider, "tool_call_progress"):
             provider.tool_call_progress = self._report_tool_call_progress
+        if provider is not None and hasattr(provider, "tool_call_draft"):
+            provider.tool_call_draft = self._report_tool_call_draft
         if provider is not None and hasattr(provider, "reasoning_progress"):
             provider.reasoning_progress = self._report_reasoning_progress
         backend = getattr(provider, "_backend", None)
@@ -6605,6 +6613,14 @@ Do NOT wrap conversational replies in JSON.
         self.console.report_phase(
             "tool_call", tool_call_progress_message(tool, chars), chars=chars
         )
+
+    def _report_tool_call_draft(self, tool: str, arguments: str) -> None:
+        field = (self._tools_registry.get(tool) or {}).get("draft_argument")
+        if not field:
+            return
+        text = partial_json_string(arguments, field)
+        if text:
+            self.console.report_draft(tool, text)
 
     def _report_reasoning_progress(self, words: int) -> None:
         self.console.report_phase(
@@ -8830,6 +8846,34 @@ Do NOT wrap conversational replies in JSON.
             return result
         return attach_task_lessons(result, lessons.record(tool_name, tool_args, result))
 
+    #: How many user messages and tool results ``seen_sources`` keeps.
+    SEEN_SOURCES_MAX = SEEN_SOURCES_MAX
+
+    def note_seen(self, source: str, args: Dict[str, Any], content: Any) -> None:
+        """Record a user message or tool result, so tools can check facts against it."""
+        # A test agent built via __new__ has no list yet.
+        seen = self.__dict__.setdefault("_seen_sources", [])
+        text = (
+            content
+            if isinstance(content, str)
+            else json.dumps(content, default=str, ensure_ascii=False)
+        )
+        seen.append((source, dict(args or {}), text))
+        del seen[:-SEEN_SOURCES_MAX]
+
+    def seen_sources(self) -> List[Tuple[str, Dict[str, Any], str]]:
+        """``(source, args, text)`` for each user message and tool result this conversation.
+
+        Earlier user messages restored from history come first; tool results
+        exist only for turns this agent ran.
+        """
+        restored = [
+            ("user", {}, str(m.get("content") or ""))
+            for m in (getattr(self, "conversation_history", None) or [])
+            if isinstance(m, dict) and m.get("role") == "user"
+        ]
+        return restored + list(getattr(self, "_seen_sources", []))
+
     def _execute_tool(self, tool_name: str, tool_args: Dict[str, Any]) -> Any:
         """
         Execute a tool by name with the provided arguments.
@@ -9314,6 +9358,7 @@ Do NOT wrap conversational replies in JSON.
             elif tool_name in FILE_CONTENT_TOOLS:
                 # Masks only what the model sees; edits refuse to write the marker back.
                 result = redact_file_content(result)
+            Agent.note_seen(self, tool_name, tool_args, result)
             logger.debug(f"Tool execution result: {result}")
             _record_refused_write(self, tool_name, tool_args, result)
             self._fold_tool_usage(tool_name, result)
@@ -12455,6 +12500,13 @@ Do NOT wrap conversational replies in JSON.
 
         # Store query for error context (used in _execute_tool for error formatting)
         self._current_query = user_input
+        # The user's own words: memory recall prepends past chats' text, not theirs.
+        Agent.note_seen(
+            self,
+            "user",
+            {},
+            getattr(self, "_original_user_input", None) or user_input,
+        )
         self._single_tool_done = False
         self._turn_seq += 1
         self._denied_effects = DeniedEffects(os.getcwd())
