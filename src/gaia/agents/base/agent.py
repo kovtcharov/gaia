@@ -185,6 +185,7 @@ from gaia.agents.base.tools import (
     _TOOL_REGISTRY,
     bare_tool_name,
     describe_registry,
+    partial_json_string,
     tool_build,
     tool_call_progress_message,
 )
@@ -919,6 +920,11 @@ COMPUTATION_FAILED = (
     "computed. Do not report computed figures (totals, sums, counts, averages). "
     "Fix the error and run it again, or tell the user what is needed."
 )
+
+#: How many user messages and tool results an agent keeps for fact checks.
+SEEN_SOURCES_MAX = 200
+#: Longest text kept for one of them, in characters.
+SEEN_SOURCE_MAX_CHARS = 20_000
 
 # Tools whose result is nothing but a receipt for what the agent itself just
 # did. EVERY other tool is treated as bringing in content the user did not type
@@ -2379,14 +2385,23 @@ def _with_replaced_answer(reply: str, replaced: str) -> Optional[str]:
 _SELF_CHECK_FULL_STEPS = 3
 
 
-def _answer_after_self_check(reply: str, earlier: str) -> Tuple[str, str]:
+def _answer_after_self_check(
+    reply: str, earlier: str, worked: bool = False
+) -> Tuple[str, str]:
     """``(answer, verdict)`` once the model has replied to the self-check.
 
     A pass keeps *earlier* as it was. A miss the model could not fix is added
     to it in one plain line. Anything else is a new answer, unless it is only
-    a short acknowledgement of the check.
+    a short acknowledgement of the check. When tools ran after the check
+    (*worked*), the reply describes the fixed work and is the answer whatever
+    verdict line it ends with.
     """
     verdict = read_verdict(reply)
+    if worked and verdict.rest:
+        answer = _with_replaced_answer(verdict.rest, earlier) or verdict.rest
+        if verdict.result == "miss":
+            return f"{answer.rstrip()}\n\n{miss_note(verdict.miss)}", "miss"
+        return answer, "new answer"
     if verdict.result == "pass":
         return earlier, "pass"
     if verdict.result == "miss":
@@ -3885,6 +3900,8 @@ Do NOT wrap conversational replies in JSON.
         self.conversation_history = (
             []
         )  # Store conversation history for session persistence
+        # User messages and tool results, for skill tools that check facts (note_seen).
+        self._seen_sources: List[Tuple[str, Dict[str, Any], str]] = []
         self.max_steps = max_steps if max_steps is not None else default_max_steps()
         self.debug_prompts = debug_prompts
         self.show_prompts = show_prompts  # Separate flag for displaying prompts
@@ -6768,6 +6785,8 @@ Do NOT wrap conversational replies in JSON.
         provider = getattr(getattr(self, "chat", None), "llm_client", None)
         if provider is not None and hasattr(provider, "tool_call_progress"):
             provider.tool_call_progress = self._report_tool_call_progress
+        if provider is not None and hasattr(provider, "tool_call_draft"):
+            provider.tool_call_draft = self._report_tool_call_draft
         if provider is not None and hasattr(provider, "reasoning_progress"):
             provider.reasoning_progress = self._report_reasoning_progress
         backend = getattr(provider, "_backend", None)
@@ -6824,6 +6843,14 @@ Do NOT wrap conversational replies in JSON.
         self.console.report_phase(
             "tool_call", tool_call_progress_message(tool, chars), chars=chars
         )
+
+    def _report_tool_call_draft(self, tool: str, arguments: str) -> None:
+        field = (self._tools_registry.get(tool) or {}).get("draft_argument")
+        if not field:
+            return
+        text = partial_json_string(arguments, field)
+        if text:
+            self.console.report_draft(tool, text)
 
     def _report_reasoning_progress(self, words: int) -> None:
         self.console.report_phase(
@@ -9083,6 +9110,47 @@ Do NOT wrap conversational replies in JSON.
             return result
         return attach_task_lessons(result, lessons.record(tool_name, tool_args, result))
 
+    #: How many user messages and tool results ``seen_sources`` keeps.
+    SEEN_SOURCES_MAX = SEEN_SOURCES_MAX
+
+    def note_seen(self, source: str, args: Dict[str, Any], content: Any) -> None:
+        """Record a user message or tool result, so tools can check facts against it."""
+        # A test agent built via __new__ has no list yet.
+        seen = self.__dict__.setdefault("_seen_sources", [])
+        if isinstance(content, str):
+            text = content
+        else:
+            try:
+                text = json.dumps(content, default=str, ensure_ascii=False)
+            except (TypeError, ValueError, RecursionError) as exc:
+                # Tuple keys or a cycle: the result is still a good tool result.
+                logger.warning(
+                    "Could not serialise the %s result for fact checks (%s); "
+                    "keeping its str() form.",
+                    source,
+                    exc,
+                )
+                text = str(content)
+        seen.append((source, dict(args or {}), text[:SEEN_SOURCE_MAX_CHARS]))
+        del seen[:-SEEN_SOURCES_MAX]
+
+    def clear_seen_sources(self) -> None:
+        """Forget them, when the conversation is cleared."""
+        self.__dict__["_seen_sources"] = []
+
+    def seen_sources(self) -> List[Tuple[str, Dict[str, Any], str]]:
+        """``(source, args, text)`` for each user message and tool result this conversation.
+
+        Earlier user messages restored from history come first; tool results
+        exist only for turns this agent ran.
+        """
+        restored = [
+            ("user", {}, str(m.get("content") or ""))
+            for m in (getattr(self, "conversation_history", None) or [])
+            if isinstance(m, dict) and m.get("role") == "user"
+        ]
+        return restored + list(getattr(self, "_seen_sources", []))
+
     def _execute_tool(self, tool_name: str, tool_args: Dict[str, Any]) -> Any:
         """
         Execute a tool by name with the provided arguments.
@@ -9598,7 +9666,6 @@ Do NOT wrap conversational replies in JSON.
             logger.debug(f"Tool execution result: {result}")
             _record_refused_write(self, tool_name, tool_args, result)
             self._fold_tool_usage(tool_name, result)
-            return result
         except ToolExecutionTimeout as e:
             # Bounded-execution guard fired: the tool body blocked past its
             # limit. Fail loud with an actionable message — name the tool, the
@@ -9668,6 +9735,9 @@ Do NOT wrap conversational replies in JSON.
                 "tool_args": tool_args,
                 "plan_step": self.current_step + 1 if self.current_plan else None,
             }
+        # Outside the try: a bookkeeping failure must not fail a tool that ran.
+        Agent.note_seen(self, tool_name, tool_args, result)
+        return result
 
     def _generate_max_steps_message(
         self,
@@ -12029,6 +12099,22 @@ Do NOT wrap conversational replies in JSON.
         )
 
     def _self_check_plan(self) -> Optional[Dict[str, Any]]:
+        """:meth:`_build_self_check_plan`, which can never end the turn.
+
+        The check reads files the model just wrote, with parsers that raise
+        their own error classes on a malformed one. It is advisory: a check
+        that cannot run is logged with its traceback and the answer goes out
+        without it.
+        """
+        try:
+            return self._build_self_check_plan()
+        except Exception:  # advisory: see the docstring
+            logger.exception(
+                "%s could not run; the turn goes on without it", SELF_CHECK_TAG
+            )
+            return None
+
+    def _build_self_check_plan(self) -> Optional[Dict[str, Any]]:
         """What this turn's self-check would cover, or ``None`` when it owes none.
 
         A turn owes one when it wrote a document or data file and either read
@@ -12073,6 +12159,7 @@ Do NOT wrap conversational replies in JSON.
             written,
             self._pending_deliverables(),
             prose=next(iter(prose.values())) if len(prose) == 1 else "",
+            folder=os.getcwd(),
             # An empty file the request asks for is not a miss.
             empty_ok=[
                 path
@@ -12155,16 +12242,18 @@ Do NOT wrap conversational replies in JSON.
         out, and stays. Whatever code still sees wrong is said in the answer,
         whether or not the model agreed. Logs what the check cost.
         """
+        records = getattr(self, "_turn_tool_executions", None) or []
         if reply is None:
             answer, verdict = opened["answer"], "unanswered"
         else:
-            answer, verdict = _answer_after_self_check(reply, opened["answer"])
+            answer, verdict = _answer_after_self_check(
+                reply, opened["answer"], worked=len(records) > opened["tools"]
+            )
         left = []
         if verdict != "miss":
             left = (self._self_check_plan() or {}).get("findings") or []
         if left:
             answer = f"{answer.rstrip()}\n\n" + "\n".join(miss_note(f) for f in left)
-        records = getattr(self, "_turn_tool_executions", None) or []
         logger.info(
             "%s done verdict=%s seconds=%.1f model_steps=%d tool_calls=%d "
             "code_findings_left=%d",
@@ -13137,6 +13226,13 @@ Do NOT wrap conversational replies in JSON.
 
         # Store query for error context (used in _execute_tool for error formatting)
         self._current_query = user_input
+        # The user's own words: memory recall prepends past chats' text, not theirs.
+        Agent.note_seen(
+            self,
+            "user",
+            {},
+            getattr(self, "_original_user_input", None) or user_input,
+        )
         self._single_tool_done = False
         self._turn_seq += 1
         self._denied_effects = DeniedEffects(os.getcwd())
