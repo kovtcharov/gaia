@@ -10,6 +10,13 @@ Requires the `gaia` Python CLI 0.26.1+ on `PATH`.
 
 ### Changed
 
+- **Workbooks are checked before they are handed over.** The bundled
+  `office-docs` skill ships its own `verify_workbook` tool, which recalculates
+  a copy of an .xlsx (with LibreOffice when installed) and names every cell
+  with `#REF!`, `#VALUE!`, `#DIV/0!`, `#NAME?`, a circular reference, a
+  SUM/SUMIFS over text or empty cells, or a criterion that matches no row. It
+  never writes the file. The skill also teaches native charts in decks and
+  real headings and tables in Word files.
 - **Start a message with `/` and a skill's name to run that skill**, as in
   Claude Code: `/pdf turn notes.md into a report`. The agent loads the skill
   with the same checks as `load_skill` and follows it for the rest of the line.
