@@ -8,11 +8,13 @@ counting deterministically, in one streaming pass per file:
 
 1. **Formats.** Each file's format is learned from a sample (head, middle and
    tail): JSON lines, syslog (RFC 3164 and 5424), Apache/Nginx access and
-   error logs, glog, ``key=value``, and any line that starts with a timestamp
-   (ISO 8601, ``YYYY-MM-DD HH:MM:SS,mmm``, ``dd/Mon/yyyy:...``, ctime, epoch
-   seconds or milliseconds). Indented and stack-trace lines join the entry
-   above them. Lines that fit nothing are counted and sampled, never dropped
-   silently.
+   error logs, glog, ``key=value``, CSV exports whose header names a time
+   column, and any line that carries a timestamp at its start or after a
+   level or logger name (ISO 8601, ``YYYY-MM-DD HH:MM:SS,mmm``,
+   ``dd/Mon/yyyy:...``, ctime, epoch seconds or milliseconds). Indented and
+   stack-trace lines join the entry above them. Lines that fit nothing are
+   counted and sampled, never dropped silently, and a file with no usable
+   timestamps fails the ``parsed_share_ok`` check.
 2. **Templates.** Variable parts (numbers, hex, UUIDs, IPs, paths, URLs, mixed
    ids) are masked, then templates that differ in one high-cardinality word
    are merged (Drain-like, bounded by a template cap).
@@ -20,11 +22,13 @@ counting deterministically, in one streaming pass per file:
    presence, peak against its own median, first and last occurrence with
    ``file:line``. A template steady across most of the range is BASELINE
    whatever its level; one that is short-lived, new, spiking, escalating or
-   hits many hosts at once is an ANOMALY.
+   hits many hosts at once is an ANOMALY. Baseline errors are also reported
+   as PERSISTENT when nothing is anomalous or the range is short: the log
+   alone cannot tell routine errors from an outage that covers all of it.
 4. **Bursts.** Buckets where errors and anomaly lines rise far above their
    median, merged into windows with exact first and last timestamps and the
    templates that occur only there.
-5. **Entities.** Ids (request, session, block, job, host ...) taken only from
+5. **Entities.** Ids (request, session, order, job, host ...) taken only from
    anomaly templates, inside the anomaly's own window, with a check that
    warns when the flagged share looks like the baseline.
 
@@ -50,6 +54,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
+try:  # the regex parser moved in Python 3.11
+    from re import _parser as _regex_parser
+except ImportError:  # pragma: no cover - Python 3.10
+    import sre_parse as _regex_parser
+
 from gaia.agents.base.tools import tool
 from gaia.logger import get_logger
 from gaia.skills import context as skill_context
@@ -73,6 +82,8 @@ MAX_ENTITY_KINDS = 300
 #: Entity lists up to this long ride inline in the compact result.
 OUT_ENTITY_LIST = 150
 MAX_LINE_CHARS = 8_192
+#: The rest of a longer line is read in chunks of this size and dropped.
+READ_CHUNK_CHARS = 64 * 1024
 MAX_MESSAGE_CHARS = 1_500
 TARGET_BUCKETS = 720
 MAX_BUCKETS = 3_000
@@ -80,7 +91,12 @@ DEFAULT_TIME_BUDGET_S = 540.0
 SAMPLE_HEAD_LINES = 400
 SAMPLE_MID_LINES = 200
 SAMPLE_TAIL_BYTES = 64 * 1024
+#: A line's own timestamp starts within this many characters.
+TS_SEARCH_CHARS = 60
 MERGE_MIN_VARIANTS = 8
+#: A caller's regex may take this long on one probe line, on this many lines.
+REGEX_PROBE_BUDGET_S = 0.25
+REGEX_PROBE_LINES = 20
 
 # Classification thresholds (percent of the analysed time range unless noted).
 BASELINE_MIN_SPAN_PCT = 60.0
@@ -105,6 +121,12 @@ ENTITY_SHARE_WARN = 0.30
 #: Below this share of parsed lines a file's format was probably misread.
 MIN_PARSED_SHARE = 0.95
 ENTITY_TEMPLATE_SHARE_DROP = 0.50
+#: A steady error in a range this short may be an outage that covers the log.
+PERSISTENT_SHORT_RANGE_S = 2 * 3600.0
+PERSISTENT_READING = (
+    "steady across the whole range: either routine or an outage that covers "
+    "the whole log"
+)
 
 # Output caps: the compact result must fit a small model's context.
 OUT_TEMPLATE_CHARS = 160
@@ -113,6 +135,7 @@ OUT_FILES = 20
 OUT_BURSTS = 5
 OUT_TIMELINE = 15
 OUT_BASELINE = 8
+OUT_PERSISTENT = 5
 OUT_ENTITIES = 25
 OUT_WARNINGS = 12
 OUT_WARNING_CHARS = 300
@@ -149,7 +172,7 @@ SEVERITY_NAMES = ("DEBUG", "INFO", "WARN", "ERROR", "FATAL")
 
 _KEYWORD_SEV = (
     (4, re.compile(r"\b(?:fatal|panic\w*|corrupt\w*|crash\w*|abort\w*|segfault|"
-                   r"out of memory|outofmemory\w*|oom|kernel bug|machine check)\b", re.I)),
+                   r"out of memory|outofmemory\w*|oom)\b", re.I)),
     (3, re.compile(r"\b(?:errors?|err|fail\w*|exception|timed? ?out|timeout|refused|"
                    r"denied|unreachable|traceback)\b", re.I)),
     (2, re.compile(r"\b(?:warn\w*|retry\w*|retrying|slow|degraded|deprecated)\b", re.I)),
@@ -538,10 +561,10 @@ def exception_class(text: str) -> Optional[str]:
 _ENTITY_KEYS = (
     "request_id|req_id|requestid|trace_id|traceid|span_id|session_id|sessionid|"
     "user_id|userid|user|username|job_id|jobid|task_id|taskid|order_id|block_id|"
-    "blk_id|container_id|pod|upstream|upstream_addr|client_id|account_id|tenant|"
+    "container_id|pod|upstream|upstream_addr|client_id|account_id|tenant|"
     "tenant_id|device_id|txn_id|transaction_id|correlation_id|correlationid|node_id|"
     "instance_id|host_id|shard|partition|session|sess|token|trace|request|req|txn|"
-    "transaction|job|task|order|block|blk|container|device|account|correlation"
+    "transaction|job|task|order|block|container|device|account|correlation"
 )
 _KEY_SET = frozenset(_ENTITY_KEYS.split("|"))
 _KV_CANDIDATE = re.compile(
@@ -552,9 +575,9 @@ _UUID_RE = re.compile(
 )
 _IP_PORT_RE = re.compile(r"(?<![\w.:])(\d{1,3}(?:\.\d{1,3}){3}:\d{1,5})(?![\w.:])")
 _IP_RE = re.compile(r"(?<![\w.:])(\d{1,3}(?:\.\d{1,3}){3})(?![\w.:])")
-#: word + separator + id with a digit: blk_-1234, job-17, req-a3f9c2d1, sess:x9k2.
+#: word + separator + id with a digit: job-17, vol_0042, req-a3f9c2d1, sess:x9k2.
 _PREFIXED_ID_RE = re.compile(
-    r"(?<![\w.-])([A-Za-z]{1,16})([-_:#])(-?)([A-Za-z0-9]*\d[A-Za-z0-9]*)(?![\w-])"
+    r"(?<![\w.-])([A-Za-z]{1,16})([-_:#])([A-Za-z0-9]*\d[A-Za-z0-9]*)(?![\w-])"
 )
 _HEX_ID_RE = re.compile(
     r"(?<![\w.:-])(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)([0-9a-f]{8,})(?![\w.:-])"
@@ -582,7 +605,7 @@ def auto_entities(text: str, *, kv_only: bool = False) -> List[Tuple[str, str]]:
     """Every id-shaped token in ``text`` with the kind of id it is.
 
     Kinds are learned from the token's shape, not a fixed vocabulary:
-    ``blk_N`` / ``req-H`` / ``sess:A`` (a word, a separator and an id with a
+    ``job-N`` / ``req-H`` / ``sess:A`` (a word, a separator and an id with a
     digit, keyed by the word), ``request_id=`` (an id-named field), ``uuid``,
     ``hex``, ``ip:port`` and ``ip``. Which kinds name the anomalous entities
     is decided after the whole log is read (:func:`build_entities`).
@@ -619,7 +642,7 @@ def auto_entities(text: str, *, kv_only: bool = False) -> List[Tuple[str, str]]:
             add(m.group(1), "ip")
     if "-" in text or "_" in text or ":" in text or "#" in text:
         for m in _PREFIXED_ID_RE.finditer(text):
-            prefix, sep, neg, ident = m.groups()
+            prefix, sep, ident = m.groups()
             add(m.group(0), f"{prefix.lower()}{sep}{_id_shape(ident)}")
     for m in _HEX_ID_RE.finditer(text):
         add(m.group(1), "hex")
@@ -637,8 +660,7 @@ def kind_regex(kind: str, examples: Sequence[str] = ()) -> str:
     prefix, sep, shape = kind[:-2], kind[-2], kind[-1]
     sample = next((e for e in examples if e.lower().startswith(prefix)), "")
     word = sample[: len(prefix)] if sample else prefix
-    negative = any(e[len(prefix) + 1 : len(prefix) + 2] == "-" for e in examples)
-    return f"({re.escape(word)}{sep}{'-?' if negative else ''}{_SHAPE_RE[shape]})"
+    return f"({re.escape(word)}{sep}{_SHAPE_RE[shape]})"
 
 
 _ID_KEY_RE = re.compile(r"^(?:" + _ENTITY_KEYS + r")$|(?:_id|Id|ID)$", re.I)
@@ -709,11 +731,12 @@ _KV_RE = re.compile(r"([A-Za-z_@][\w.@-]*)=(\"(?:[^\"\\]|\\.)*\"|\S*)")
 _TS_KEYS = (
     "@timestamp", "timestamp", "time", "ts", "datetime", "date", "eventtime",
     "event_time", "asctime", "logtime", "log_time", "t", "created", "created_at",
-    "timegenerated", "timecreated", "time_local",
+    "timegenerated", "timecreated", "time_local", "date and time",
 )  # fmt: skip
 _LEVEL_KEYS = (
     "level", "severity", "lvl", "loglevel", "log_level", "levelname", "level_name",
     "log.level", "severitytext", "severity_text", "@level", "priority", "status_level",
+    "leveldisplayname", "entrytype",
 )  # fmt: skip
 _MSG_KEYS = (
     "message",
@@ -728,10 +751,11 @@ _MSG_KEYS = (
 _HOST_KEYS = (
     "host", "hostname", "host.name", "host.hostname", "node", "nodename", "node_name",
     "instance", "pod", "pod_name", "server", "machine", "computer", "source_host",
+    "machinename", "computername",
 )  # fmt: skip
 _SERVICE_KEYS = (
     "service", "service.name", "service_name", "app", "application", "component",
-    "logger", "logger_name", "loggername", "module", "source",
+    "logger", "logger_name", "loggername", "module", "source", "providername",
 )  # fmt: skip
 _EXC_KEYS = (
     "exception", "exc_info", "error", "err", "stack", "stack_trace", "stacktrace",
@@ -800,6 +824,15 @@ class FileContext:
         self.prefer_ts: Optional[str] = None
         self.level_pos: Optional[int] = None
         self.host_pos: Optional[int] = None
+        # The timestamp follows a level or logger name instead of leading.
+        self.ts_search = False
+        self.lead_host = False
+        # CSV export: lower-cased column names, delimiter, the header text,
+        # and whether a quoted field is still open on the current line.
+        self.csv_header: Optional[List[str]] = None
+        self.csv_delim = ","
+        self.csv_header_line: Optional[str] = None
+        self.in_quote = False
         self.formats: List[str] = []
         self.last_ts: Optional[float] = None
         self.last_raw: Optional[float] = None
@@ -1089,9 +1122,34 @@ def _strip_token(token: str) -> str:
     return token.strip("[]()<>{}:|,;")
 
 
-def _parse_generic(line: str, ctx: FileContext) -> Optional[Rec]:
+#: Where a timestamp may start inside a line: after a separator, at a digit
+#: or a month or weekday name.
+_TS_START = re.compile(r"(?<=[\s|,;:\[(<\"'=])(?=\d|[A-Z][a-z]{2}[ ,])")
+_LEAD_SPLIT = re.compile(r"[\s:|,;\[\]()<>\"'=]+")
+
+
+def _search_ts(line: str, ctx: FileContext) -> Optional[Tuple[TsMatch, int]]:
+    """The first timestamp that starts after a separator near the line start."""
+    for m in _TS_START.finditer(line, 1, TS_SEARCH_CHARS):
+        tm = parse_timestamp(line, m.start(), prefer=ctx.prefer_ts, year_hint=ctx.year)
+        if tm is not None:
+            return tm, m.start()
+    return None
+
+
+def _locate_ts(
+    line: str, ctx: FileContext, search: Optional[bool] = None
+) -> Optional[Tuple[TsMatch, str, int]]:
+    """``(timestamp, lead, end)`` for a line that carries its own timestamp.
+
+    The timestamp leads the line (after ``[`` or a syslog ``<pri>``). When the
+    file's sample put it after a level or logger name (``ctx.ts_search``), it
+    is looked for within the first TS_SEARCH_CHARS and ``lead`` is the text
+    before it. ``end`` is where the rest of the line starts.
+    """
     pos = 0
     bracket = False
+    lead = ""
     if line.startswith("["):
         pos, bracket = 1, True
     elif line.startswith("<"):
@@ -1100,7 +1158,14 @@ def _parse_generic(line: str, ctx: FileContext) -> Optional[Rec]:
             pos = close + 1
     tm = parse_timestamp(line, pos, prefer=ctx.prefer_ts, year_hint=ctx.year)
     if tm is None:
-        return None
+        if not (ctx.ts_search if search is None else search):
+            return None
+        found = _search_ts(line, ctx)
+        if found is None:
+            return None
+        tm, pos = found
+        bracket = line[pos - 1] == "["
+        lead = line[: pos - 1] if bracket else line[:pos]
     end = tm.end
     if bracket:
         close = line.find("]", end, end + 40)
@@ -1109,6 +1174,28 @@ def _parse_generic(line: str, ctx: FileContext) -> Optional[Rec]:
         end = close + 1
     if end < len(line) and line[end] not in " \t|,;]-:":
         return None
+    return tm, lead, end
+
+
+def _split_lead(lead: str) -> Tuple[Optional[str], List[str]]:
+    """The level token and the other tokens of the text before a timestamp."""
+    level = None
+    rest = []
+    for token in _LEAD_SPLIT.split(lead):
+        if not token:
+            continue
+        if level is None and level_severity(token) is not None:
+            level = token
+        else:
+            rest.append(token)
+    return level, rest
+
+
+def _parse_generic(line: str, ctx: FileContext) -> Optional[Rec]:
+    located = _locate_ts(line, ctx)
+    if located is None:
+        return None
+    tm, lead, end = located
     rec = Rec()
     rec.ts, rec.has_tz, rec.offset, rec.ts_kind = (
         tm.epoch,
@@ -1116,10 +1203,19 @@ def _parse_generic(line: str, ctx: FileContext) -> Optional[Rec]:
         tm.offset,
         tm.kind,
     )
+    lead_rest: List[str] = []
+    if lead:
+        lead_level, lead_rest = _split_lead(lead)
+        if lead_level is not None:
+            rec.sev, rec.level = level_severity(lead_level), lead_level.upper()
+        if ctx.lead_host and len(lead_rest) == 1:
+            rec.host = lead_rest.pop()
     rest = line[end:].lstrip(" \t|,;]-:")
     tokens = rest.split(" ")
     drop = set()
-    if ctx.level_pos is not None and ctx.level_pos < len(tokens):
+    if rec.sev is not None:
+        pass  # the level came before the timestamp
+    elif ctx.level_pos is not None and ctx.level_pos < len(tokens):
         sev = level_severity(_strip_token(tokens[ctx.level_pos]))
         if sev is not None:
             rec.sev, rec.level = sev, _strip_token(tokens[ctx.level_pos]).upper()
@@ -1131,7 +1227,7 @@ def _parse_generic(line: str, ctx: FileContext) -> Optional[Rec]:
                 rec.sev, rec.level = sev, _strip_token(token).upper()
                 drop.add(i)
                 break
-    if ctx.host_pos is not None and ctx.host_pos < len(tokens):
+    if rec.host is None and ctx.host_pos is not None and ctx.host_pos < len(tokens):
         candidate = _strip_token(tokens[ctx.host_pos])
         if _HOST_SHAPE.match(candidate) and level_severity(candidate) is None:
             rec.host = candidate
@@ -1153,12 +1249,79 @@ def _parse_generic(line: str, ctx: FileContext) -> Optional[Rec]:
             if rec.host is None:
                 rec.host = inner.host
             return rec
-    rec.msg = msg
+    # A logger or component name before the timestamp is part of the event.
+    rec.msg = " ".join(lead_rest + [msg]) if lead_rest else msg
     return rec
+
+
+_CSV_DELIMS = (",", ";", "\t")
+
+
+def _csv_fields(line: str, delim: str) -> List[str]:
+    try:
+        return next(csv.reader([line], delimiter=delim), [])
+    except csv.Error:
+        return []
+
+
+def _learn_csv(line: str, ctx: FileContext) -> None:
+    """Remember the columns of a CSV export whose header names a time column."""
+    for delim in _CSV_DELIMS:
+        if delim not in line:
+            continue
+        names = [f.strip().lower() for f in _csv_fields(line, delim)]
+        if (
+            len(names) >= 2
+            and all(len(n) <= 40 for n in names)
+            and any(n in _TS_KEYS for n in names)
+            and not any(parse_timestamp(n) for n in names)
+        ):
+            ctx.csv_header, ctx.csv_delim, ctx.csv_header_line = names, delim, line
+            return
+
+
+def _parse_csv(line: str, ctx: FileContext) -> Optional[Rec]:
+    """A row of a CSV export, read by the column names of its header.
+
+    Columns past the header (an event viewer export leaves the message column
+    unnamed) are the message.
+    """
+    names = ctx.csv_header
+    if names is None:
+        return None
+    fields = _csv_fields(line, ctx.csv_delim)
+    if len(fields) < 2:
+        return None
+    flat: Dict[str, Any] = {n: v.strip() for n, v in zip(names, fields) if n}
+    extra = fields[len(names) :]
+    if extra and not any(k in flat for k in _MSG_KEYS):
+        flat["message"] = ctx.csv_delim.join(extra).strip()
+    rec = _apply_mapping(flat, ctx, Rec())
+    return rec if rec.ts is not None else None
+
+
+def _csv_match_rate(sample: Sequence[str], ctx: FileContext) -> float:
+    """Share of sample rows that parse; lines inside a quoted field do not count."""
+    ok = rows = 0
+    in_quote = False
+    for ln in sample:
+        if not ln.strip() or ln == ctx.csv_header_line:
+            continue
+        parsed = _parse_csv(ln, ctx) is not None
+        if parsed:
+            ok += 1
+            rows += 1
+            in_quote = ln.count('"') % 2 == 1
+        elif in_quote:
+            in_quote = ln.count('"') % 2 == 0
+        else:
+            rows += 1
+    return ok / rows if rows else 0.0
 
 
 PARSERS: Dict[str, Callable[[str, FileContext], Optional[Rec]]] = {
     "json": _parse_json,
+    "csv": _parse_csv,
     "syslog5424": _parse_syslog5424,
     "access": _parse_access,
     "apache_error": _parse_apache_error,
@@ -1169,11 +1332,130 @@ PARSERS: Dict[str, Callable[[str, FileContext], Optional[Rec]]] = {
 }
 
 
+def _self_repeating(items: Sequence[Tuple[Any, Any]]) -> bool:
+    """True when a group's content can meet itself with nothing fixed between.
+
+    Every part is a variable repeat, and leaving out the optional ones puts
+    the same repeat next to itself: ``(\\w+\\s*)+``, ``(a+)*``, ``(\\d+,?)+``.
+    Repeating such a group lets the same text be split in a number of ways
+    that doubles with every character, and a line that does not match tries
+    them all. ``(\\s+\\S+)*`` is left to the timing probe: its two repeats
+    differ, so they may well not overlap.
+    """
+    if not items:
+        return False
+    needed: List[str] = []
+    for op, av in items:
+        name = str(op)
+        if name in ("MAX_REPEAT", "MIN_REPEAT"):
+            if av[0] == av[1]:
+                return False
+            if av[0] > 0:
+                needed.append(repr(av[2]))
+        elif name == "SUBPATTERN":
+            if not _self_repeating(av[3]):
+                return False
+            needed.append(repr(av[3]))
+        elif name == "BRANCH":
+            if not any(_self_repeating(alt) for alt in av[1]):
+                return False
+            needed.append(repr(av[1]))
+        else:
+            return False
+    if len(needed) <= 1:
+        return True
+    return any(a == b for a, b in zip(needed, needed[1:] + needed[:1]))
+
+
+def _has_nested_repeat(items: Sequence[Tuple[Any, Any]]) -> bool:
+    for op, av in items:
+        name = str(op)
+        if name in ("MAX_REPEAT", "MIN_REPEAT"):
+            body = av[2]
+            if av[1] > 1 and any(str(o) in ("SUBPATTERN", "BRANCH") for o, _ in body):
+                if _self_repeating(body):
+                    return True
+            if _has_nested_repeat(body):
+                return True
+        elif name in ("SUBPATTERN", "ATOMIC_GROUP"):
+            if _has_nested_repeat(av[3] if name == "SUBPATTERN" else av):
+                return True
+        elif name == "BRANCH":
+            if any(_has_nested_repeat(alt) for alt in av[1]):
+                return True
+        elif name in ("ASSERT", "ASSERT_NOT"):
+            if _has_nested_repeat(av[1]):
+                return True
+    return False
+
+
+def compile_regex(pattern: Optional[str], what: str) -> Optional["re.Pattern[str]"]:
+    """Compile a regex the caller supplied; None when it is empty.
+
+    Raises:
+        ValueError: naming the argument, when the pattern does not compile or
+            repeats a group whose content repeats on its own.
+    """
+    if not pattern:
+        return None
+    try:
+        compiled = re.compile(pattern)
+        nested = _has_nested_repeat(list(_regex_parser.parse(pattern)))
+    except (re.error, RecursionError, OverflowError) as exc:
+        raise ValueError(f"{what} is not a valid regular expression: {exc}") from exc
+    if nested:
+        raise ValueError(
+            f"{what} repeats a group whose content can repeat on its own, like "
+            "(\\w+\\s*)+ or (a+)*. One line that does not match can keep such a "
+            "pattern busy for hours. Rewrite it without a quantifier inside the "
+            "repeated group, for example [\\w\\s]+."
+        )
+    return compiled
+
+
+#: Runs of one kind of character: what runaway backtracking feeds on.
+_PROBE_RUNS = tuple(
+    unit * (48 // len(unit)) for unit in ("a", "1", " ", "a ", "a1", "a.")
+)
+
+
+def probe_regex(pattern: "re.Pattern[str]", what: str, lines: Sequence[str]) -> None:
+    """Time a caller's regex on sample lines before it meets the whole log.
+
+    A running ``re`` search cannot be stopped, so the pattern is tried on
+    prefixes that grow a little at a time, with and without a character that
+    makes an end anchor fail. Runaway backtracking then shows as a slow search
+    on a short prefix, long before a full line would hang the call.
+
+    Raises:
+        ValueError: naming the argument, when one search passes the budget.
+    """
+    chosen = list(lines[: REGEX_PROBE_LINES // 2])
+    chosen += sorted(lines, key=len, reverse=True)[: REGEX_PROBE_LINES // 2]
+    for line in list(_PROBE_RUNS) + chosen:
+        for tail in ("", "\x00"):
+            n = min(8, len(line))
+            while True:
+                text = line[:n] + tail
+                started = time.perf_counter()
+                pattern.search(text)
+                took = time.perf_counter() - started
+                if took > REGEX_PROBE_BUDGET_S:
+                    raise ValueError(
+                        f"{what} is too slow: {took:.2f} s on a line of {len(text)} "
+                        "characters, and it gets worse with length. Overlapping "
+                        "or nested quantifiers cause this; simplify the pattern."
+                    )
+                if n >= len(line):
+                    break
+                n = min(len(line), n + 2 if n < 48 else n * 2)
+
+
 class CustomParser:
     """Line parser built from the caller's ``timestamp_regex``."""
 
     def __init__(self, timestamp_regex: str) -> None:
-        self.pattern = re.compile(timestamp_regex)
+        self.pattern = compile_regex(timestamp_regex, "timestamp_regex")
         names = set(self.pattern.groupindex)
         if (
             "ts" not in names
@@ -1237,15 +1519,6 @@ class CustomParser:
         return rec
 
 
-def _compile_optional(pattern: Optional[str], what: str) -> Optional["re.Pattern[str]"]:
-    if not pattern:
-        return None
-    try:
-        return re.compile(pattern)
-    except re.error as exc:
-        raise ValueError(f"{what} is not a valid regular expression: {exc}") from exc
-
-
 def _group_value(m: "re.Match[str]", name: str) -> Optional[str]:
     if name in m.re.groupindex:
         return m.group(name)
@@ -1290,6 +1563,28 @@ def _open_text(path: Path) -> io.TextIOBase:
     return io.TextIOWrapper(raw, encoding=encoding, errors="replace", newline=None)
 
 
+class _BudgetSpent(Exception):
+    """The time budget ran out while a single over-long line was skipped."""
+
+
+def _read_line(f: io.TextIOBase, deadline: float) -> Tuple[str, bool]:
+    """The next line cut at MAX_LINE_CHARS, and whether it was longer.
+
+    ``readline`` gets a limit, so a file with no line breaks (a one-line JSON
+    export, a decompression bomb) is never held in memory whole. The rest of
+    an over-long line is read in chunks and dropped.
+    """
+    raw = f.readline(MAX_LINE_CHARS + 1)
+    if len(raw) <= MAX_LINE_CHARS or raw.endswith("\n"):
+        return raw, False
+    while True:
+        more = f.readline(READ_CHUNK_CHARS)
+        if not more or more.endswith("\n"):
+            return raw[:MAX_LINE_CHARS], True
+        if time.monotonic() > deadline:
+            raise _BudgetSpent()
+
+
 def _is_binary(path: Path) -> bool:
     if path.suffix.lower() == ".gz":
         skill_context.check_read(path)
@@ -1309,10 +1604,12 @@ def _sample_lines(path: Path) -> List[str]:
     lines: List[str] = []
     with _open_text(path) as f:
         for _ in range(SAMPLE_HEAD_LINES):
-            line = f.readline()
+            line = f.readline(MAX_LINE_CHARS + 1)
             if not line:
                 return [ln.rstrip("\r\n") for ln in lines]
-            lines.append(line)
+            lines.append(line[:MAX_LINE_CHARS])
+            if len(line) > MAX_LINE_CHARS and not line.endswith("\n"):
+                break  # an over-long line: the sample stops here
     if path.suffix.lower() == ".gz":
         return [ln.rstrip("\r\n") for ln in lines]
     size = path.stat().st_size
@@ -1330,6 +1627,53 @@ def _sample_lines(path: Path) -> List[str]:
                     else text[-SAMPLE_MID_LINES:]
                 )
     return [ln.rstrip("\r\n") for ln in lines]
+
+
+def _below(folder: Path, root: str) -> str:
+    rel = os.path.relpath(folder, root).replace(os.sep, "/")
+    return "" if rel == "." else rel
+
+
+def file_labels(paths: Sequence[Path]) -> Tuple[List[str], List[str]]:
+    """The display name and the fallback host of every input file.
+
+    A file is shown by its name, and lines that name no host get one from the
+    file stem (``app.log`` and ``app.log.1`` are both ``app``). When several
+    folders hold the same file name, as in one folder per host, the name is
+    the path below their common folder and the host is the folder.
+    """
+    names = [p.name for p in paths]
+    hosts = [p.name.split(".")[0] or p.name for p in paths]
+    folders = [p.parent.resolve() for p in paths]
+
+    def groups(keys: Sequence[str]) -> List[List[int]]:
+        found: Dict[str, List[int]] = {}
+        for i, key in enumerate(keys):
+            found.setdefault(key, []).append(i)
+        return [g for g in found.values() if len({folders[i] for i in g}) > 1]
+
+    for group in groups(names):
+        try:
+            root = os.path.commonpath([str(folders[i]) for i in group])
+        except ValueError:  # different drives
+            for i in group:
+                names[i] = str(paths[i])
+            continue
+        for i in group:
+            rel = _below(folders[i], root)
+            names[i] = f"{rel}/{paths[i].name}" if rel else paths[i].name
+    for group in groups(hosts):
+        try:
+            root = os.path.commonpath([str(folders[i]) for i in group])
+        except ValueError:
+            continue
+        rels = {folders[i]: _below(folders[i], root) for i in group}
+        tops = {folder: rel.split("/")[0] for folder, rel in rels.items()}
+        # The first folder below the common one, unless two hosts share it.
+        labels = tops if len(set(tops.values())) == len(tops) else rels
+        for i in group:
+            hosts[i] = labels[folders[i]] or hosts[i]
+    return names, hosts
 
 
 def _mtime(path: Path) -> Optional[float]:
@@ -1365,15 +1709,33 @@ def detect_format(
         ctx.formats = ["plain"]
         return {"format": "plain", "match_rate": 0.0, "secondary": []}
 
-    # Learn which timestamp layout the timestamped lines use first.
+    first = next((ln for ln in sample if ln.strip()), "").lstrip(BOM)
+    _learn_csv(first, ctx)
+    if ctx.csv_header is not None:
+        rate = _csv_match_rate(sample, ctx)
+        if rate >= 0.5:
+            ctx.formats = ["csv"]
+            return {"format": "csv", "match_rate": round(rate, 3), "secondary": []}
+        ctx.csv_header = ctx.csv_header_line = None
+
+    # Learn which timestamp layout the timestamped lines use first, and
+    # whether the timestamp leads the line or follows a level or logger name.
     kinds = Counter()
+    leading = following = 0
     for ln in headers[:200]:
         pos = 1 if ln.startswith("[") else 0
         tm = parse_timestamp(ln, pos, year_hint=ctx.year)
         if tm:
+            leading += 1
+        else:
+            found = _search_ts(ln, ctx)
+            tm = found[0] if found else None
+            following += tm is not None
+        if tm:
             kinds[tm.kind] += 1
     if kinds:
         ctx.prefer_ts = kinds.most_common(1)[0][0]
+    ctx.ts_search = following > leading and following >= 0.5 * len(headers[:200])
     _learn_columns(headers, ctx)
 
     rates: Dict[str, float] = {}
@@ -1399,19 +1761,20 @@ def detect_format(
 def _learn_columns(headers: Sequence[str], ctx: FileContext) -> None:
     """Find the level and host columns of timestamp-led lines."""
     rows: List[List[str]] = []
+    leads: List[List[str]] = []
     for ln in headers[:300]:
-        pos = 1 if ln.startswith("[") else 0
-        tm = parse_timestamp(ln, pos, prefer=ctx.prefer_ts, year_hint=ctx.year)
-        if not tm:
+        located = _locate_ts(ln, ctx)
+        if located is None:
             continue
-        end = tm.end
-        if pos == 1:
-            close = ln.find("]", end, end + 40)
-            end = close + 1 if close != -1 else end
+        _, lead, end = located
         rows.append(ln[end:].lstrip(" \t|,;]-:").split(" ")[:6])
+        leads.append(_split_lead(lead)[1])
     if len(rows) < 3:
         return
     n = len(rows)
+    # One host-shaped name before the timestamp, shared by many lines: a host.
+    named = [t[0] for t in leads if len(t) == 1 and _HOST_SHAPE.match(t[0])]
+    ctx.lead_host = len(named) >= 0.9 * n and len(set(named)) <= max(1, 0.5 * n)
     level_hits = Counter()
     for toks in rows:
         for i, tok in enumerate(toks[:5]):
@@ -1486,11 +1849,14 @@ class FileReport:
     secondary: List[str] = field(default_factory=list)
     lines: int = 0
     blank: int = 0
+    header: int = 0
+    long_lines: int = 0
     entries: int = 0
     continuation: int = 0
     unparsed: int = 0
     no_timestamp: int = 0
     unparsed_samples: List[Tuple[int, str]] = field(default_factory=list)
+    line_samples: List[Tuple[int, str]] = field(default_factory=list)
     first: Optional[float] = None
     last: Optional[float] = None
     tz_aware: int = 0
@@ -1578,15 +1944,23 @@ class Analyzer:
         self.custom = (
             CustomParser(options.timestamp_regex) if options.timestamp_regex else None
         )
-        self.level_re = _compile_optional(options.level_regex, "level_regex")
-        self.host_re = _compile_optional(options.host_regex, "host_regex")
-        entity_re = _compile_optional(options.entity_regex, "entity_regex")
+        self.level_re = compile_regex(options.level_regex, "level_regex")
+        self.host_re = compile_regex(options.host_regex, "host_regex")
+        entity_re = compile_regex(options.entity_regex, "entity_regex")
         self.entity_patterns: Tuple["re.Pattern[str]", ...] = (
             (entity_re,) if entity_re is not None else ()
         )
         self.custom_entities = entity_re is not None
+        self.probed = False
         self.bucket_s: float = parse_bucket(options.bucket) or 60.0
         self.bucket_fixed = options.bucket not in (None, "")
+        self.bucket_asked = self.bucket_s
+        # Lowest and highest bucket seen while streaming, and how many
+        # buckets may lie between them before they are widened.
+        self.bmin: Optional[int] = None
+        self.bmax = 0
+        self.bucket_cap = MAX_BUCKETS * (20 if self.bucket_fixed else 1)
+        self.coarsened = False
         self.origin = 0.0
         self.tpls: Dict[str, _Tpl] = {}
         self.overflow: Optional[_Tpl] = None
@@ -1625,9 +1999,11 @@ class Analyzer:
         self.multi_file = len(paths) > 1
         lo: Optional[float] = None
         hi: Optional[float] = None
+        names, hosts = file_labels(paths)
         for idx, path in enumerate(paths):
             ctx = FileContext(idx, path, _year_hint(path))
-            report = FileReport(path=str(path), name=path.name)
+            ctx.stem = hosts[idx]
+            report = FileReport(path=str(path), name=names[idx])
             self.files.append(report)
             try:
                 sample = _sample_lines(path)
@@ -1635,6 +2011,8 @@ class Analyzer:
                 report.error = f"could not read: {exc}"
                 plans.append((path, ctx, {"format": "unreadable"}))
                 continue
+            if not self.probed and sample:
+                self._probe_patterns(sample)
             info = detect_format(sample, ctx, self.custom)
             report.format, report.match_rate = info["format"], info["match_rate"]
             report.secondary = info["secondary"]
@@ -1662,6 +2040,19 @@ class Analyzer:
         if lo is not None:
             self.origin = math.floor(lo / self.bucket_s) * self.bucket_s
         return plans
+
+    def _probe_patterns(self, sample: Sequence[str]) -> None:
+        """Time every regex the caller supplied, once, on the first sample."""
+        self.probed = True
+        named = (
+            ("timestamp_regex", self.custom.pattern if self.custom else None),
+            ("level_regex", self.level_re),
+            ("host_regex", self.host_re),
+            ("entity_regex", self.entity_patterns[0] if self.custom_entities else None),
+        )
+        for what, pattern in named:
+            if pattern is not None:
+                probe_regex(pattern, what, sample)
 
     def _parse_line(self, line: str, ctx: FileContext) -> Optional[Rec]:
         rec: Optional[Rec] = None
@@ -1698,26 +2089,47 @@ class Analyzer:
             return
         plain = ctx.formats == ["plain"]
         pending: Optional[Tuple[Rec, int, str]] = None
+        deadline = self.started + self.opt.time_budget_s
+        n = 0
         try:
             with _open_text(path) as f:
-                for n, raw in enumerate(f, 1):
+                while True:
+                    try:
+                        raw, cut = _read_line(f, deadline)
+                    except _BudgetSpent:
+                        report.truncated_at_line = n + 1
+                        self.out_of_time = True
+                        break
+                    if not raw:
+                        break
+                    n += 1
                     report.lines = n
-                    if (
-                        n % 4096 == 0
-                        and time.monotonic() - self.started > self.opt.time_budget_s
-                    ):
+                    report.long_lines += cut
+                    if n % 4096 == 0 and time.monotonic() > deadline:
                         report.truncated_at_line = n
                         self.out_of_time = True
                         break
                     line = raw.rstrip("\r\n")
-                    if len(line) > MAX_LINE_CHARS:
-                        line = line[:MAX_LINE_CHARS]
                     if not line.strip():
                         report.blank += 1
                         continue
                     if n == 1:
                         line = line.lstrip(BOM)
+                    if line == ctx.csv_header_line and not report.header:
+                        report.header = 1
+                        continue
+                    if len(report.line_samples) < OUT_SAMPLES:
+                        report.line_samples.append((n, line[:OUT_SAMPLE_CHARS]))
                     rec = None if plain else self._parse_line(line, ctx)
+                    if ctx.csv_header is not None:
+                        # A quoted field may run over several lines.
+                        quotes = line.count('"') % 2
+                        if rec is not None:
+                            ctx.in_quote = quotes == 1
+                        elif ctx.in_quote:
+                            ctx.in_quote = quotes == 0
+                            report.continuation += 1
+                            continue
                     if rec is None and pending is not None and _CONT_RE.match(line):
                         report.continuation += 1
                         prev = pending[0]  # pylint: disable=unsubscriptable-object
@@ -1826,6 +2238,15 @@ class Analyzer:
                 if ff is not None or len(tpl.file_first) < 64:
                     tpl.file_first[ctx.idx] = (ts, n)
             bucket = self._bucket(ts)
+            if self.bmin is None:
+                self.bmin = self.bmax = bucket
+            elif bucket < self.bmin:
+                self.bmin = bucket
+            elif bucket > self.bmax:
+                self.bmax = bucket
+            if self.bmax - self.bmin >= self.bucket_cap:
+                self._coarsen()
+                bucket = self._bucket(ts)
             cell = tpl.cells.get(bucket)
             if cell is None:
                 tpl.cells[bucket] = [1, ts, ts, loc, {host}]
@@ -1898,24 +2319,67 @@ class Analyzer:
 
     # -- post-processing ---------------------------------------------------
 
+    def _coarsen(self) -> None:
+        """Widen the buckets mid-stream so their number stays bounded.
+
+        The bucket comes from a sample, and a compressed file is sampled from
+        its head only: a multi-day ``.gz`` starts at buckets of a second or
+        two. Without this every template would keep one cell per second until
+        the file ends.
+        """
+        span_s = (self.bmax - self.bmin + 1) * self.bucket_s
+        factor = 2
+        if not self.bucket_fixed:
+            factor = max(2, int(math.ceil(choose_bucket(span_s) / self.bucket_s)))
+        self._rebase(self.bmin, factor)
+        self.bmax = (self.bmax - self.bmin) // factor
+        self.bmin = 0
+        self.coarsened = True
+        self.ent_pairs = sum(
+            len(marks) for t in self._all_templates() for marks in t.ents.values()
+        )
+
     def finalize(self) -> None:
         """Rebucket if the sample misjudged the range, then merge templates."""
+        self._unify_id_shapes()
         if self.gmin is None or self.gmax is None:
             return
         lo = self._bucket(self.gmin)
         hi = self._bucket(self.gmax)
         factor = 1
-        if not self.bucket_fixed and (hi - lo + 1) > MAX_BUCKETS:
+        if not self.bucket_fixed and (self.coarsened or hi - lo + 1 > MAX_BUCKETS):
             target = choose_bucket(max(self.gmax - self.gmin, 1.0))
             factor = max(1, int(math.ceil(target / self.bucket_s)))
-        elif self.bucket_fixed and (hi - lo + 1) > 20 * MAX_BUCKETS:
-            factor = int(math.ceil((hi - lo + 1) / (20 * MAX_BUCKETS)))
-            self.warnings.append(
-                f"bucket {self.opt.bucket} gave {hi - lo + 1} buckets; widened {factor}x "
-                f"to {self._fmt_duration(self.bucket_s * factor)}."
-            )
         self._rebase(lo, factor)
+        if self.bucket_fixed and self.bucket_s != self.bucket_asked:
+            self.warnings.append(
+                f"bucket {self.opt.bucket} gave more than {self.bucket_cap} buckets; "
+                f"widened to {self._fmt_duration(self.bucket_s)}."
+            )
         self._merge_templates()
+
+    def _unify_id_shapes(self) -> None:
+        """One kind per id prefix: a ``vol-`` id made only of digits is still
+        a ``vol-H`` id when the others are hex."""
+        widest: Dict[str, str] = {}
+        for kind in self.kinds:
+            stem, shape = kind[:-1], kind[-1]
+            if kind not in FIXED_KIND_REGEX and shape in _SHAPE_RE:
+                widest[stem] = max(widest.get(stem, "N"), shape, key="NHA".index)
+        rename = {
+            stem + shape: stem + widest[stem]
+            for stem in widest
+            for shape in _SHAPE_RE
+            if shape != widest[stem] and stem + shape in self.kinds
+        }
+        if not rename:
+            return
+        for e, kind in self.ent_kind.items():
+            if kind in rename:
+                self.ent_kind[e] = rename[kind]
+        for old, new in rename.items():
+            merged = self.kinds[new] + self.kinds.pop(old)
+            self.kinds[new] = merged[:5]
 
     def _rebase(self, lo: int, factor: int) -> None:
         """Renumber buckets from 0 at the earliest line, coarsening by ``factor``."""
@@ -2245,9 +2709,8 @@ def _anomaly_window(tpl: _Tpl) -> Optional[set]:
 def find_bursts(an: Analyzer, nb: int) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Buckets where error and anomaly lines rise far above their median.
 
-    Baseline templates are left out of the series: a platform that logs a
-    steady stream of FATAL lines would otherwise raise the median until a real
-    burst disappears into it. A baseline template that spikes is an anomaly,
+    Baseline templates are left out of the series: steady error lines
+    would otherwise raise the median until a real burst disappears into it. A baseline template that spikes is an anomaly,
     so it still counts.
     """
     contrib = [
@@ -2686,7 +3149,8 @@ def resolve_inputs(
 
 
 def _is_own_output(path: Path) -> bool:
-    if path.suffix.lower() not in (".json", ".csv"):
+    """True for a file an earlier call wrote: each starts with OUTPUT_MARKER."""
+    if path.suffix.lower() not in (".json", ".csv", ".txt"):
         return False
     try:
         with skill_context.open_read(path, "rb") as f:
@@ -2714,7 +3178,8 @@ def triage(
     block): every file is opened through the skill context.
 
     Raises:
-        ValueError: an option (regex, bucket) is invalid.
+        ValueError: an option is invalid: a bucket that is no duration, or a
+            regex that does not compile or backtracks out of control.
     """
     options = options or TriageOptions()
     an = Analyzer(options)
@@ -2757,6 +3222,14 @@ class TriageResult:
             (t for t in tpls if t.cls == "baseline"), key=lambda t: -t.count
         )
         self.intermittent = [t for t in tpls if t.cls == "intermittent"]
+        # Steady errors are baseline, but with nothing else wrong, or in a
+        # short log, they may be the outage itself: report them apart.
+        self.persistent: List[_Tpl] = []
+        if not self.anomalies or meta["span_s"] <= PERSISTENT_SHORT_RANGE_S:
+            self.persistent = sorted(
+                (t for t in self.baseline if t.sev >= 3 and t.m.get("timed")),
+                key=lambda t: (-t.sev, -t.count),
+            )
         nb = meta["nb"]
         self.bursts, self.burst_stats = (
             find_bursts(an, nb) if an.gmin is not None else ([], {})
@@ -2798,6 +3271,23 @@ class TriageResult:
                 out.append(
                     f"{f.name}: no timestamp format recognised; lines were templated "
                     "without time ranking. Pass timestamp_regex to fix."
+                )
+            elif f.no_timestamp > (1 - MIN_PARSED_SHARE) * f.entries:
+                out.append(
+                    f"{f.name}: {f.no_timestamp} of {f.entries} entries carry no "
+                    "timestamp; they are counted but not ranked by time. Pass "
+                    "timestamp_regex if the lines do carry one."
+                )
+            if f.long_lines:
+                out.append(
+                    f"{f.name}: {f.long_lines} line(s) longer than {MAX_LINE_CHARS} "
+                    "characters were cut to that length"
+                    + (
+                        "; the file is one long line (a JSON array export?), so "
+                        "convert it to one record per line."
+                        if f.lines == 1
+                        else "."
+                    )
                 )
             if f.truncated_at_line:
                 out.append(
@@ -2898,7 +3388,7 @@ class TriageResult:
         if sum(an.level_totals.values()) != an.entries:
             failed.append("level counts do not sum to entries")
         for f in an.files:
-            accounted = f.entries + f.continuation + f.unparsed + f.blank
+            accounted = f.entries + f.continuation + f.unparsed + f.blank + f.header
             if not f.error and not f.truncated_at_line and accounted != f.lines:
                 failed.append(
                     f"{f.name}: {accounted} lines accounted for, {f.lines} read"
@@ -2915,10 +3405,22 @@ class TriageResult:
         classes = len(self.anomalies) + len(self.baseline) + len(self.intermittent)
         if classes != len(an.tpls):
             failed.append("template classes do not cover every template")
+        # A file with no usable timestamps was not ranked by time: it fails
+        # the parsed-share check too, so the caller fixes the format first.
+        untimed = [
+            f.name
+            for f in an.files
+            if f.entries
+            and (
+                f.format == "plain"
+                or f.no_timestamp > (1 - MIN_PARSED_SHARE) * f.entries
+            )
+        ]
         below = [
             f.name
             for f in an.files
-            if f.entries + f.unparsed
+            if f.name in untimed
+            or f.entries + f.unparsed
             and f.entries / (f.entries + f.unparsed) < MIN_PARSED_SHARE
         ]
         return {
@@ -2927,6 +3429,8 @@ class TriageResult:
             "parsed_share_ok": not below,
             "parsed_share_min": MIN_PARSED_SHARE,
             "files_below_parsed_share": below,
+            "time_ranked": not untimed,
+            "files_without_timestamps": untimed,
             "entries": an.entries,
             "template_count_sum": tpl_total,
             "level_count_sum": sum(an.level_totals.values()),
@@ -2971,6 +3475,22 @@ class TriageResult:
             view["example"] = t.sample
             view["files"] = sorted({self.an.files[i].name for i in t.file_first})
         return view
+
+    def _persistent_view(self, limit: Optional[int]) -> List[Dict[str, Any]]:
+        return [
+            {
+                "id": t.tid,
+                "template": _short(t.key, 100),
+                "severity": SEVERITY_NAMES[t.sev],
+                "count": t.count,
+                "hosts": len(t.hosts),
+                "span_pct": round(t.m.get("span_pct", 0.0), 1),
+                "first": {"ts": self.ts(t.first), **(self.loc(t.first_loc) or {})},
+                "last": {"ts": self.ts(t.last), **(self.loc(t.last_loc) or {})},
+                "reading": PERSISTENT_READING,
+            }
+            for t in self.persistent[:limit]
+        ]
 
     def _burst_view(self, b: Dict[str, Any], *, full: bool = False) -> Dict[str, Any]:
         rows = b["templates"]
@@ -3103,8 +3623,16 @@ class TriageResult:
                 "first": self.ts(f.first),
                 "last": self.ts(f.last),
             }
+            if f.header:
+                row["header_lines"] = f.header
+            if f.long_lines:
+                row["long_lines_cut"] = f.long_lines
             if f.no_timestamp:
                 row["no_timestamp"] = f.no_timestamp
+                # What the lines look like, to fit timestamp_regex to.
+                row["line_samples"] = [
+                    {"line": n, "text": s} for n, s in f.line_samples
+                ]
             if f.unparsed_samples:
                 row["unparsed_samples"] = [
                     {"line": n, "text": s} for n, s in f.unparsed_samples
@@ -3141,6 +3669,7 @@ class TriageResult:
             "anomaly_templates": len(self.anomalies),
             "bursts": [self._burst_view(b) for b in self.bursts[:OUT_BURSTS]],
             "timeline": self._timeline(),
+            "persistent_errors": self._persistent_view(OUT_PERSISTENT),
             "baseline": {
                 "templates": len(self.baseline),
                 "lines": baseline_lines,
@@ -3168,7 +3697,15 @@ class TriageResult:
             "checks": {
                 k: v
                 for k, v in self.checks.items()
-                if k in ("ok", "failed", "parsed_share_ok", "files_below_parsed_share")
+                if k
+                in (
+                    "ok",
+                    "failed",
+                    "parsed_share_ok",
+                    "files_below_parsed_share",
+                    "time_ranked",
+                    "files_without_timestamps",
+                )
             },
             "warnings": [
                 _short(w, OUT_WARNING_CHARS) for w in self.warnings[:OUT_WARNINGS]
@@ -3188,6 +3725,14 @@ class TriageResult:
             first = self.loc(self.anomalies[0].first_loc)
             result["next_step"] = (
                 f"read_file around {first['file']}:{first['line']} to see the context of {self.anomalies[0].tid}."
+            )
+        elif self.persistent and self.persistent[0].first_loc:
+            first = self.loc(self.persistent[0].first_loc)
+            result["next_step"] = (
+                f"{self.persistent[0].tid} is {PERSISTENT_READING}. read_file around "
+                f"{first['file']}:{first['line']}, then say which reading the evidence "
+                "supports; if the log cannot tell, ask the user whether these errors "
+                "are expected."
             )
         return result
 
@@ -3211,8 +3756,9 @@ class TriageResult:
         else:
             view["sample"] = flagged[:OUT_ENTITIES]
             view["full_list"] = (
-                f"{len(flagged)} entities: call again with output_path='<folder>/"
-                "anomalous_entities.csv' (or .txt) to write all of them."
+                f"{len(flagged)} entities, only a sample is shown here. Pass "
+                "output_path='<folder>/anomalous_entities.csv' (or .txt) to write "
+                "all of them; that call reads the logs again."
             )
         return view
 
@@ -3234,6 +3780,11 @@ class TriageResult:
             f"{len(self.baseline)} baseline template(s) cover "
             f"{sum(t.count for t in self.baseline) / max(1, an.entries):.0%} of entries"
         )
+        if self.persistent:
+            parts.append(
+                f"{len(self.persistent)} persistent error template(s) "
+                f"{PERSISTENT_READING}"
+            )
         return "; ".join(parts) + "."
 
     def full(self) -> Dict[str, Any]:
@@ -3255,6 +3806,7 @@ class TriageResult:
             "templates": [self._tpl_view(t, full=True) for t in tpls],
             "bursts": [self._burst_view(b, full=True) for b in self.bursts],
             "burst_threshold": self.burst_stats,
+            "persistent_errors": self._persistent_view(None),
             "entities": {
                 **{
                     k: v
@@ -3275,12 +3827,14 @@ class TriageResult:
         """Write full detail (``.json``) or the entity list (``.csv`` / ``.txt``)."""
         if path.suffix.lower() == ".txt":
             with skill_context.open_write(path, "x") as f:
+                # The marker line lets a later run skip this file as a log.
+                f.write(f"# {OUTPUT_MARKER} anomalous entities, one per line\n")
                 for e in sorted(self.entities["flagged"]):
                     f.write(e + "\n")
             return {
                 "path": str(path),
                 "rows": len(self.entities["flagged"]),
-                "kind": "entity list (one per line)",
+                "kind": "entity list (one per line after a '#' comment line)",
             }
         if path.suffix.lower() == ".csv":
             with skill_context.open_write(path, "x", newline="") as f:
@@ -3346,6 +3900,22 @@ def _output_refusal(out: Path, inputs: Sequence[Path]) -> Optional[str]:
     return None
 
 
+def _not_written(compact: Dict[str, Any], reason: str) -> Dict[str, Any]:
+    """The analysis stands, but the file the caller asked for does not exist."""
+    return {
+        "status": "partial",
+        "error": f"output_path was not written: {reason}",
+        "fix": (
+            "The analysis in this result is complete; only the file is missing. "
+            "Call again with an output_path that does not exist yet, ends in "
+            ".json, .csv or .txt and lies in a folder you may write. Until then "
+            "tell the user the file was not written."
+        ),
+        **{k: v for k, v in compact.items() if k != "status"},
+        "output": {"written": False, "error": reason},
+    }
+
+
 @tool(timeout=DEFAULT_TIME_BUDGET_S + 120, display_label="Triaging logs")
 def triage_logs(
     paths: List[str],
@@ -3371,7 +3941,7 @@ def triage_logs(
             (?P<ts>...) or year/month/day/hour/minute[/second] groups.
         level_regex: Optional regex whose (?P<level>...) or first group is the level.
         host_regex: Optional regex whose (?P<host>...) or first group is the host.
-        entity_regex: Optional regex for the ids to list, e.g. "(blk_-?[0-9]+)";
+        entity_regex: Optional regex for the ids to list, e.g. "(order-[0-9]+)";
             by default the id kind is learned from the data.
         bucket: Optional time bucket such as "1min", "5min" or "1h"; chosen
             automatically from the range when empty.
@@ -3413,24 +3983,18 @@ def triage_logs(
         out = Path(os.path.expanduser(output_path.strip().strip('"')))
         refusal = _output_refusal(out, [Path(f.path) for f in result.an.files])
         if refusal:
-            compact["output"] = {"written": False, "error": refusal}
-        else:
-            try:
-                compact["output"] = {"written": True, **result.write(out)}
-            except SkillPermissionError as exc:
-                compact["output"] = {"written": False, "error": str(exc)}
-            except FileExistsError:
-                compact["output"] = {
-                    "written": False,
-                    "error": (
-                        f"'{out}' already exists: triage_logs never overwrites a "
-                        "file. Pick a new name."
-                    ),
-                }
-            except OSError as exc:
-                log.error("triage_logs could not write %s: %s", out, exc)
-                compact["output"] = {
-                    "written": False,
-                    "error": f"could not write {out}: {exc}",
-                }
+            return _not_written(compact, refusal)
+        try:
+            compact["output"] = {"written": True, **result.write(out)}
+        except SkillPermissionError as exc:
+            return _not_written(compact, str(exc))
+        except FileExistsError:
+            return _not_written(
+                compact,
+                f"'{out}' already exists: triage_logs never overwrites a file. "
+                "Pick a new name.",
+            )
+        except OSError as exc:
+            log.error("triage_logs could not write %s: %s", out, exc)
+            return _not_written(compact, f"could not write {out}: {exc}")
     return compact

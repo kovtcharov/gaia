@@ -139,9 +139,39 @@ def test_levels_and_keyword_fallback():
     assert lt.level_severity(40) == 3  # numeric levels follow Python logging: 40 ERROR
     assert lt.level_severity(60) == 4
     assert lt.level_severity("banana") is None
-    assert lt.keyword_severity("kernel panic - not syncing") == 4
-    assert lt.keyword_severity("connection refused") == 3
     assert lt.keyword_severity("all good") == 1
+
+
+@pytest.mark.parametrize(
+    "message,severity",
+    [
+        ("fatal: could not bind port 8080", 4),
+        ("worker panicked while draining the queue", 4),
+        ("index file corrupted, rebuilding", 4),
+        ("renderer crashed with exit code 3", 4),
+        ("import aborted after 3 attempts", 4),
+        ("segfault in image filter", 4),
+        ("out of memory while sorting", 4),
+        ("OutOfMemoryError in batch job", 4),
+        ("oom killer stopped the cache", 4),
+        ("2 errors while saving", 3),
+        ("payment failed for order 7", 3),
+        ("unhandled exception in handler", 3),
+        ("upstream timed out", 3),
+        ("read timeout after 30 s", 3),
+        ("connection refused", 3),
+        ("permission denied for /srv/data", 3),
+        ("host unreachable", 3),
+        ("Traceback (most recent call last):", 3),
+        ("warning: disk at 91%", 2),
+        ("retrying in 5 s", 2),
+        ("slow response from search", 2),
+        ("running in degraded mode", 2),
+        ("option --fast is deprecated", 2),
+    ],
+)
+def test_keyword_severity_for_lines_without_a_level(message, severity):
+    assert lt.keyword_severity(message) == severity
 
 
 def test_masking_keeps_structure_and_hides_values():
@@ -352,6 +382,125 @@ def test_no_timestamps_falls_back_to_plain_and_says_so(tmp_path):
     assert f.format == "plain" and f.entries == 30
     assert any("no timestamp format" in w for w in res.warnings)
     assert res.checks["ok"]
+    # Not ranked by time, so the caller is sent back to fix the format.
+    checks = res.compact()["checks"]
+    assert not checks["parsed_share_ok"] and not checks["time_ranked"]
+    assert checks["files_below_parsed_share"] == ["plain.txt"]
+    assert checks["files_without_timestamps"] == ["plain.txt"]
+    row = res.compact()["coverage"]["files"][0]
+    assert row["line_samples"][0] == {"line": 1, "text": "starting up"}
+
+
+def test_json_lines_without_a_time_field_are_not_time_ranked(tmp_path):
+    lines = [json.dumps({"level": "error", "msg": f"boom {i}"}) for i in range(20)]
+    res, f = _formats(tmp_path, "a.jsonl", lines)
+    assert f.format == "json" and f.no_timestamp == 20
+    assert not res.checks["time_ranked"] and not res.checks["parsed_share_ok"]
+    assert any("carry no timestamp" in w for w in res.warnings)
+
+
+def test_level_before_the_timestamp(tmp_path):
+    lines = [
+        f"{'ERROR' if i % 10 == 0 else 'INFO'} 2025-03-04 10:{i // 60:02d}:{i % 60:02d} "
+        f"[worker-{i % 3}] {'connection refused' if i % 10 == 0 else 'job done'}"
+        for i in range(120)
+    ]
+    res, f = _formats(tmp_path, "a.log", lines)
+    assert f.format == "timestamped"
+    assert (f.entries, f.unparsed, f.no_timestamp) == (120, 0, 0)
+    assert lt.format_ts(f.first) == "2025-03-04 10:00:00"
+    assert lt.format_ts(f.last) == "2025-03-04 10:01:59"
+    assert dict(res.an.level_totals) == {"ERROR": 12, "INFO": 108}
+    assert sorted(res.an.tpls) == [
+        "[worker-<*>] connection refused",
+        "[worker-<*>] job done",
+    ]
+    assert res.checks["parsed_share_ok"] and res.checks["time_ranked"]
+
+
+def test_level_and_logger_name_before_the_timestamp(tmp_path):
+    lines = [
+        f"{'WARNING' if i % 5 == 0 else 'INFO'}:app.worker:2025-03-04 10:00:{i:02d},250:"
+        f"{'queue is slow' if i % 5 == 0 else 'handled job'} {i}"
+        for i in range(60)
+    ]
+    res, f = _formats(tmp_path, "a.log", lines)
+    assert f.format == "timestamped"
+    assert (f.entries, f.unparsed, f.no_timestamp) == (60, 0, 0)
+    assert lt.format_ts(f.first) == "2025-03-04 10:00:00.250"
+    assert dict(res.an.level_totals) == {"WARNING": 12, "INFO": 48}
+    assert sorted(res.an.tpls) == [
+        "app.worker handled job <*>",
+        "app.worker queue is slow <*>",
+    ]
+
+
+def test_host_before_the_timestamp(tmp_path):
+    lines = [
+        f"web-0{i % 3} [2025-03-04T10:00:{i:02d}Z] ERROR upstream reset"
+        for i in range(30)
+    ]
+    res, f = _formats(tmp_path, "a.log", lines)
+    assert (f.entries, f.unparsed) == (30, 0)
+    tpl = res.an.tpls["upstream reset"]
+    assert set(tpl.hosts) == {"web-00", "web-01", "web-02"} and tpl.sev == 3
+
+
+def test_a_timestamp_mentioned_in_a_few_messages_is_not_the_line_time(tmp_path):
+    lines = []
+    for i in range(40):
+        lines.append(f"worker {i % 4} picked up a batch")
+        if i % 5 == 0:
+            lines.append(f"next run at 2025-03-04 10:00:{i:02d}")
+    res, f = _formats(tmp_path, "a.log", lines)
+    assert f.format == "plain" and f.unparsed == 0
+    assert not res.checks["time_ranked"]
+
+
+def _event_export(path: Path) -> Path:
+    """An event viewer CSV export: named columns, then an unnamed message."""
+    lines = ["Level,Date and Time,Source,Event ID,Task Category"]
+    for i in range(30):
+        when = f"3/4/2025 10:{i:02d}:00 AM"
+        if i % 10 == 0:
+            lines.append(
+                f'Error,{when},Backup Agent,4101,None,"Backup of volume {i} stopped.'
+            )
+            lines.append('The target ""vault"" did not answer."')
+        else:
+            lines.append(
+                f"Information,{when},Backup Agent,4100,None,Backup of volume {i} finished."
+            )
+    return _write(path, lines, newline="\r\n")
+
+
+def test_event_viewer_csv_export(tmp_path):
+    res = lt.triage([str(_event_export(tmp_path / "events.csv"))])
+    f = res.an.files[0]
+    assert f.format == "csv"
+    assert (f.entries, f.header, f.continuation, f.unparsed) == (30, 1, 3, 0)
+    assert f.no_timestamp == 0
+    assert lt.format_ts(f.first) == "2025-03-04 10:00:00"
+    assert lt.format_ts(f.last) == "2025-03-04 10:29:00"
+    assert dict(res.an.level_totals) == {"ERROR": 3, "INFORMATION": 27}
+    assert sorted(res.an.tpls) == [
+        "[Backup Agent] Backup of volume <*> finished.",
+        "[Backup Agent] Backup of volume <*> stopped.",
+    ]
+    assert res.checks["ok"] and res.checks["parsed_share_ok"]
+    assert res.compact()["coverage"]["files"][0]["header_lines"] == 1
+
+
+def test_csv_export_with_named_columns_and_semicolons(tmp_path):
+    lines = ["TimeCreated;LevelDisplayName;MachineName;Id;Message"]
+    lines += [
+        f"2025-03-04 10:00:{i:02d};Warning;desk-{i % 2};{300 + i % 2};Sync took {i} s"
+        for i in range(20)
+    ]
+    res, f = _formats(tmp_path, "export.csv", lines)
+    assert f.format == "csv" and (f.entries, f.header, f.unparsed) == (20, 1, 0)
+    tpl = res.an.tpls["Sync took <*> s"]
+    assert tpl.sev == 2 and set(tpl.hosts) == {"desk-0", "desk-1"}
 
 
 def test_empty_and_blank_files(tmp_path):
@@ -398,6 +547,39 @@ def test_glob_filters_a_folder(tmp_path):
     assert [f.name for f in res.an.files] == ["a.log"]
 
 
+def _per_host_folders(root: Path, sub: str = "") -> None:
+    for n in (1, 2, 3):
+        folder = root / f"node{n}" / sub
+        folder.mkdir(parents=True)
+        _write(
+            folder / "app.log",
+            [f"{_iso(T0 + i * 60 + n)} INFO tick {i}" for i in range(30)],
+        )
+
+
+@pytest.mark.parametrize("sub", ["", "var/log"])
+def test_one_folder_per_host_with_the_same_file_name(tmp_path, sub):
+    _per_host_folders(tmp_path, sub)
+    below = f"{sub}/" if sub else ""
+    res = lt.triage([str(tmp_path)])
+    assert set(res.an.hosts) == {"node1", "node2", "node3"}
+    out = res.compact()
+    assert out["coverage"]["hosts"] == 3
+    assert [f["file"] for f in out["coverage"]["files"]] == [
+        f"node{n}/{below}app.log" for n in (1, 2, 3)
+    ]
+
+
+def test_rotated_files_in_one_folder_stay_one_host(tmp_path):
+    for name in ("app.log", "app.log.1"):
+        _write(
+            tmp_path / name, [f"{_iso(T0 + i * 60)} INFO tick {i}" for i in range(30)]
+        )
+    res = lt.triage([str(tmp_path)])
+    assert set(res.an.hosts) == {"app"}
+    assert [f.name for f in res.an.files] == ["app.log", "app.log.1"]
+
+
 # ---------------------------------------------------------------------------
 # Overrides
 # ---------------------------------------------------------------------------
@@ -405,21 +587,21 @@ def test_glob_filters_a_folder(tmp_path):
 
 def test_timestamp_regex_with_components_and_level_host_overrides(tmp_path):
     lines = [
-        f"250304 1000{i:02d} 77 host=n{i % 3} sev:E block blk_{1000 + i} lost"
+        f"D04.03.25 T10h00m{i:02d}s host=n{i % 3} sev:E parcel order-{1000 + i} lost"
         for i in range(20)
     ]
     opts = dict(
-        timestamp_regex=r"^(?P<year>\d{2})(?P<month>\d{2})(?P<day>\d{2}) (?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})",
+        timestamp_regex=r"^D(?P<day>\d{2})\.(?P<month>\d{2})\.(?P<year>\d{2}) T(?P<hour>\d{2})h(?P<minute>\d{2})m(?P<second>\d{2})s",
         level_regex=r"sev:(?P<level>\w+)",
         host_regex=r"host=(\w+)",
-        entity_regex=r"(blk_\d+)",
+        entity_regex=r"(order-\d+)",
     )
     res, f = _formats(tmp_path, "a.log", lines, **opts)
     assert f.format == "custom" and f.entries == 20 and f.unparsed == 0
     assert lt.format_ts(f.first) == "2025-03-04 10:00:00"
     tpl = next(iter(res.an.tpls.values()))
     assert set(tpl.hosts) == {"n0", "n1", "n2"}
-    assert len(tpl.ents) == 20 and "blk_1000" in tpl.ents
+    assert len(tpl.ents) == 20 and "order-1000" in tpl.ents
 
 
 def test_invalid_options_fail_loudly():
@@ -432,6 +614,68 @@ def test_invalid_options_fail_loudly():
         and lt.parse_bucket("1h") == 3600
         and lt.parse_bucket("30") == 30
     )
+
+
+REGEX_ARGS = ["timestamp_regex", "level_regex", "host_regex", "entity_regex"]
+
+
+@pytest.mark.parametrize("arg", REGEX_ARGS)
+def test_a_regex_that_does_not_compile_is_a_tool_error_naming_it(tmp_path, arg):
+    path = _steady(tmp_path / "a.log", hours=1)
+    out = _call(paths=[str(path)], **{arg: "(?P<ts>[0-9"})
+    assert out["status"] == "error"
+    assert out["error"].startswith(f"{arg} is not a valid regular expression")
+    assert "coverage" not in out
+
+
+@pytest.mark.parametrize("arg", REGEX_ARGS)
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        r"(\w+\s*)+$",
+        r"(?P<ts>(\d+)*)x",
+        r"((a+)+)b",
+        r"(\d+,?)+!",
+        r"(\w+\w+)+!",
+    ],
+)
+def test_a_repeated_group_that_repeats_inside_is_refused(tmp_path, arg, pattern):
+    path = _steady(tmp_path / "a.log", hours=1)
+    out = _call(paths=[str(path)], **{arg: pattern})
+    assert out["status"] == "error"
+    assert out["error"].startswith(f"{arg} repeats a group")
+    assert "[\\w\\s]+" in out["error"]
+
+
+def test_a_slow_regex_is_stopped_by_the_probe_before_streaming(tmp_path, monkeypatch):
+    """Not nested, so only timing finds it: each 'a' can pair up or stand alone."""
+    monkeypatch.setattr(lt, "REGEX_PROBE_BUDGET_S", 0.05)
+    path = _steady(tmp_path / "a.log", hours=1)
+    streamed = []
+    monkeypatch.setattr(
+        lt.Analyzer, "run_file", lambda self, p, ctx: streamed.append(p)
+    )
+    out = _call(paths=[str(path)], entity_regex=r"(a|aa)+$")
+    assert out["status"] == "error"
+    assert out["error"].startswith("entity_regex is too slow")
+    assert streamed == [], "the log must not be streamed with that pattern"
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        r"(req-[0-9a-f]+)",
+        r"(?:\d+\.)+\d+",
+        r"(\d{1,3}\.){3}\d{1,3}",
+        r"(?P<entity>[A-Za-z]+-\d+)(?:\s|$)",
+        r"((?:\s+\S+)*)$",
+        r"((?:[0-9a-f]{2}:){5}[0-9a-f]{2})",
+    ],
+)
+def test_ordinary_regexes_are_accepted(tmp_path, pattern):
+    path = _steady(tmp_path / "a.log", hours=1)
+    out = _call(paths=[str(path)], entity_regex=pattern)
+    assert out["status"] == "success", out.get("error")
 
 
 def test_explicit_bucket_is_used(tmp_path):
@@ -466,6 +710,55 @@ def test_steady_errors_are_baseline_and_a_short_fault_is_an_anomaly(tmp_path):
     assert burst["start"] == pytest.approx(T0 + 4 * 3600)
     assert burst["end"] == pytest.approx(T0 + 4 * 3600 + 19 * 7)
     assert res.loc(burst["start_loc"])["file"] == "a.log"
+
+
+def _refused_every_third_line(path: Path) -> Path:
+    """30 minutes, one line every 3 s, every third one the same ERROR."""
+    lines = []
+    for i in range(600):
+        ts = _iso(T0 + i * 3)
+        if i % 3 == 0:
+            lines.append(f"{ts} app-01 ERROR db connection refused")
+        else:
+            lines.append(f"{ts} app-01 INFO served request {i}")
+    return _write(path, lines)
+
+
+def test_an_error_that_lasts_the_whole_log_is_reported_as_persistent(tmp_path):
+    out = _call(paths=[str(_refused_every_third_line(tmp_path / "app.log"))])
+    assert out["anomalies"] == [] and out["bursts"] == []
+    (row,) = out["persistent_errors"]
+    assert row["template"] == "db connection refused"
+    assert (row["count"], row["severity"]) == (200, "ERROR")
+    assert row["first"]["line"] == 1 and row["last"]["line"] == 598
+    assert row["reading"] == lt.PERSISTENT_READING
+    assert "1 persistent error template(s)" in out["headline"]
+    assert "outage that covers the whole log" in out["headline"]
+    assert "app.log:1" in out["next_step"]
+    assert "outage that covers the whole log" in out["next_step"]
+
+
+def test_routine_errors_beside_an_incident_in_a_long_log_stay_background(tmp_path):
+    extra = [
+        (
+            T0 + 4 * 3600 + k * 7,
+            f"{_iso(T0 + 4 * 3600 + k * 7)} app-0{k % 5 + 1} FATAL disk controller reset on bay {k % 3}",
+        )
+        for k in range(20)
+    ]
+    res = lt.triage([str(_steady(tmp_path / "a.log", extra=extra))])
+    assert res.anomalies and any(t.sev >= 3 for t in res.baseline)
+    out = res.compact()
+    assert out["persistent_errors"] == []
+    assert "persistent" not in out["headline"]
+
+
+def test_a_long_log_with_only_steady_errors_reports_them_as_persistent(tmp_path):
+    out = lt.triage([str(_steady(tmp_path / "a.log"))]).compact()
+    assert out["anomalies"] == []
+    assert [r["template"] for r in out["persistent_errors"]] == [
+        "cache backend timeout after <*> ms"
+    ]
 
 
 def test_spike_of_a_routine_error_is_an_anomaly_with_a_peak(tmp_path):
@@ -633,6 +926,103 @@ def test_large_generated_file_is_fully_read_in_bounded_structures(tmp_path):
     assert len(json.dumps(res.compact(), default=str)) < 12_000
 
 
+def _days_of_ticks(path: Path, n: int = 60_000, step: float = 5.0) -> Path:
+    """One line every ``step`` seconds: 60,000 lines cover about 3.5 days."""
+    with gzip.open(path, "wt", encoding="utf-8") as f:
+        for i in range(n):
+            f.write(f"{_iso(T0 + i * step)} app-01 INFO tick {i}\n")
+    return path
+
+
+def test_a_multi_day_gz_keeps_its_buckets_bounded_while_streaming(tmp_path):
+    """A .gz is sampled from its head, so its first bucket is far too small."""
+    path = _days_of_ticks(tmp_path / "days.log.gz")
+    an = lt.Analyzer(lt.TriageOptions())
+    ((_, ctx, _info),) = an.prepare([path])
+    assert an.bucket_s == 5  # the head sample covers about half an hour
+    sizes = []
+    real_coarsen = an._coarsen
+
+    def coarsen():
+        sizes.append(max(len(t.cells) for t in an.tpls.values()))
+        real_coarsen()
+
+    an._coarsen = coarsen
+    an.run_file(path, ctx)
+    sizes.append(max(len(t.cells) for t in an.tpls.values()))
+    assert len(sizes) > 1, "the buckets were never widened"
+    assert max(sizes) <= lt.MAX_BUCKETS + 1
+    an.finalize()
+    assert an.bucket_s == lt.choose_bucket(60_000 * 5.0) == 600
+    (tpl,) = an.tpls.values()
+    assert sum(cell[0] for cell in tpl.cells.values()) == 60_000
+    assert len(tpl.cells) == 500
+
+
+def test_a_multi_day_gz_gives_the_same_result_as_the_plain_file(tmp_path):
+    gz = _days_of_ticks(tmp_path / "days.log.gz", n=20_000, step=15.0)
+    plain = tmp_path / "plain" / "days.log"
+    plain.parent.mkdir()
+    with gzip.open(gz, "rt", encoding="utf-8") as src:
+        plain.write_text(src.read(), encoding="utf-8", newline="\n")
+    a = lt.triage([str(gz)])
+    b = lt.triage([str(plain)])
+    assert a.an.bucket_s == b.an.bucket_s
+    assert a.checks["ok"] and a.an.entries == b.an.entries == 20_000
+    assert [t.cls for t in a.an.tpls.values()] == [t.cls for t in b.an.tpls.values()]
+    assert a.compact()["baseline"] == b.compact()["baseline"]
+
+
+def test_a_fixed_bucket_that_is_far_too_small_is_widened_and_says_so(tmp_path):
+    path = _days_of_ticks(tmp_path / "days.log.gz", n=20_000, step=15.0)
+    res = lt.triage([str(path)], lt.TriageOptions(bucket="1s"))
+    assert res.an.bucket_s > 1 and res.checks["ok"]
+    assert max(len(t.cells) for t in res.an.tpls.values()) <= 20 * lt.MAX_BUCKETS
+    assert any("widened to" in w for w in res.warnings)
+
+
+def test_a_file_with_no_line_breaks_is_never_read_whole(tmp_path, monkeypatch):
+    """A one-line export is cut at the line cap, not loaded into memory."""
+    path = tmp_path / "export.json"
+    record = '{"time": "2025-03-04T10:00:00Z", "level": "error", "msg": "boom"}'
+    path.write_text("[" + ",".join([record] * 60_000) + "]", encoding="utf-8")
+    assert path.stat().st_size > 3_000_000
+    largest = 0
+    real_open = lt._open_text
+
+    def open_and_watch(p):
+        f = real_open(p)
+        real_readline = f.readline
+
+        def readline(size=-1):
+            nonlocal largest
+            assert size is not None and size > 0, "an unbounded readline"
+            text = real_readline(size)
+            largest = max(largest, len(text))
+            return text
+
+        f.readline = readline
+        return f
+
+    monkeypatch.setattr(lt, "_open_text", open_and_watch)
+    res = lt.triage([str(path)])
+    f = res.an.files[0]
+    assert largest <= lt.READ_CHUNK_CHARS
+    assert (f.lines, f.entries, f.long_lines) == (1, 1, 1)
+    assert res.checks["ok"]
+    assert any("one long line" in w for w in res.warnings)
+    assert res.compact()["coverage"]["files"][0]["long_lines_cut"] == 1
+
+
+def test_an_over_long_line_is_cut_and_the_next_line_still_counts(tmp_path):
+    lines = [f"{_iso(T0 + i)} h-1 INFO ok {i}" for i in range(10)]
+    lines[4] = f"{_iso(T0 + 4)} h-1 ERROR dump " + "x" * 200_000
+    res, f = _formats(tmp_path, "a.log", lines)
+    assert (f.lines, f.entries, f.unparsed, f.long_lines) == (10, 10, 0, 1)
+    assert res.checks["ok"]
+    assert any("1 line(s) longer than 8192" in w for w in res.warnings)
+
+
 # ---------------------------------------------------------------------------
 # The tool: scope, output and registration
 # ---------------------------------------------------------------------------
@@ -696,6 +1086,43 @@ def test_tool_writes_json_and_csv_beside_the_logs_and_never_overwrites(tmp_path)
     assert (tmp_path / "a.log").read_bytes() == before
 
 
+def test_its_own_txt_list_is_not_read_back_as_a_log(tmp_path):
+    t = T0 + 3 * 3600
+    extra = [
+        (t + k, f"{_iso(t + k)} app-01 FATAL raid array degraded on sess-{k:03d}a")
+        for k in range(30)
+    ]
+    _steady(tmp_path / "a.log", extra=extra)
+    first = _call(paths=[str(tmp_path)], output_path=str(tmp_path / "bad.txt"))
+    assert first["output"]["written"] and first["output"]["rows"] == 30
+    second = _call(paths=[str(tmp_path)])
+    assert [f["file"] for f in second["coverage"]["files"]] == ["a.log"]
+    assert second["coverage"]["hosts"] == first["coverage"]["hosts"]
+    assert second["coverage"]["entries"] == first["coverage"]["entries"]
+    skipped = {Path(s["file"]).name: s["reason"] for s in second["coverage"]["skipped"]}
+    assert skipped == {"bad.txt": "an earlier triage_logs output"}
+
+
+def test_a_users_own_txt_list_is_still_read(tmp_path):
+    _write(
+        tmp_path / "notes.txt", [f"{_iso(T0 + i)} h-1 INFO ok {i}" for i in range(5)]
+    )
+    out = _call(paths=[str(tmp_path)])
+    assert [f["file"] for f in out["coverage"]["files"]] == ["notes.txt"]
+
+
+def _assert_not_written(out, needle):
+    """The failure is at the top level, not only nested under ``output``."""
+    assert out["status"] == "partial"
+    assert out["error"].startswith("output_path was not written: ")
+    assert needle in out["error"] and "Call again" in out["fix"]
+    assert out["output"] == {
+        "written": False,
+        "error": out["error"].split(": ", 1)[1],
+    }
+    assert out["coverage"]["entries"], "the analysis itself is still returned"
+
+
 @pytest.mark.parametrize("name", ["triage.json", "bad.csv", "ids.txt"])
 def test_a_file_created_after_the_check_is_still_not_overwritten(
     tmp_path, monkeypatch, name
@@ -712,9 +1139,7 @@ def test_a_file_created_after_the_check_is_still_not_overwritten(
 
     monkeypatch.setattr(lt, "_output_refusal", check_then_race)
     out = _call(paths=[str(tmp_path / "a.log")], output_path=str(target))
-    assert out["status"] == "success"
-    assert not out["output"]["written"]
-    assert "never overwrites" in out["output"]["error"]
+    _assert_not_written(out, "never overwrites")
     assert target.read_text(encoding="utf-8") == "someone else's file\n"
 
 
@@ -725,8 +1150,14 @@ def test_a_file_created_after_the_check_is_still_not_overwritten(
 def test_tool_refuses_bad_output_paths(tmp_path, name, needle):
     _steady(tmp_path / "a.log", hours=1)
     out = _call(paths=[str(tmp_path)], output_path=str(tmp_path / name))
-    assert out["status"] == "success"
-    assert not out["output"]["written"] and needle in out["output"]["error"]
+    _assert_not_written(out, needle)
+
+
+def test_a_written_output_keeps_status_success(tmp_path):
+    _steady(tmp_path / "a.log", hours=1)
+    out = _call(paths=[str(tmp_path)], output_path=str(tmp_path / "t.json"))
+    assert out["status"] == "success" and out["output"]["written"]
+    assert "error" not in out and "fix" not in out
 
 
 def test_tool_reads_and_writes_only_inside_the_agents_folders(tmp_path):
@@ -740,7 +1171,7 @@ def test_tool_reads_and_writes_only_inside_the_agents_folders(tmp_path):
         out = _call(paths=[str(logs), str(other)], output_path=str(other / "t.json"))
         assert [f["file"] for f in out["coverage"]["files"]] == ["a.log"]
         assert any(Path(s["file"]).name == "other" for s in out["coverage"]["skipped"])
-        assert not out["output"]["written"]
+        assert out["status"] == "partial" and not out["output"]["written"]
         assert not (other / "t.json").exists()
         refused = _call(paths=[str(other / "b.log")])
         assert refused["status"] == "error"
@@ -794,6 +1225,7 @@ def test_skill_md_body_stays_lean_with_rules_and_linked_references():
     assert len(body) // 4 <= 1200
     assert "do not rebuild them by hand" in body
     assert "Baseline is not the incident" in body
+    assert "`persistent_errors`" in body
     refs = re.findall(r"`(references/[\w-]+\.md)`", body)
     assert len(refs) >= 4
     for ref in refs:
