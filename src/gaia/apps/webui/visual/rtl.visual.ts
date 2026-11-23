@@ -12,7 +12,7 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
-import { ANSWER_SESSION, AUTOMATIONS, DISCORD_STATES, MESSAGES, MODEL_LIST, NOW, RESOURCES, SESSIONS, SYSTEM_STATUS, TOOL_STATUS, holdOnToolStatus, mockApi, shownText, useLocale, useTheme, withAutomations, withConnectors, withCrashedBackend, withDesktopBridges, withDiscord, withMemory, withModelPage, withSettingsPanes, withoutFlagship, withAgentPrograms, AGENT_DOWNLOADING, AGENT_DOWNLOAD_FAILED, type AgentProgramsAnswers, type MemoryState } from './fixtures';
+import { ANSWER_SESSION, AUTOMATIONS, DISCORD_STATES, MESSAGES, MODEL_LIST, NOW, RESOURCES, SESSIONS, SYSTEM_STATUS, TOOL_STATUS, holdOnToolStatus, mockApi, shownText, useLocale, useTheme, withAutomations, withConnectors, withCrashedBackend, withDesktopBridges, withDiscord, withMemory, withModelPage, withSettingsPanes, withoutFlagship, withAgentPrograms, withResourceStrip, AGENT_DOWNLOADING, AGENT_DOWNLOAD_FAILED, type AgentProgramsAnswers, type MemoryState } from './fixtures';
 import { ENGINE_FAILED, NARROW_SCENES, PLAN_COLD, SETUP_SCENES, expectSnugTags, scene, withSetup } from './setup-scenes';
 import { translateBare } from '../src/i18n/registry';
 
@@ -820,26 +820,43 @@ for (const locale of ['ar', 'en']) {
     }
 }
 
+const START_TASKS = {
+    cards: [
+        { skill: 'document-brief', title: 'Ask about your documents', note: '12 indexed documents', prompt: 'Using my indexed documents, give me the key points and anything I should act on.', needs_input: false },
+        { skill: 'research-report', title: 'Research a topic', note: 'A cited report from the web', prompt: 'Research and write a short cited report on: ', needs_input: true },
+        { skill: 'coding', title: 'Work on code', note: 'In gaia', prompt: 'Look around gaia and tell me what this project does.', needs_input: false },
+    ],
+    working_folder: { path: '/home/you/projects/gaia', name: 'gaia', gaia_folder: false, choosable: true },
+};
+
 for (const locale of ['ar', 'en']) {
-    for (const width of [1440, 390]) {
-        test(`Try chips fit in ${locale} at ${width}px`, async ({ page }) => {
-            await page.setViewportSize({ width, height: 900 });
-            await open(page, '', locale);
-            const chips = page.locator('.try-chip');
-            await expect(chips).toHaveCount(7);
-            await expect(chips.first()).toBeVisible();
-            if (locale === 'ar') await expect(chips.first()).toContainText('وصفة');
-            await shot(page, `try-chips-${locale}-${width}`);
-            // The closed sidebar drawer waits off screen at phone width; judge the chips.
-            const problems = (await audit(page)).filter((p) => p.includes('try-chip') || p.includes('scrolls sideways'));
-            expect(problems).toEqual([]);
-        });
+    for (const tasks of [false, true]) {
+        for (const width of [1200, 390]) {
+            test(`new-chat starters fit in ${locale} at ${width}px${tasks ? ", with this PC's tasks" : ''}`, async ({ page }) => {
+                await page.setViewportSize({ width, height: 900 });
+                await open(page, '', locale, tasks ? (p) => p.route('**/api/onboarding/start', (route) => route.fulfill({ json: START_TASKS })) : undefined);
+                const chips = page.locator('.try-chip');
+                await expect(chips).toHaveCount(3);
+                await expect(chips.first()).toBeVisible();
+                if (locale === 'ar') await expect(chips.first()).toContainText(tasks ? 'اسأل عن مستنداتك' : 'وصفة');
+                if (tasks) await expect(chips.last()).toContainText(locale === 'ar' ? 'وصفة' : 'Recipe');
+                await shot(page, `starters-${locale}-${width}${tasks ? '-tasks' : ''}`);
+                if (width >= 1200) {
+                    const tops = await chips.evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
+                    expect(new Set(tops).size, 'the starters sit in one row').toBe(1);
+                }
+                // The closed sidebar drawer waits off screen at phone width; judge the chips.
+                const problems = (await audit(page)).filter((p) => p.includes('try-chip') || p.includes('scrolls sideways'));
+                expect(problems).toEqual([]);
+            });
+        }
     }
 }
 
 test('finished answer', async ({ page }) => {
     await open(page, `#${ANSWER_SESSION}`);
     await expect(page.getByText('Action items from Aug 28')).toBeVisible();
+    await expect(page.locator('.resource-strip')).toHaveCount(0);
     expect(await audit(page)).toEqual([]);
 });
 
@@ -876,6 +893,15 @@ test("a reply that makes the chat's first file opens the session panel beside it
     await expect(panel.locator('[data-section="outputs"]')).toContainText('packing-list.md');
     expect(await page.evaluate(() => document.activeElement?.closest('.session-panel') ?? null)).toBeNull();
     expect(await audit(page)).toEqual([]);
+});
+
+test('a chat at phone width goes straight from the header to the conversation', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await open(page, `#${ANSWER_SESSION}`);
+    await expect(page.getByText('Action items from Aug 28')).toBeVisible();
+    await expect(page.locator('.resource-strip')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'استخدام الموارد' })).toHaveAttribute('aria-pressed', 'false');
+    await page.screenshot({ path: 'visual/test-results/chat-ar-phone-no-strip.png' });
 });
 
 const RECIPE_CARD = {
@@ -1917,7 +1943,7 @@ async function expectClearOfPanel(page: Page): Promise<void> {
 
 test('resource usage strip', async ({ page }) => {
     await withPanelOpen(page);
-    await open(page, `#${ANSWER_SESSION}`);
+    await open(page, `#${ANSWER_SESSION}`, 'ar', withResourceStrip);
     const strip = page.getByRole('region', { name: 'استخدام الموارد على هذا الجهاز' });
     await expect(strip.locator('li')).toHaveCount(5);
     await expect(strip.getByText('45.0/63.6 GB')).toBeVisible();
@@ -1934,7 +1960,7 @@ test('resource usage strip', async ({ page }) => {
 
 test('closing the resource usage strip says how to bring it back', async ({ page }) => {
     await withPanelOpen(page);
-    await open(page, `#${ANSWER_SESSION}`);
+    await open(page, `#${ANSWER_SESSION}`, 'ar', withResourceStrip);
     await page.getByRole('region', { name: 'استخدام الموارد على هذا الجهاز' }).getByRole('button').click();
     const note = page.locator('.resource-hidden-note');
     await expect(note).toContainText('أيقونة النبض');
@@ -1947,6 +1973,7 @@ test('closing the resource usage strip says how to bring it back', async ({ page
 test('resource usage strip with no GPU counters keeps CPU and memory', async ({ page }) => {
     await withPanelOpen(page);
     await open(page, `#${ANSWER_SESSION}`, 'ar', async (p) => {
+        await withResourceStrip(p);
         await p.route('**/api/system/resources', (route) =>
             route.fulfill({
                 json: { ...RESOURCES, devices: [], networks: [], devices_error: "function 'D3DKMTEnumAdapters3' not found", networks_error: null },
@@ -1963,7 +1990,7 @@ test('resource usage strip with no GPU counters keeps CPU and memory', async ({ 
 
 test('resource usage strip at phone width', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await open(page, `#${ANSWER_SESSION}`);
+    await open(page, `#${ANSWER_SESSION}`, 'ar', withResourceStrip);
     const strip = page.getByRole('region', { name: 'استخدام الموارد على هذا الجهاز' });
     await expect(strip.locator('li')).toHaveCount(5);
     await expect(strip.locator('.resource-spark').first()).toBeHidden();
@@ -2942,12 +2969,14 @@ test.describe('English', () => {
     test('finished answer', async ({ page }) => {
         await open(page, `#${ANSWER_SESSION}`, 'en');
         await expect(page.getByText('Action items from Aug 28')).toBeVisible();
+        await expect(page.locator('.resource-strip')).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Resource usage' })).toHaveAttribute('aria-pressed', 'false');
         expect(await audit(page)).toEqual([]);
     });
 
     test('resource usage strip', async ({ page }) => {
         await withPanelOpen(page);
-        await open(page, `#${ANSWER_SESSION}`, 'en');
+        await open(page, `#${ANSWER_SESSION}`, 'en', withResourceStrip);
         const strip = page.getByRole('region', { name: 'Resource usage on this PC' });
         await expect(strip.getByText('S: 0 R: 8.0 Kbps')).toBeVisible();
         await expect(strip.locator('li')).toHaveCount(5);
@@ -2961,7 +2990,7 @@ test.describe('English', () => {
 
     test('closing the resource usage strip says how to bring it back', async ({ page }) => {
         await withPanelOpen(page);
-        await open(page, `#${ANSWER_SESSION}`, 'en');
+        await open(page, `#${ANSWER_SESSION}`, 'en', withResourceStrip);
         await page.getByRole('button', { name: 'Hide resource usage' }).click();
         const note = page.locator('.resource-hidden-note');
         await expect(note).toContainText('pulse icon');
@@ -2975,7 +3004,7 @@ test.describe('English', () => {
     test('resource usage strip on a wide window is one row', async ({ page }) => {
         await page.setViewportSize({ width: 1920, height: 1000 });
         await withPanelOpen(page);
-        await open(page, `#${ANSWER_SESSION}`, 'en');
+        await open(page, `#${ANSWER_SESSION}`, 'en', withResourceStrip);
         const tiles = page.getByRole('region', { name: 'Resource usage on this PC' }).locator('li');
         await expect(tiles).toHaveCount(5);
         const tops = await tiles.evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
@@ -2986,7 +3015,7 @@ test.describe('English', () => {
     });
 
     test('resource usage strip in the dark theme', async ({ page }) => {
-        await open(page, `#${ANSWER_SESSION}`, 'en', undefined, 'dark');
+        await open(page, `#${ANSWER_SESSION}`, 'en', withResourceStrip, 'dark');
         await expect(page.getByRole('region', { name: 'Resource usage on this PC' }).locator('li')).toHaveCount(5);
         expect(await audit(page)).toEqual([]);
         await page.screenshot({ path: 'visual/test-results/resource-strip-en-dark.png' });
@@ -7155,6 +7184,39 @@ for (const locale of ['ar', 'en']) {
         await shot(page, `skills-link-result-${locale}`);
         expect(await audit(page)).toEqual([]);
         if (locale === 'ar') expect(await untranslated(page, '.skill-link-result')).toEqual([]);
+    });
+}
+
+const QUEUED_CHAT = SESSIONS[1].id;
+
+/** A second chat waits for the GPU and holds two messages typed while it waited. */
+async function withQueuedChatAndUnsent(page: Page): Promise<void> {
+    await page.route('**/api/chat/active', (route) =>
+        route.fulfill({ json: { session_ids: [QUEUED_CHAT], queued: [QUEUED_CHAT], awaiting_user: {} } }));
+    await page.addInitScript((id) => window.localStorage.setItem('gaia-chat-message-queues', JSON.stringify({
+        [id]: [{ id: 1, text: 'one more thing', state: 'queued' }, { id: 2, text: 'and another', state: 'queued' }],
+    })), QUEUED_CHAT);
+}
+
+for (const locale of ['ar', 'en']) {
+    test(`a queued chat with unsent messages shows both notes in full at 800x500 (${locale})`, async ({ page }) => {
+        await page.setViewportSize({ width: 800, height: 500 });
+        await open(page, `#${ANSWER_SESSION}`, locale, withQueuedChatAndUnsent);
+        const notes = page.locator('.sb-row-note');
+        await expect(notes).toHaveCount(2);
+        await expect(notes.first()).toContainText(locale === 'ar' ? 'رقم 1 في الدور' : '1st in line');
+        await expect(notes.last()).toContainText('2');
+        const cut = await notes.evaluateAll((els) => els.flatMap((el) => {
+            const row = el.closest('.sb-row-main')!.getBoundingClientRect();
+            const r = el.getBoundingClientRect();
+            const problems: string[] = [];
+            if (el.scrollWidth > el.clientWidth + 1) problems.push(`${el.textContent} is cut`);
+            if (r.left < row.left - 1 || r.right > row.right + 1) problems.push(`${el.textContent} spills out of its row`);
+            return problems;
+        }));
+        expect(cut).toEqual([]);
+        await shot(page, `queued-chat-notes-${locale}`);
+        expect(await audit(page)).toEqual([]);
     });
 }
 
